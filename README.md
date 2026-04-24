@@ -47,6 +47,17 @@ gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:8000 wsgi:app
 Mở trình duyệt tại:
 - `http://localhost:8000`
 
+### Quên mật khẩu?
+Dừng app rồi chạy:
+```bash
+python reset_password.py --username admin
+# hoặc không tương tác: python reset_password.py --non-interactive --username admin --password '<mới>'
+```
+Script sẽ ghi đè `auth.json` với mật khẩu mới (đã hash). Khởi động lại app sau khi reset.
+
+### Health check
+`GET /healthz` trả về JSON `{"status":"ok","has_client":<bool>}` — không cần đăng nhập, dùng cho load balancer / uptime monitor.
+
 ## Quy trình kết nối thiết bị
 1. Cắm điện thoại vào máy (hoặc kết nối ADB qua Wi-Fi)
 2. Chấp nhận quyền USB Debugging trên điện thoại
@@ -60,6 +71,7 @@ Mở trình duyệt tại:
 - `app.py`: entrypoint server (dev mode `python app.py`)
 - `wsgi.py`: WSGI entrypoint cho gunicorn (`gunicorn ... wsgi:app`)
 - `scrcpy.py`: logic tích hợp scrcpy
+- `reset_password.py`: CLI reset credentials nếu quên mật khẩu
 - `templates/`: giao diện HTML
 - `static/`: JS/CSS/fonts
 - `requirements.txt`: dependencies tối thiểu để chạy

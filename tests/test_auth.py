@@ -139,3 +139,55 @@ def _fresh_csrf_from(html: bytes) -> str:
     m = re.search(rb'name="csrf_token" value="([^"]+)"', html)
     assert m
     return m.group(1).decode()
+
+
+def test_healthz_no_auth_required(client):
+    resp = client.get('/healthz')
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body == {'status': 'ok', 'has_client': False}
+
+
+def test_session_is_permanent_after_login(client, csrf, default_credentials, app):
+    assert (
+        _login(
+            client,
+            default_credentials['username'],
+            default_credentials['password'],
+            csrf,
+        ).status_code
+        == 302
+    )
+    assert app.app.config['PERMANENT_SESSION_LIFETIME'].total_seconds() > 0
+
+
+def test_change_password_rate_limited(client, csrf, default_credentials, app, monkeypatch):
+    # Log in first, then hammer the endpoint with wrong current_password.
+    assert (
+        _login(
+            client,
+            default_credentials['username'],
+            default_credentials['password'],
+            csrf,
+        ).status_code
+        == 302
+    )
+    monkeypatch.setattr(app, 'CHANGE_PW_MAX_ATTEMPTS', 3)
+    app._change_pw_attempts.clear()
+
+    last_status = None
+    for _ in range(5):
+        page = client.get('/change-password')
+        token = _fresh_csrf_from(page.data)
+        resp = client.post(
+            '/change-password',
+            data={
+                'csrf_token': token,
+                'current_password': 'definitely-wrong',
+                'new_username': default_credentials['username'],
+                'new_password': 'another-password',
+                'confirm_password': 'another-password',
+            },
+        )
+        last_status = resp.status_code
+    assert last_status == 429

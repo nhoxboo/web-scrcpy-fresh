@@ -8,12 +8,14 @@ import secrets
 import threading
 import time
 from collections import deque
+from datetime import timedelta
 from functools import wraps
 
 from flask import (
     Flask,
     abort,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -22,6 +24,7 @@ from flask import (
 )
 from flask_socketio import ConnectionRefusedError as SocketConnectionRefusedError
 from flask_socketio import SocketIO
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from scrcpy import Scrcpy
@@ -43,6 +46,13 @@ MIN_PASSWORD_LEN = 8
 # Rate limit: max attempts / window (seconds) per client IP on /login
 LOGIN_MAX_ATTEMPTS = 8
 LOGIN_WINDOW_SECONDS = 300  # 5 minutes
+
+# Rate limit for /change-password (looser since user is already authenticated).
+CHANGE_PW_MAX_ATTEMPTS = 10
+CHANGE_PW_WINDOW_SECONDS = 300
+
+# Session idle lifetime; override via SESSION_LIFETIME_SECONDS env var.
+SESSION_LIFETIME_SECONDS = int(os.environ.get('SESSION_LIFETIME_SECONDS', '86400'))
 
 # --- shared scrcpy session state -------------------------------------------------
 _state_lock = threading.Lock()
@@ -163,6 +173,8 @@ def _validate_csrf() -> bool:
 # --- rate limit ------------------------------------------------------------------
 _login_attempts: dict[str, deque] = {}
 _login_attempts_lock = threading.Lock()
+_change_pw_attempts: dict[str, deque] = {}
+_change_pw_attempts_lock = threading.Lock()
 
 
 def _rate_limit_check(ip: str) -> bool:
@@ -183,6 +195,24 @@ def _rate_limit_record(ip: str) -> None:
         dq.append(now)
 
 
+def _change_pw_check(ip: str) -> bool:
+    now = time.monotonic()
+    with _change_pw_attempts_lock:
+        dq = _change_pw_attempts.setdefault(ip, deque())
+        while dq and now - dq[0] > CHANGE_PW_WINDOW_SECONDS:
+            dq.popleft()
+        if len(dq) >= CHANGE_PW_MAX_ATTEMPTS:
+            return False
+        return True
+
+
+def _change_pw_record(ip: str) -> None:
+    now = time.monotonic()
+    with _change_pw_attempts_lock:
+        dq = _change_pw_attempts.setdefault(ip, deque())
+        dq.append(now)
+
+
 def _client_ip() -> str:
     # Respect X-Forwarded-For only if the operator opts in (single reverse proxy).
     if os.environ.get('TRUST_PROXY') == '1':
@@ -199,7 +229,14 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_SECURE=os.environ.get('SESSION_COOKIE_SECURE', '0') == '1',
+    PERMANENT_SESSION_LIFETIME=timedelta(seconds=SESSION_LIFETIME_SECONDS),
 )
+
+# When running behind a trusted reverse proxy (nginx, Caddy, Traefik, ...) set
+# TRUST_PROXY=1 so request.is_secure / remote_addr honour X-Forwarded-* headers.
+if os.environ.get('TRUST_PROXY') == '1':
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 socketio = SocketIO(app, async_mode=None)
 
 
@@ -258,6 +295,7 @@ def login():
             auth.get('password', ''), password
         ):
             session.clear()
+            session.permanent = True
             session['authenticated'] = True
             session['username'] = username
             _get_csrf_token()  # rotate token for the new session
@@ -279,6 +317,15 @@ def logout():
 @login_required
 def change_password():
     if request.method == 'POST':
+        ip = _client_ip()
+        if not _change_pw_check(ip):
+            log.warning('change-password rate-limited for ip=%s', ip)
+            flash('Quá nhiều lần thử. Vui lòng đợi vài phút rồi thử lại.')
+            return render_template(
+                'change_password.html',
+                username=session.get('username', DEFAULT_USERNAME),
+            ), 429
+
         current_password = request.form.get('current_password') or ''
         new_username = (request.form.get('new_username') or '').strip() or session.get(
             'username', DEFAULT_USERNAME
@@ -288,6 +335,7 @@ def change_password():
 
         auth = _load_auth()
         if not _verify_password(auth.get('password', ''), current_password):
+            _change_pw_record(ip)
             flash('Mật khẩu hiện tại không đúng')
         elif len(new_password) < MIN_PASSWORD_LEN:
             flash(f'Mật khẩu mới tối thiểu {MIN_PASSWORD_LEN} ký tự')
@@ -302,6 +350,17 @@ def change_password():
     return render_template(
         'change_password.html', username=session.get('username', DEFAULT_USERNAME)
     )
+
+
+@app.route('/healthz')
+def healthz():
+    """Lightweight health check for load balancers / uptime monitors.
+
+    Does not require auth and does not touch scrcpy / device state.
+    """
+    with _state_lock:
+        has_client = client_sid is not None
+    return jsonify(status='ok', has_client=has_client), 200
 
 
 # --- socket.io handlers ----------------------------------------------------------
