@@ -31,12 +31,10 @@ LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
 class Scrcpy:
     def __init__(self):
         self.video_socket = None
-        self.audio_socket = None
         self.control_socket = None
 
         self.android_thread = None
         self.video_thread = None
-        self.audio_thread = None
         self.control_thread = None
         self.android_process = None
 
@@ -49,7 +47,8 @@ class Scrcpy:
         log.info('Pushing scrcpy-server.jar to device...')
         result = subprocess.run(
             [ADB_PATH, 'push', SCRCPY_SERVER_PATH, DEVICE_SERVER_PATH],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
             log.error('Error pushing server: %s', result.stderr.strip())
@@ -66,16 +65,21 @@ class Scrcpy:
     # ---- server lifecycle ------------------------------------------------------
     def start_server(self) -> None:
         log.info('Starting scrcpy server in background...')
+        # audio=false: audio was captured but never forwarded to the browser,
+        # so disable it at the source to save device CPU + tunnel bandwidth.
         cmd = [
-            ADB_PATH, 'shell',
+            ADB_PATH,
+            'shell',
             (
                 f'CLASSPATH={DEVICE_SERVER_PATH} app_process / '
-                'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true '
+                'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true audio=false '
                 f'log_level=VERBOSE video_bit_rate={self.video_bit_rate}'
             ),
         ]
         self.android_process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
         # Drain stderr while process runs. readline blocks so the `stop` flag is
         # best-effort here; scrcpy_stop terminates the process which unblocks it.
@@ -102,18 +106,6 @@ class Scrcpy:
             log.info('Video socket closed: %s', e)
         log.info('Video data reception stopped')
 
-    def receive_audio_data(self) -> None:
-        log.info('Receiving audio data (not currently forwarded to client)...')
-        try:
-            self.audio_socket.recv(1)
-            while not self.stop:
-                data = self.audio_socket.recv(1024)
-                if not data:
-                    break
-        except OSError as e:
-            log.info('Audio socket closed: %s', e)
-        log.info('Audio data reception stopped')
-
     def handle_control_conn(self) -> None:
         log.info('Control connection established (idle)...')
         try:
@@ -134,7 +126,9 @@ class Scrcpy:
         self.stop = False
 
         result = subprocess.run(
-            [ADB_PATH, 'devices'], capture_output=True, text=True,
+            [ADB_PATH, 'devices'],
+            capture_output=True,
+            text=True,
         )
         if 'device' not in result.stdout:
             log.error('No device found. Please connect your Android device via USB.')
@@ -156,10 +150,6 @@ class Scrcpy:
             self.video_socket.connect(('localhost', LOCAL_PORT))
             log.info('Video connection established')
 
-            self.audio_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.audio_socket.connect(('localhost', LOCAL_PORT))
-            log.info('Audio connection established')
-
             self.control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.control_socket.connect(('localhost', LOCAL_PORT))
             log.info('Control connection established')
@@ -169,10 +159,8 @@ class Scrcpy:
             raise
 
         self.video_thread = Thread(target=self.receive_video_data, daemon=True)
-        self.audio_thread = Thread(target=self.receive_audio_data, daemon=True)
         self.control_thread = Thread(target=self.handle_control_conn, daemon=True)
         self.video_thread.start()
-        self.audio_thread.start()
         self.control_thread.start()
         log.info('Background tasks started')
 
@@ -185,7 +173,7 @@ class Scrcpy:
             pass
 
     def _close_sockets(self) -> None:
-        for sock in (self.video_socket, self.audio_socket, self.control_socket):
+        for sock in (self.video_socket, self.control_socket):
             if sock is None:
                 continue
             try:
@@ -206,12 +194,10 @@ class Scrcpy:
         self.stop = True
 
         self._shutdown_socket(self.video_socket)
-        self._shutdown_socket(self.audio_socket)
         self._shutdown_socket(self.control_socket)
         self._close_sockets()
 
         self._join_thread(self.video_thread)
-        self._join_thread(self.audio_thread)
         self._join_thread(self.control_thread)
 
         if self.android_process is not None:

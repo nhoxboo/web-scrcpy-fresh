@@ -19,6 +19,14 @@ Bản private dùng nội bộ để điều khiển thiết bị Android qua tr
 pip install -r requirements.txt
 ```
 
+### Dev / test
+```bash
+pip install -r requirements-dev.txt
+pre-commit install
+pytest
+ruff check . && ruff format --check .
+```
+
 ## Cách chạy
 ```bash
 python app.py
@@ -46,8 +54,10 @@ Mở trình duyệt tại:
 ## Bảo mật (quan trọng)
 Vì đây là bản private, nên khuyến nghị:
 - Không public cổng ra Internet nếu chưa có reverse proxy + auth bổ sung
-- Đổi mật khẩu mặc định ngay khi deploy
-- Không commit thông tin nhạy cảm (token, config nội bộ)
+- Đổi mật khẩu mặc định ngay khi deploy (tài khoản mặc định `admin/admin123` sẽ được tạo lần đầu chạy với mật khẩu đã hash)
+- Đặt `FLASK_SECRET_KEY` qua env var thay vì dùng file `secret.key` local nếu triển khai nhiều node
+- Không commit thông tin nhạy cảm (`auth.json`, `secret.key`, `.env` đều đã được `.gitignore`)
+- Audio stream đã tắt mặc định ở scrcpy-server (`audio=false`) để giảm băng thông
 
 ## Troubleshooting nhanh
 - Không thấy device: kiểm tra lại `adb devices` và USB Debugging
