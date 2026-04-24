@@ -74,49 +74,81 @@ class ScrcpyInput {
             }
         });
 
-        // Mobile touch support (single-finger tap/drag)
-        let touchActive = false;
-        const toDevicePoint = (touch) => {
+        // Multi-touch support via Pointer Events (touch/pen only; mouse handled
+        // by the mousedown/mouseup/mousemove listeners above). Each finger gets
+        // a unique small integer pointer id that scrcpy maps to a separate
+        // MotionEvent pointer, enabling pinch-zoom and multi-finger gestures.
+        const toDevicePoint = (ev) => {
             const rect = videoElement.getBoundingClientRect();
-            const localX = Math.max(0, Math.min(rect.width, touch.clientX - rect.left));
-            const localY = Math.max(0, Math.min(rect.height, touch.clientY - rect.top));
+            const localX = Math.max(0, Math.min(rect.width, ev.clientX - rect.left));
+            const localY = Math.max(0, Math.min(rect.height, ev.clientY - rect.top));
             const x = (localX / Math.max(1, rect.width)) * this.width;
             const y = (localY / Math.max(1, rect.height)) * this.height;
             return { x, y, rect };
         };
 
-        videoElement.addEventListener('touchstart', (event) => {
-            if (!event.touches || event.touches.length === 0) return;
-            const touch = event.touches[0];
-            const p = toDevicePoint(touch);
-            touchActive = true;
-            const data = this.createTouchProtocolData(0, p.x, p.y, this.width, this.height, 0, 0, 65535);
-            this.callback(data);
-            event.preventDefault();
-        }, { passive: false });
-
-        videoElement.addEventListener('touchmove', (event) => {
-            if (!touchActive || !event.touches || event.touches.length === 0) return;
-            const touch = event.touches[0];
-            const p = toDevicePoint(touch);
-            const data = this.createTouchProtocolData(2, p.x, p.y, this.width, this.height, 0, 0, 65535);
-            this.callback(data);
-            event.preventDefault();
-        }, { passive: false });
-
-        const endTouch = (event) => {
-            if (!touchActive) return;
-            touchActive = false;
-            const t = (event.changedTouches && event.changedTouches[0]) || null;
-            if (!t) return;
-            const p = toDevicePoint(t);
-            const data = this.createTouchProtocolData(1, p.x, p.y, this.width, this.height, 0, 0, 0);
-            this.callback(data);
-            event.preventDefault();
+        const touchPointers = new Map();   // browser pointerId -> scrcpy finger id (BigInt)
+        const usedFingerIds = new Set();
+        const MAX_FINGERS = 10;
+        const allocFingerId = () => {
+            for (let i = 0; i < MAX_FINGERS; i++) {
+                if (!usedFingerIds.has(i)) {
+                    usedFingerIds.add(i);
+                    return BigInt(i);
+                }
+            }
+            return 0n;
+        };
+        const releaseFingerId = (scrcpyId) => {
+            usedFingerIds.delete(Number(scrcpyId));
+        };
+        const pointerPressure = (ev) => {
+            // scrcpy expects pressure as int16 (0..65535). PointerEvent.pressure
+            // is 0..1; 0.5 is the "no-force-info" neutral value.
+            const p = typeof ev.pressure === 'number' && ev.pressure > 0 ? ev.pressure : 0.5;
+            return Math.max(0, Math.min(65535, Math.round(p * 65535)));
         };
 
-        videoElement.addEventListener('touchend', endTouch, { passive: false });
-        videoElement.addEventListener('touchcancel', endTouch, { passive: false });
+        videoElement.addEventListener('pointerdown', (ev) => {
+            if (ev.pointerType !== 'touch' && ev.pointerType !== 'pen') return;
+            try { videoElement.setPointerCapture(ev.pointerId); } catch (e) { /* ignore */ }
+            const p = toDevicePoint(ev);
+            const fid = allocFingerId();
+            touchPointers.set(ev.pointerId, fid);
+            const data = this.createTouchProtocolData(
+                0, p.x, p.y, this.width, this.height, 0, 1, pointerPressure(ev), fid,
+            );
+            this.callback(data);
+            ev.preventDefault();
+        }, { passive: false });
+
+        videoElement.addEventListener('pointermove', (ev) => {
+            if (ev.pointerType !== 'touch' && ev.pointerType !== 'pen') return;
+            const fid = touchPointers.get(ev.pointerId);
+            if (fid === undefined) return;
+            const p = toDevicePoint(ev);
+            const data = this.createTouchProtocolData(
+                2, p.x, p.y, this.width, this.height, 0, 1, pointerPressure(ev), fid,
+            );
+            this.callback(data);
+            ev.preventDefault();
+        }, { passive: false });
+
+        const endPointer = (ev) => {
+            if (ev.pointerType !== 'touch' && ev.pointerType !== 'pen') return;
+            const fid = touchPointers.get(ev.pointerId);
+            if (fid === undefined) return;
+            touchPointers.delete(ev.pointerId);
+            releaseFingerId(fid);
+            const p = toDevicePoint(ev);
+            const data = this.createTouchProtocolData(
+                1, p.x, p.y, this.width, this.height, 0, 0, 0, fid,
+            );
+            this.callback(data);
+            ev.preventDefault();
+        };
+        videoElement.addEventListener('pointerup', endPointer, { passive: false });
+        videoElement.addEventListener('pointercancel', endPointer, { passive: false });
 
         videoElement.addEventListener('contextmenu', (event) => {
             event.preventDefault();
@@ -319,52 +351,31 @@ class ScrcpyInput {
         this.callback(data);
     }
 
-    createTouchProtocolData(action, x, y, width, height, actionButton, buttons, pressure) {
-        const type = 2; // touch event
-
+    createTouchProtocolData(action, x, y, width, height, actionButton, buttons, pressure,
+                             pointerId = 0xfffffffffffffffdn) {
+        // scrcpy touch control message (big-endian):
+        //   u8 type (2) | u8 action | u64 pointer_id | i32 x | i32 y
+        //   u16 w | u16 h | i16 pressure | i32 action_button | i32 buttons
+        // pointer_id == -3 (0xffff..fd) is scrcpy's "virtual finger" id used for
+        // single-touch / mouse-emulated input. For real multi-finger input we
+        // pass small positive ids (0..9) so each finger is tracked separately.
+        const type = 2;
         const buffer = new ArrayBuffer(1 + 1 + 8 + 4 + 4 + 2 + 2 + 2 + 4 + 4);
         const view = new DataView(buffer);
-
         let offset = 0;
 
-        view.setUint8(offset, type);
-        offset += 1;
+        view.setUint8(offset, type); offset += 1;
+        view.setUint8(offset, action); offset += 1;
 
-        view.setUint8(offset, action);
-        offset += 1;
+        const pid = typeof pointerId === 'bigint' ? pointerId : BigInt(pointerId);
+        view.setBigUint64(offset, pid, false); offset += 8;
 
-        view.setUint8(offset, 0xff);
-        offset += 1;
-        view.setUint8(offset, 0xff);
-        offset += 1;
-        view.setUint8(offset, 0xff);
-        offset += 1;
-        view.setUint8(offset, 0xff);
-        offset += 1;
-        view.setUint8(offset, 0xff);
-        offset += 1;
-        view.setUint8(offset, 0xff);
-        offset += 1;
-        view.setUint8(offset, 0xff);
-        offset += 1;
-        view.setUint8(offset, 0xfd);
-        offset += 1;
-
-        view.setInt32(offset, x, false);
-        offset += 4;
-        view.setInt32(offset, y, false);
-        offset += 4;
-        view.setUint16(offset, width, false);
-        offset += 2;
-        view.setUint16(offset, height, false);
-        offset += 2;
-
-        view.setInt16(offset, pressure, false);
-        offset += 2;
-
-        view.setInt32(offset, actionButton, false);
-        offset += 4;
-
+        view.setInt32(offset, x, false); offset += 4;
+        view.setInt32(offset, y, false); offset += 4;
+        view.setUint16(offset, width, false); offset += 2;
+        view.setUint16(offset, height, false); offset += 2;
+        view.setInt16(offset, pressure, false); offset += 2;
+        view.setInt32(offset, actionButton, false); offset += 4;
         view.setInt32(offset, buttons, false);
 
         return buffer;

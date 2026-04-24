@@ -5,6 +5,8 @@ Bản private dùng nội bộ để điều khiển thiết bị Android qua tr
 ## Tính năng chính
 - Điều khiển Android từ browser qua giao diện web
 - Hỗ trợ thao tác chuột/bàn phím cơ bản
+- **Multi-touch** qua Pointer Events (pinch-to-zoom, 2-3 ngón)
+- Fullscreen mượt (video scale 100vw x 100vh)
 - Có trang đăng nhập và đổi mật khẩu
 - Dễ chạy local trong mạng nội bộ
 
@@ -32,6 +34,14 @@ ruff check . && ruff format --check .
 ### Dev (Werkzeug)
 ```bash
 python app.py --port 8000
+# tăng chất lượng video (mặc định 4 Mbps / 60 fps):
+python app.py --port 8000 --video_bit_rate 8000000 --max_fps 60
+```
+
+Hoặc qua env var:
+```bash
+export SCRCPY_VIDEO_BIT_RATE=8000000
+export SCRCPY_MAX_FPS=60
 ```
 
 ### Production (gunicorn + eventlet)

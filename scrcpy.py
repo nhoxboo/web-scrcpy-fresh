@@ -26,6 +26,8 @@ ADB_PATH = _resolve_adb_path()
 SCRCPY_SERVER_PATH = os.path.join(os.path.dirname(__file__), 'scrcpy-server')
 DEVICE_SERVER_PATH = '/data/local/tmp/scrcpy-server.jar'
 LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
+DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '4000000')
+DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')
 
 
 class Scrcpy:
@@ -39,7 +41,8 @@ class Scrcpy:
         self.android_process = None
 
         self.video_callback = None
-        self.video_bit_rate = '2000000'
+        self.video_bit_rate = DEFAULT_VIDEO_BIT_RATE
+        self.max_fps = DEFAULT_MAX_FPS
         self.stop = True  # True until scrcpy_start flips it; avoids AttributeError
 
     # ---- device setup ----------------------------------------------------------
@@ -73,7 +76,8 @@ class Scrcpy:
             (
                 f'CLASSPATH={DEVICE_SERVER_PATH} app_process / '
                 'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true audio=false '
-                f'log_level=VERBOSE video_bit_rate={self.video_bit_rate}'
+                f'log_level=VERBOSE video_bit_rate={self.video_bit_rate} '
+                f'max_fps={self.max_fps}'
             ),
         ]
         self.android_process = subprocess.Popen(
@@ -120,8 +124,10 @@ class Scrcpy:
         log.info('Control connection stopped')
 
     # ---- public API ------------------------------------------------------------
-    def scrcpy_start(self, video_callback, video_bit_rate) -> None:
+    def scrcpy_start(self, video_callback, video_bit_rate, max_fps=None) -> None:
         self.video_bit_rate = video_bit_rate
+        if max_fps is not None:
+            self.max_fps = str(max_fps)
         self.video_callback = video_callback
         self.stop = False
 

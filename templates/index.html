@@ -27,6 +27,10 @@
     .phone-shell::before{content:'';position:absolute;top:8px;left:50%;transform:translateX(-50%);width:96px;height:18px;border-radius:12px;background:#0b1220;border:1px solid #334155}
     .phone-shell::after{content:'';position:absolute;top:14px;left:50%;transform:translateX(-50%);width:34px;height:5px;border-radius:6px;background:#1e293b}
     video{max-width:none;max-height:none;object-fit:contain;border-radius:20px;background:#000;touch-action:none;display:block;border:1px solid #1f2937}
+    /* In fullscreen, let the video fill the screen instead of keeping the shrunk inline size. */
+    video:fullscreen,video:-webkit-full-screen{width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;border-radius:0;border:0;background:#000;object-fit:contain}
+    .phone-shell:fullscreen,.phone-shell:-webkit-full-screen{width:100vw!important;height:100vh!important;padding:0;border:0;border-radius:0;background:#000}
+    .phone-shell:fullscreen::before,.phone-shell:fullscreen::after,.phone-shell:-webkit-full-screen::before,.phone-shell:-webkit-full-screen::after{display:none}
     .resize-handle{position:absolute;right:8px;bottom:8px;width:18px;height:18px;border-radius:6px;background:#111827;border:1px solid #475569;cursor:nwse-resize;display:grid;place-items:center;color:#93c5fd;font-size:10px;user-select:none;z-index:3}
     .zoom-bar{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;z-index:6}
     .zoom-btn{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:#0f1b31cc;color:#dbeafe;cursor:pointer}
@@ -107,6 +111,9 @@
 
     function fitVideoToViewport() {
       if (!videoWrap || !videoElement || !phoneShell || !deviceW || !deviceH) return;
+      // In fullscreen the CSS rule takes over (width/height 100vw/100vh). Don't
+      // fight it with inline styles or the video will stay small.
+      if (document.fullscreenElement || document.webkitFullscreenElement) return;
       const cw = videoWrap.clientWidth - 24;
       const ch = videoWrap.clientHeight - 24;
       if (!cw || !ch) return;

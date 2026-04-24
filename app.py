@@ -59,7 +59,8 @@ _state_lock = threading.Lock()
 scpy_ctx = None
 client_sid = None
 message_queue = queue.Queue()
-video_bit_rate = "1024000"
+video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '4000000')
+max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
 
 
 # --- secret / auth helpers -------------------------------------------------------
@@ -403,7 +404,7 @@ def handle_connect(auth=None):
         scpy_ctx = Scrcpy()
 
     try:
-        scpy_ctx.scrcpy_start(send_video_data, video_bit_rate)
+        scpy_ctx.scrcpy_start(send_video_data, video_bit_rate, max_fps=max_fps)
     except RuntimeError as e:
         log.warning('scrcpy_start refused: %s', e)
         with _state_lock:
@@ -454,12 +455,28 @@ def handle_control_data(data):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Web server for scrcpy')
-    parser.add_argument('--video_bit_rate', default='2000000', help='scrcpy video bit rate')
+    parser.add_argument(
+        '--video_bit_rate',
+        default=video_bit_rate,
+        help='scrcpy video bit rate (default: SCRCPY_VIDEO_BIT_RATE env or 4000000)',
+    )
+    parser.add_argument(
+        '--max_fps',
+        default=max_fps,
+        help='scrcpy max fps (default: SCRCPY_MAX_FPS env or 60)',
+    )
     parser.add_argument('--port', default=8000, type=int, help='listen port')
     parser.add_argument(
         '--host', default=os.environ.get('BIND_HOST', '0.0.0.0'), help='bind host (default 0.0.0.0)'
     )
     args = parser.parse_args()
     video_bit_rate = args.video_bit_rate
-    log.info('Starting web-scrcpy on %s:%d (bit_rate=%s)', args.host, args.port, video_bit_rate)
+    max_fps = args.max_fps
+    log.info(
+        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s)',
+        args.host,
+        args.port,
+        video_bit_rate,
+        max_fps,
+    )
     socketio.run(app, host=args.host, port=args.port, allow_unsafe_werkzeug=True)
