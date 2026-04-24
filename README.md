@@ -1,27 +1,58 @@
-# EN|[中文](README_zh.md)
-# Web-scrcpy
-allowing you to control your Android device from a web browser. Web server for scrcpy.
+# Web Scrcpy Fresh (Private Build)
 
-## Effect Demonstration
-![Effect](./animation.gif)
+Bản private dùng nội bộ để điều khiển thiết bị Android qua trình duyệt web (dựa trên `scrcpy`).
 
-## Installation Guide
-1. Install adb, ensure that adb is in the path environment variable, and the Android device is connected and the debugging mode is enabled.
-2. Install Python 3.7+ and pip.
-3. Install the source code:
-   - Clone the project repository: `git clone https://github.com/baixin1228/web-scrcpy.git`
-   - Navigate to the project directory: `cd web-scrcpy`
-   - Install the dependencies: `pip3 install -r requirements.txt`
-   - Start running: `python3 app.py`
-4. Open a browser and visit http://localhost:5000, then you can see the control interface of scrcpy.
+## Tính năng chính
+- Điều khiển Android từ browser qua giao diện web
+- Hỗ trợ thao tác chuột/bàn phím cơ bản
+- Có trang đăng nhập và đổi mật khẩu
+- Dễ chạy local trong mạng nội bộ
 
-## Contributing
-1. Fork the repo.
-2. Create a new branch: git checkout -b your - branch - name
-3. Make changes and submit a Pull Request.
+## Yêu cầu hệ thống
+- Windows/macOS/Linux
+- Python **3.7+**
+- `adb` đã cài và có trong PATH
+- Thiết bị Android đã bật **USB Debugging**
+
+## Cài đặt nhanh
+```bash
+pip install -r requirements.txt
+```
+
+## Cách chạy
+```bash
+python app.py
+```
+
+Mở trình duyệt tại:
+- `http://localhost:5000`
+
+## Quy trình kết nối thiết bị
+1. Cắm điện thoại vào máy (hoặc kết nối ADB qua Wi-Fi)
+2. Chấp nhận quyền USB Debugging trên điện thoại
+3. Kiểm tra thiết bị:
+   ```bash
+   adb devices
+   ```
+4. Mở web UI và bắt đầu điều khiển
+
+## Cấu trúc thư mục chính
+- `app.py`: entrypoint server
+- `scrcpy.py`: logic tích hợp scrcpy
+- `templates/`: giao diện HTML
+- `static/`: JS/CSS/fonts
+- `requirements.txt`: dependencies Python
+
+## Bảo mật (quan trọng)
+Vì đây là bản private, nên khuyến nghị:
+- Không public cổng ra Internet nếu chưa có reverse proxy + auth bổ sung
+- Đổi mật khẩu mặc định ngay khi deploy
+- Không commit thông tin nhạy cảm (token, config nội bộ)
+
+## Troubleshooting nhanh
+- Không thấy device: kiểm tra lại `adb devices` và USB Debugging
+- Port bận: đổi port chạy app hoặc tắt tiến trình đang chiếm cổng
+- Không stream được: kiểm tra cáp USB/chế độ kết nối và quyền ADB
 
 ## License
-Apache License 2.0.
-
-## Contact
-1228504957@qq.com
+Kế thừa Apache License 2.0 từ dự án gốc.
