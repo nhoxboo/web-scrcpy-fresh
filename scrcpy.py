@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 import shutil
@@ -28,10 +30,11 @@ DEVICE_SERVER_PATH = '/data/local/tmp/scrcpy-server.jar'
 LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
 DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '4000000')
 DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')
+DEFAULT_ADB_SERIAL = os.environ.get('ADB_SERIAL', '').strip() or None
 
 
 class Scrcpy:
-    def __init__(self):
+    def __init__(self, serial: str | None = None):
         self.video_socket = None
         self.control_socket = None
 
@@ -43,13 +46,22 @@ class Scrcpy:
         self.video_callback = None
         self.video_bit_rate = DEFAULT_VIDEO_BIT_RATE
         self.max_fps = DEFAULT_MAX_FPS
+        self.serial = serial or DEFAULT_ADB_SERIAL
         self.stop = True  # True until scrcpy_start flips it; avoids AttributeError
 
     # ---- device setup ----------------------------------------------------------
+    def _adb(self, *args: str) -> list[str]:
+        """Build an adb command, optionally targeting a specific serial."""
+        cmd = [ADB_PATH]
+        if self.serial:
+            cmd += ['-s', self.serial]
+        cmd += list(args)
+        return cmd
+
     def push_server_to_device(self) -> bool:
-        log.info('Pushing scrcpy-server.jar to device...')
+        log.info('Pushing scrcpy-server.jar to device (serial=%s)...', self.serial or '*')
         result = subprocess.run(
-            [ADB_PATH, 'push', SCRCPY_SERVER_PATH, DEVICE_SERVER_PATH],
+            self._adb('push', SCRCPY_SERVER_PATH, DEVICE_SERVER_PATH),
             capture_output=True,
             text=True,
         )
@@ -61,7 +73,7 @@ class Scrcpy:
     def setup_adb_forward(self) -> None:
         log.info('Setting up ADB forward: tcp:%d -> localabstract:scrcpy', LOCAL_PORT)
         subprocess.run(
-            [ADB_PATH, 'forward', f'tcp:{LOCAL_PORT}', 'localabstract:scrcpy'],
+            self._adb('forward', f'tcp:{LOCAL_PORT}', 'localabstract:scrcpy'),
             check=True,
         )
 
@@ -70,8 +82,7 @@ class Scrcpy:
         log.info('Starting scrcpy server in background...')
         # audio=false: audio was captured but never forwarded to the browser,
         # so disable it at the source to save device CPU + tunnel bandwidth.
-        cmd = [
-            ADB_PATH,
+        cmd = self._adb(
             'shell',
             (
                 f'CLASSPATH={DEVICE_SERVER_PATH} app_process / '
@@ -79,7 +90,7 @@ class Scrcpy:
                 f'log_level=VERBOSE video_bit_rate={self.video_bit_rate} '
                 f'max_fps={self.max_fps}'
             ),
-        ]
+        )
         self.android_process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -141,6 +152,16 @@ class Scrcpy:
             self.stop = True
             raise RuntimeError('No ADB device found')
         log.info('adb devices output: %s', result.stdout.strip())
+        if self.serial:
+            # Require the requested serial to be present and online.
+            online = [
+                line.split('\t', 1)[0].strip()
+                for line in result.stdout.splitlines()
+                if '\tdevice' in line
+            ]
+            if self.serial not in online:
+                self.stop = True
+                raise RuntimeError(f'ADB serial {self.serial!r} not online (found: {online})')
 
         if not self.push_server_to_device():
             self.stop = True

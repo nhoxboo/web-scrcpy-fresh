@@ -191,3 +191,33 @@ def test_change_password_rate_limited(client, csrf, default_credentials, app, mo
         )
         last_status = resp.status_code
     assert last_status == 429
+
+
+def test_audit_log_records_login_events(app, client, csrf, default_credentials, tmp_path):
+    audit_path = tmp_path / 'audit.log'
+    # Re-point the audit log handler at a test-local file.
+    import logging
+
+    for handler in list(app.audit_log.handlers):
+        app.audit_log.removeHandler(handler)
+    handler = logging.handlers.RotatingFileHandler(str(audit_path), maxBytes=10_000, backupCount=1)
+    handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+    app.audit_log.addHandler(handler)
+
+    # failure
+    client.post(
+        '/login',
+        data={'username': 'bogus', 'password': 'bogus', 'csrf_token': csrf},
+    )
+    # success
+    _login(client, default_credentials['username'], default_credentials['password'], csrf)
+    # logout
+    page = client.get('/')
+    token = _fresh_csrf_from(page.data)
+    client.post('/logout', data={'csrf_token': token})
+
+    handler.flush()
+    content = audit_path.read_text(encoding='utf-8')
+    assert 'event=login_failure' in content
+    assert 'event=login_success' in content
+    assert 'event=logout' in content

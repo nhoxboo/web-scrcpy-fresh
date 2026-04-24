@@ -1,10 +1,13 @@
 import argparse
+import atexit
 import hmac
 import json
 import logging
+import logging.handlers
 import os
 import queue
 import secrets
+import signal
 import threading
 import time
 from collections import deque
@@ -54,6 +57,36 @@ CHANGE_PW_WINDOW_SECONDS = 300
 # Session idle lifetime; override via SESSION_LIFETIME_SECONDS env var.
 SESSION_LIFETIME_SECONDS = int(os.environ.get('SESSION_LIFETIME_SECONDS', '86400'))
 
+# --- audit log setup -----------------------------------------------------------
+AUDIT_LOG_FILE = os.environ.get('AUDIT_LOG_FILE', os.path.join(BASE_DIR, 'audit.log'))
+audit_log = logging.getLogger('web-scrcpy.audit')
+audit_log.setLevel(logging.INFO)
+audit_log.propagate = False  # keep auth events out of stdout; file only
+if not audit_log.handlers:
+    try:
+        _audit_handler = logging.handlers.RotatingFileHandler(
+            AUDIT_LOG_FILE, maxBytes=1_000_000, backupCount=3, encoding='utf-8'
+        )
+        _audit_handler.setFormatter(
+            logging.Formatter('%(asctime)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S%z')
+        )
+        audit_log.addHandler(_audit_handler)
+    except OSError as _audit_err:  # e.g. read-only fs in tests
+        log.warning('audit log disabled: %s', _audit_err)
+
+
+def _audit(event: str, **fields) -> None:
+    """Write a structured line to the audit log (best-effort)."""
+    try:
+        ip = request.remote_addr if request else '-'
+    except RuntimeError:
+        ip = '-'
+    parts = [f'event={event}', f'ip={ip}']
+    for key, value in fields.items():
+        parts.append(f'{key}={value}')
+    audit_log.info(' '.join(parts))
+
+
 # --- shared scrcpy session state -------------------------------------------------
 _state_lock = threading.Lock()
 scpy_ctx = None
@@ -61,6 +94,48 @@ client_sid = None
 message_queue = queue.Queue()
 video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '4000000')
 max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
+adb_serial = os.environ.get('ADB_SERIAL', '').strip() or None
+
+
+def _shutdown_scrcpy() -> None:
+    """Tear down any running scrcpy session + adb subprocess on process exit.
+
+    Normally handle_disconnect cleans up when the last websocket closes, but if
+    the process is killed (SIGTERM from gunicorn, crash) that path doesn't fire
+    and the adb shell subprocess + local port forward would leak.
+    """
+    global scpy_ctx, client_sid
+    with _state_lock:
+        ctx = scpy_ctx
+        scpy_ctx = None
+        client_sid = None
+    if ctx is not None:
+        try:
+            ctx.scrcpy_stop()
+        except Exception as e:  # noqa: BLE001
+            log.warning('scrcpy_stop during shutdown failed: %s', e)
+
+
+atexit.register(_shutdown_scrcpy)
+
+
+def _install_signal_handlers() -> None:
+    def _handler(signum, _frame):
+        log.info('Received signal %s, shutting down scrcpy', signum)
+        _shutdown_scrcpy()
+        # Re-raise default behavior so gunicorn / systemd can reap us.
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _handler)
+        except ValueError:
+            # Not main thread (e.g. under gunicorn worker); gunicorn handles signals.
+            pass
+
+
+_install_signal_handlers()
 
 
 # --- secret / auth helpers -------------------------------------------------------
@@ -286,6 +361,7 @@ def login():
         ip = _client_ip()
         if not _rate_limit_check(ip):
             log.warning('Login rate-limited for ip=%s', ip)
+            _audit('login_rate_limited')
             flash('Quá nhiều lần thử. Vui lòng đợi vài phút rồi thử lại.')
             return render_template('login.html'), 429
 
@@ -300,16 +376,19 @@ def login():
             session['authenticated'] = True
             session['username'] = username
             _get_csrf_token()  # rotate token for the new session
+            _audit('login_success', user=username)
             return redirect(url_for('index'))
 
         _rate_limit_record(ip)
         log.info('Failed login attempt user=%r ip=%s', username, ip)
+        _audit('login_failure', user=username)
         flash('Sai tài khoản hoặc mật khẩu')
     return render_template('login.html')
 
 
 @app.route('/logout', methods=['POST'])
 def logout():
+    _audit('logout', user=session.get('username', '-'))
     session.clear()
     return redirect(url_for('login'))
 
@@ -337,14 +416,17 @@ def change_password():
         auth = _load_auth()
         if not _verify_password(auth.get('password', ''), current_password):
             _change_pw_record(ip)
+            _audit('change_password_failure', user=session.get('username', '-'))
             flash('Mật khẩu hiện tại không đúng')
         elif len(new_password) < MIN_PASSWORD_LEN:
             flash(f'Mật khẩu mới tối thiểu {MIN_PASSWORD_LEN} ký tự')
         elif new_password != confirm_password:
             flash('Xác nhận mật khẩu mới không khớp')
         else:
+            old_user = session.get('username', '-')
             _save_auth(new_username, new_password)
             session['username'] = new_username
+            _audit('change_password_success', old_user=old_user, new_user=new_username)
             flash('Đổi thông tin đăng nhập thành công')
             return redirect(url_for('index'))
 
@@ -401,7 +483,7 @@ def handle_connect(auth=None):
                 'Đã có client khác đang điều khiển thiết bị. Vui lòng thử lại sau.'
             )
         client_sid = request.sid
-        scpy_ctx = Scrcpy()
+        scpy_ctx = Scrcpy(serial=adb_serial)
 
     try:
         scpy_ctx.scrcpy_start(send_video_data, video_bit_rate, max_fps=max_fps)
@@ -465,6 +547,11 @@ if __name__ == '__main__':
         default=max_fps,
         help='scrcpy max fps (default: SCRCPY_MAX_FPS env or 60)',
     )
+    parser.add_argument(
+        '--serial',
+        default=adb_serial,
+        help='ADB serial of the target device (default: ADB_SERIAL env, else auto)',
+    )
     parser.add_argument('--port', default=8000, type=int, help='listen port')
     parser.add_argument(
         '--host', default=os.environ.get('BIND_HOST', '0.0.0.0'), help='bind host (default 0.0.0.0)'
@@ -472,11 +559,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
     video_bit_rate = args.video_bit_rate
     max_fps = args.max_fps
+    adb_serial = args.serial or None
     log.info(
-        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s)',
+        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s, serial=%s)',
         args.host,
         args.port,
         video_bit_rate,
         max_fps,
+        adb_serial or '*',
     )
     socketio.run(app, host=args.host, port=args.port, allow_unsafe_werkzeug=True)
