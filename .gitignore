@@ -1,1 +1,18 @@
 __pycache__
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Secrets / runtime data (do NOT commit)
+auth.json
+secret.key
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
