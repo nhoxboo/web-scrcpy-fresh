@@ -28,12 +28,24 @@ ruff check . && ruff format --check .
 ```
 
 ## Cách chạy
+
+### Dev (Werkzeug)
 ```bash
-python app.py
+python app.py --port 8000
 ```
 
+### Production (gunicorn + eventlet)
+```bash
+pip install -r requirements-prod.txt
+export FLASK_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+export SESSION_COOKIE_SECURE=1   # chỉ bật khi đứng sau HTTPS
+gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:8000 wsgi:app
+```
+
+> **Bắt buộc 1 worker.** State scrcpy session là process-local; nhiều worker sẽ tranh nhau device. Để scale, đặt sau reverse proxy (nginx/Caddy) và lock device theo từng container.
+
 Mở trình duyệt tại:
-- `http://localhost:5000`
+- `http://localhost:8000`
 
 ## Quy trình kết nối thiết bị
 1. Cắm điện thoại vào máy (hoặc kết nối ADB qua Wi-Fi)
@@ -45,11 +57,15 @@ Mở trình duyệt tại:
 4. Mở web UI và bắt đầu điều khiển
 
 ## Cấu trúc thư mục chính
-- `app.py`: entrypoint server
+- `app.py`: entrypoint server (dev mode `python app.py`)
+- `wsgi.py`: WSGI entrypoint cho gunicorn (`gunicorn ... wsgi:app`)
 - `scrcpy.py`: logic tích hợp scrcpy
 - `templates/`: giao diện HTML
 - `static/`: JS/CSS/fonts
-- `requirements.txt`: dependencies Python
+- `requirements.txt`: dependencies tối thiểu để chạy
+- `requirements-prod.txt`: thêm gunicorn + eventlet để chạy production
+- `requirements-dev.txt`: thêm pytest + ruff + pre-commit để dev/test
+- `Procfile`: command production (Heroku-style platforms)
 
 ## Bảo mật (quan trọng)
 Vì đây là bản private, nên khuyến nghị:
