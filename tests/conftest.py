@@ -23,7 +23,7 @@ def _install_fake_scrcpy():
             self.started = False
             self.stopped = False
 
-        def scrcpy_start(self, video_callback, video_bit_rate):  # noqa: ARG002
+        def scrcpy_start(self, video_callback, video_bit_rate, max_fps=None):  # noqa: ARG002
             self.started = True
 
         def scrcpy_stop(self):
