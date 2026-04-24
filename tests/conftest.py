@@ -19,9 +19,10 @@ def _install_fake_scrcpy():
     class Scrcpy:  # noqa: D401 - test stub
         """No-op replacement for the real Scrcpy class."""
 
-        def __init__(self):
+        def __init__(self, serial=None):
             self.started = False
             self.stopped = False
+            self.serial = serial
 
         def scrcpy_start(self, video_callback, video_bit_rate, max_fps=None):  # noqa: ARG002
             self.started = True

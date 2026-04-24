@@ -26,7 +26,7 @@ class ScrcpyInput {
                 } else if (event.button === 2) {
                     rightButtonIsPressed = true;
 
-                    this.snedKeyCode(event, 0, 4);
+                    this.sendKeyCode(event, 0, 4);
                     event.preventDefault();
                 }
             }
@@ -53,7 +53,7 @@ class ScrcpyInput {
             } else if (event.button === 2 && rightButtonIsPressed) {
                 rightButtonIsPressed = false;
 
-                this.snedKeyCode(event, 1, 4);
+                this.sendKeyCode(event, 1, 4);
                 event.preventDefault();
             }
         });
@@ -189,7 +189,7 @@ class ScrcpyInput {
         videoElement.addEventListener('keydown', async (event) => {
             const androidKeyCode = this.mapToAndroidKeyCode(event);
             if (androidKeyCode !== null) {
-                this.snedKeyCode(event, 0, androidKeyCode)
+                this.sendKeyCode(event, 0, androidKeyCode)
             } else {
                 console.log(`key: ${event.code}, not mapped to android key code`);
             }
@@ -206,7 +206,7 @@ class ScrcpyInput {
         videoElement.addEventListener('keyup', async (event) => {
             const androidKeyCode = this.mapToAndroidKeyCode(event);
             if (androidKeyCode !== null) {
-                this.snedKeyCode(event, 1, androidKeyCode)
+                this.sendKeyCode(event, 1, androidKeyCode)
             } else {
                 console.log(`key: ${event.code}, not mapped to android key code`);
             }
@@ -319,7 +319,7 @@ class ScrcpyInput {
         return androidKeyCode !== undefined ? androidKeyCode : null;
     }
 
-    snedKeyCode(keyevent, action, keycode) {
+    sendKeyCode(keyevent, action, keycode) {
         const capsLockState = keyevent.getModifierState('CapsLock');
         const numLockState = keyevent.getModifierState('NumLock');
         const scrollLockState = keyevent.getModifierState('ScrollLock');
@@ -349,6 +349,19 @@ class ScrcpyInput {
         // }
         let data = this.createKeyProtocolData(action, keycode, keyevent.repeat, metakey);
         this.callback(data);
+    }
+
+    // Deprecated typo alias kept for backward compatibility with older callers.
+    snedKeyCode(keyevent, action, keycode) {
+        return this.sendKeyCode(keyevent, action, keycode);
+    }
+
+    rotateDevice() {
+        // scrcpy ROTATE_DEVICE control message: single type byte (=11).
+        // Tells the device to cycle its orientation lock (portrait <-> landscape).
+        const buffer = new ArrayBuffer(1);
+        new DataView(buffer).setUint8(0, 11);
+        this.callback(buffer);
     }
 
     createTouchProtocolData(action, x, y, width, height, actionButton, buttons, pressure,

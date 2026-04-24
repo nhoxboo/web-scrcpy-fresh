@@ -11,6 +11,8 @@ env/
 # Secrets / runtime data (do NOT commit)
 auth.json
 secret.key
+audit.log
+audit.log.*
 
 # IDE / OS
 .idea/

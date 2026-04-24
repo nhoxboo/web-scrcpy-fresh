@@ -165,17 +165,17 @@
         }
         if(!input){ st('Input chưa sẵn sàng'); return; }
         const ev = {shiftKey:false,ctrlKey:false,altKey:false,metaKey:false,getModifierState:()=>false,repeat:0};
-        input.snedKeyCode(ev,0,code); input.snedKeyCode(ev,1,code); st('Đã gửi keyevent '+code);
+        input.sendKeyCode(ev,0,code); input.sendKeyCode(ev,1,code); st('Đã gửi keyevent '+code);
       };
       const keyDown = (code)=>{
         if(!input){ st('Input chưa sẵn sàng'); return; }
         const ev = {shiftKey:false,ctrlKey:false,altKey:false,metaKey:false,getModifierState:()=>false,repeat:0};
-        input.snedKeyCode(ev,0,code);
+        input.sendKeyCode(ev,0,code);
       };
       const keyUp = (code)=>{
         if(!input){ return; }
         const ev = {shiftKey:false,ctrlKey:false,altKey:false,metaKey:false,getModifierState:()=>false,repeat:0};
-        input.snedKeyCode(ev,1,code);
+        input.sendKeyCode(ev,1,code);
       };
 
       const doPower = ()=>{
@@ -195,7 +195,11 @@
       document.getElementById('back').onclick = doBack;
       document.getElementById('home').onclick = doHome;
       document.getElementById('recent').onclick = doRecent;
-      document.getElementById('rotate').onclick = ()=>st('Rotate: hiện chưa map lệnh, sẽ bổ sung nếu anh cần');
+      document.getElementById('rotate').onclick = ()=>{
+        if(!input){ st('Input chưa sẵn sàng'); return; }
+        input.rotateDevice();
+        st('Đã gửi lệnh xoay màn hình');
+      };
       document.getElementById('zoomOut').onclick = ()=>setZoom(zoom - 0.12);
       document.getElementById('zoomIn').onclick = ()=>setZoom(zoom + 0.12);
       document.getElementById('zoomReset').onclick = ()=>setZoom(0.82);
