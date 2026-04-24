@@ -20,6 +20,7 @@ from flask import (
     session,
     url_for,
 )
+from flask_socketio import ConnectionRefusedError as SocketConnectionRefusedError
 from flask_socketio import SocketIO
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -98,11 +99,12 @@ def _load_auth() -> dict:
         log.warning(
             'auth.json not found; created default credentials (%s / %s). '
             'CHANGE THIS PASSWORD IMMEDIATELY via /change-password.',
-            DEFAULT_USERNAME, DEFAULT_PASSWORD,
+            DEFAULT_USERNAME,
+            DEFAULT_PASSWORD,
         )
         return data
 
-    with open(AUTH_FILE, 'r', encoding='utf-8') as f:
+    with open(AUTH_FILE, encoding='utf-8') as f:
         data = json.load(f)
 
     # Migrate legacy plaintext passwords transparently on load.
@@ -137,6 +139,7 @@ def login_required(view):
         if not _is_authed():
             return redirect(url_for('login'))
         return view(*args, **kwargs)
+
     return wrapper
 
 
@@ -251,7 +254,9 @@ def login():
         username = (request.form.get('username') or '').strip()
         password = request.form.get('password') or ''
         auth = _load_auth()
-        if username == auth.get('username') and _verify_password(auth.get('password', ''), password):
+        if username == auth.get('username') and _verify_password(
+            auth.get('password', ''), password
+        ):
             session.clear()
             session['authenticated'] = True
             session['username'] = username
@@ -327,23 +332,35 @@ def handle_connect(auth=None):
     global scpy_ctx, client_sid
     if not _is_authed():
         log.info('Reject socket: unauthenticated sid=%s', request.sid)
-        return False
+        raise SocketConnectionRefusedError('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.')
 
     with _state_lock:
         if scpy_ctx is not None:
             log.info('Reject socket: another client already connected (sid=%s)', request.sid)
-            return False
+            raise SocketConnectionRefusedError(
+                'Đã có client khác đang điều khiển thiết bị. Vui lòng thử lại sau.'
+            )
         client_sid = request.sid
         scpy_ctx = Scrcpy()
 
     try:
         scpy_ctx.scrcpy_start(send_video_data, video_bit_rate)
+    except RuntimeError as e:
+        log.warning('scrcpy_start refused: %s', e)
+        with _state_lock:
+            client_sid = None
+            scpy_ctx = None
+        raise SocketConnectionRefusedError(
+            'Không thể khởi động scrcpy: ' + str(e) + '. Kiểm tra adb/USB Debugging.'
+        ) from e
     except Exception as e:  # noqa: BLE001
         log.exception('scrcpy_start failed: %s', e)
         with _state_lock:
             client_sid = None
             scpy_ctx = None
-        return False
+        raise SocketConnectionRefusedError(
+            'Lỗi khởi động scrcpy trên server. Xem log để biết thêm.'
+        ) from e
 
     socketio.start_background_task(video_send_task)
     log.info('Socket connected sid=%s', request.sid)
@@ -380,8 +397,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Web server for scrcpy')
     parser.add_argument('--video_bit_rate', default='2000000', help='scrcpy video bit rate')
     parser.add_argument('--port', default=8000, type=int, help='listen port')
-    parser.add_argument('--host', default=os.environ.get('BIND_HOST', '0.0.0.0'),
-                        help='bind host (default 0.0.0.0)')
+    parser.add_argument(
+        '--host', default=os.environ.get('BIND_HOST', '0.0.0.0'), help='bind host (default 0.0.0.0)'
+    )
     args = parser.parse_args()
     video_bit_rate = args.video_bit_rate
     log.info('Starting web-scrcpy on %s:%d (bit_rate=%s)', args.host, args.port, video_bit_rate)

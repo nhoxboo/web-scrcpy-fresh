@@ -133,6 +133,12 @@
     });
 
     const socket = io({reconnection:true,autoConnect:true});
+    socket.on('connect', ()=> st('Đã kết nối.'));
+    socket.on('disconnect', (reason)=> st('Mất kết nối: '+reason));
+    socket.on('connect_error', (err)=>{
+      const msg = (err && (err.message || err.data)) || 'Không thể kết nối tới server.';
+      st('Bị từ chối: '+msg);
+    });
     let input = null;
 
     function initInput(width, height) {
