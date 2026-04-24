@@ -1,12 +1,32 @@
-from threading import Thread
-import subprocess
+import logging
+import os
+import shutil
 import socket
+import subprocess
 import time
+from threading import Thread
 
-ADB_PATH = r"C:\Users\Administrator\.openclaw\workspace\platform-tools\adb.exe"
-SCRCPY_SERVER_PATH = "scrcpy-server"
-DEVICE_SERVER_PATH = "/data/local/tmp/scrcpy-server.jar"
-LOCAL_PORT = 5555
+log = logging.getLogger('web-scrcpy.scrcpy')
+
+
+def _resolve_adb_path() -> str:
+    """Find an adb binary without hardcoding a machine-specific path."""
+    env_path = os.environ.get('ADB_PATH')
+    if env_path and os.path.exists(env_path):
+        return env_path
+    candidate = shutil.which('adb') or shutil.which('adb.exe')
+    if candidate:
+        return candidate
+    # Last-resort default so the module still imports on machines that set
+    # ADB_PATH at runtime or have adb on PATH later.
+    return 'adb'
+
+
+ADB_PATH = _resolve_adb_path()
+SCRCPY_SERVER_PATH = os.path.join(os.path.dirname(__file__), 'scrcpy-server')
+DEVICE_SERVER_PATH = '/data/local/tmp/scrcpy-server.jar'
+LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
+
 
 class Scrcpy:
     def __init__(self):
@@ -20,97 +40,133 @@ class Scrcpy:
         self.control_thread = None
         self.android_process = None
 
-    def push_server_to_device(self):
-        print("Pushing scrcpy-server.jar to device...")
-        result = subprocess.run([ADB_PATH, "push", SCRCPY_SERVER_PATH, DEVICE_SERVER_PATH], capture_output=True, text=True)
+        self.video_callback = None
+        self.video_bit_rate = '2000000'
+        self.stop = True  # True until scrcpy_start flips it; avoids AttributeError
+
+    # ---- device setup ----------------------------------------------------------
+    def push_server_to_device(self) -> bool:
+        log.info('Pushing scrcpy-server.jar to device...')
+        result = subprocess.run(
+            [ADB_PATH, 'push', SCRCPY_SERVER_PATH, DEVICE_SERVER_PATH],
+            capture_output=True, text=True,
+        )
         if result.returncode != 0:
-            print(f"Error pushing server: {result.stderr}")
+            log.error('Error pushing server: %s', result.stderr.strip())
             return False
         return True
 
-    def setup_adb_forward(self):
-        print(f"Setting up ADB forward: tcp:{LOCAL_PORT} -> localabstract:scrcpy")
-        subprocess.run([ADB_PATH, "forward", f"tcp:{LOCAL_PORT}", "localabstract:scrcpy"], check=True)
+    def setup_adb_forward(self) -> None:
+        log.info('Setting up ADB forward: tcp:%d -> localabstract:scrcpy', LOCAL_PORT)
+        subprocess.run(
+            [ADB_PATH, 'forward', f'tcp:{LOCAL_PORT}', 'localabstract:scrcpy'],
+            check=True,
+        )
 
-    def start_server(self):
-        print("Starting scrcpy server in background...")
+    # ---- server lifecycle ------------------------------------------------------
+    def start_server(self) -> None:
+        log.info('Starting scrcpy server in background...')
         cmd = [
-            ADB_PATH, "shell",
-            f"CLASSPATH={DEVICE_SERVER_PATH} app_process / com.genymobile.scrcpy.Server 3.1 tunnel_forward=true log_level=VERBOSE video_bit_rate=" + self.video_bit_rate
+            ADB_PATH, 'shell',
+            (
+                f'CLASSPATH={DEVICE_SERVER_PATH} app_process / '
+                'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true '
+                f'log_level=VERBOSE video_bit_rate={self.video_bit_rate}'
+            ),
         ]
-        self.android_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.android_process = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        # Drain stderr while process runs. readline blocks so the `stop` flag is
+        # best-effort here; scrcpy_stop terminates the process which unblocks it.
         while not self.stop:
-            stderr_line = self.android_process.stderr.readline().decode().strip()
-            if not stderr_line:
+            line = self.android_process.stderr.readline()
+            if not line:
                 break
-            if stderr_line:
-                print(f"Server error: {stderr_line}")
+            log.info('scrcpy-server: %s', line.decode(errors='replace').rstrip())
         self.android_process.wait()
-        print("Server stopped")
+        log.info('Server stopped')
 
-    def receive_video_data(self):
-        print("Receiving video data (H.264)...")
-        self.video_socket.recv(1)
-        while not self.stop:
-            data = self.video_socket.recv(20480)
-            if not data:
-                break
-            self.video_callback(data)
-        print("Video data reception stopped")
+    # ---- socket readers --------------------------------------------------------
+    def receive_video_data(self) -> None:
+        log.info('Receiving video data (H.264)...')
+        try:
+            self.video_socket.recv(1)
+            while not self.stop:
+                data = self.video_socket.recv(20480)
+                if not data:
+                    break
+                if self.video_callback is not None:
+                    self.video_callback(data)
+        except OSError as e:
+            log.info('Video socket closed: %s', e)
+        log.info('Video data reception stopped')
 
-    def receive_audio_data(self):
-        print("Receiving audio data...")
-        self.audio_socket.recv(1)
-        while not self.stop:
-            data = self.audio_socket.recv(1024)
-            if not data:
-                break
-        print("Audio data reception stopped")
+    def receive_audio_data(self) -> None:
+        log.info('Receiving audio data (not currently forwarded to client)...')
+        try:
+            self.audio_socket.recv(1)
+            while not self.stop:
+                data = self.audio_socket.recv(1024)
+                if not data:
+                    break
+        except OSError as e:
+            log.info('Audio socket closed: %s', e)
+        log.info('Audio data reception stopped')
 
-    def handle_control_conn(self):
-        print("Control connection established (idle)...")
-        self.control_socket.recv(1)
-        while not self.stop:
-            data = self.control_socket.recv(1024)
-            if not data:
-                break
-            print("Control Mesg:", data)
-        print("Control connection stopped")
+    def handle_control_conn(self) -> None:
+        log.info('Control connection established (idle)...')
+        try:
+            self.control_socket.recv(1)
+            while not self.stop:
+                data = self.control_socket.recv(1024)
+                if not data:
+                    break
+                log.debug('Control msg: %r', data)
+        except OSError as e:
+            log.info('Control socket closed: %s', e)
+        log.info('Control connection stopped')
 
-    def scrcpy_start(self, video_callback, video_bit_rate):
+    # ---- public API ------------------------------------------------------------
+    def scrcpy_start(self, video_callback, video_bit_rate) -> None:
         self.video_bit_rate = video_bit_rate
         self.video_callback = video_callback
         self.stop = False
 
-        result = subprocess.run([ADB_PATH, "devices"], capture_output=True, text=True)
-        if "device" not in result.stdout:
-            print("No device found. Please connect your Android device via USB.")
-            return
-        print(result.stdout)
+        result = subprocess.run(
+            [ADB_PATH, 'devices'], capture_output=True, text=True,
+        )
+        if 'device' not in result.stdout:
+            log.error('No device found. Please connect your Android device via USB.')
+            self.stop = True
+            raise RuntimeError('No ADB device found')
+        log.info('adb devices output: %s', result.stdout.strip())
 
         if not self.push_server_to_device():
-            print("Failed to push server files to device.")
-            return
+            self.stop = True
+            raise RuntimeError('Failed to push scrcpy-server to device')
 
         self.setup_adb_forward()
         self.android_thread = Thread(target=self.start_server, daemon=True)
         self.android_thread.start()
         time.sleep(1)
 
-        # video connection
-        self.video_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.video_socket.connect(('localhost', LOCAL_PORT))
-        print("Video connection established")
+        try:
+            self.video_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.video_socket.connect(('localhost', LOCAL_PORT))
+            log.info('Video connection established')
 
-        # audio connection
-        self.audio_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.audio_socket.connect(('localhost', LOCAL_PORT))
-        print("Audio connection established")
+            self.audio_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.audio_socket.connect(('localhost', LOCAL_PORT))
+            log.info('Audio connection established')
 
-        # contorl connection
-        self.control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.control_socket.connect(('localhost', LOCAL_PORT))
-        print("Control connection established")
+            self.control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.control_socket.connect(('localhost', LOCAL_PORT))
+            log.info('Control connection established')
+        except OSError:
+            self.stop = True
+            self._close_sockets()
+            raise
 
         self.video_thread = Thread(target=self.receive_video_data, daemon=True)
         self.audio_thread = Thread(target=self.receive_audio_data, daemon=True)
@@ -118,24 +174,63 @@ class Scrcpy:
         self.video_thread.start()
         self.audio_thread.start()
         self.control_thread.start()
-        print("Background tasks started")
+        log.info('Background tasks started')
 
-    def scrcpy_stop(self):
-        print("Stopping Scrcpy")
+    def _shutdown_socket(self, sock) -> None:
+        if sock is None:
+            return
+        try:
+            sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def _close_sockets(self) -> None:
+        for sock in (self.video_socket, self.audio_socket, self.control_socket):
+            if sock is None:
+                continue
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def _join_thread(self, thread, timeout: float = 2.0) -> None:
+        if thread is None:
+            return
+        try:
+            thread.join(timeout=timeout)
+        except RuntimeError:
+            pass
+
+    def scrcpy_stop(self) -> None:
+        log.info('Stopping Scrcpy')
         self.stop = True
-        self.video_socket.shutdown(socket.SHUT_RDWR)
-        self.control_socket.shutdown(socket.SHUT_RDWR)
-        self.video_socket.shutdown(socket.SHUT_RDWR)
-        self.audio_socket.close()
-        self.control_socket.close()
-        self.video_socket.close()
 
-        self.video_thread.join()
-        self.audio_thread.join()
-        self.control_thread.join()
-        self.android_process.terminate()
-        self.android_thread.join()
-        print("Scrcpy stopped")
+        self._shutdown_socket(self.video_socket)
+        self._shutdown_socket(self.audio_socket)
+        self._shutdown_socket(self.control_socket)
+        self._close_sockets()
 
-    def scrcpy_send_control(self, data):
-        self.control_socket.send(data)
+        self._join_thread(self.video_thread)
+        self._join_thread(self.audio_thread)
+        self._join_thread(self.control_thread)
+
+        if self.android_process is not None:
+            try:
+                self.android_process.terminate()
+            except OSError:
+                pass
+            try:
+                self.android_process.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                self.android_process.kill()
+        self._join_thread(self.android_thread)
+        log.info('Scrcpy stopped')
+
+    def scrcpy_send_control(self, data) -> None:
+        sock = self.control_socket
+        if sock is None:
+            return
+        try:
+            sock.send(data)
+        except OSError as e:
+            log.warning('control_socket.send failed: %s', e)

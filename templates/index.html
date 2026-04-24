@@ -41,7 +41,10 @@
     <i class="fa-solid fa-mobile-screen-button"></i><div class="brand">Web Scrcpy</div>
     <span class="pill">user: {{ username }}</span><div class="sp"></div>
     <a class="btn" href="/change-password"><i class="fa-solid fa-key"></i> Đổi mật khẩu</a>
-    <a class="btn" href="/logout"><i class="fa-solid fa-right-from-bracket"></i> Đăng xuất</a>
+    <form method="post" action="/logout" style="display:inline;margin:0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn" type="submit"><i class="fa-solid fa-right-from-bracket"></i> Đăng xuất</button>
+    </form>
   </div>
 
   <div class="toolbar">
