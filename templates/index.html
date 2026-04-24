@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <link href="/static/css/font-awesome.min.css" rel="stylesheet">
+  <title>Web Scrcpy Panel</title>
+  <script src="/static/js/socket.io.js"></script>
+  <script src="/static/js/input.js"></script>
+  <script src="/static/js/exp-golomb.js"></script>
+  <script src="/static/js/h264-sps-parser.js"></script>
+  <script src="/static/js/video_parser.js"></script>
+  <style>
+    :root{--bg:#070b16;--card:#0f172a;--line:#25324a;--txt:#e5e7eb;--muted:#94a3b8;--pri:#3b82f6;--ok:#22c55e}
+    *{box-sizing:border-box}
+    body{margin:0;height:100dvh;display:flex;flex-direction:column;background:radial-gradient(1100px 500px at 10% -10%,#1d4ed855,transparent),var(--bg);color:var(--txt);font-family:Inter,system-ui,sans-serif;overflow:hidden}
+    .top{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line);background:#0b1222d9;backdrop-filter:blur(4px);flex-wrap:wrap}
+    .brand{font-weight:700}.sp{flex:1}.pill{font-size:.78rem;color:var(--muted)}
+    .btn{border:1px solid var(--line);background:#162033;color:#dbeafe;border-radius:10px;padding:7px 10px;cursor:pointer;white-space:nowrap;text-decoration:none}
+    .btn:hover{border-color:#60a5fa}
+    .toolbar{display:flex;gap:6px;align-items:center;padding:8px;border-bottom:1px solid var(--line);background:#0a1325;overflow-x:auto;touch-action:pan-x}
+    .tool{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;border:1px solid var(--line);background:#101b31;cursor:pointer;transition:.2s;flex:0 0 auto;color:#cbd5e1}
+    .tool:hover{transform:translateY(-1px);border-color:#60a5fa;color:#93c5fd}
+    .tool.active{border-color:#ef4444;color:#fecaca;background:#3a1120}
+    .video-wrap{flex:1 1 auto;min-height:0;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;padding:10px;overflow:hidden;touch-action:none}
+    .phone-shell{position:relative;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#1f2937,#111827);border:1px solid #4b5563;border-radius:34px;box-shadow:0 18px 40px #0009, inset 0 1px 0 #ffffff22;max-width:100%;max-height:100%;padding:18px 10px 14px 10px}
+    .phone-shell::before{content:'';position:absolute;top:8px;left:50%;transform:translateX(-50%);width:96px;height:18px;border-radius:12px;background:#0b1220;border:1px solid #334155}
+    .phone-shell::after{content:'';position:absolute;top:14px;left:50%;transform:translateX(-50%);width:34px;height:5px;border-radius:6px;background:#1e293b}
+    video{max-width:none;max-height:none;object-fit:contain;border-radius:20px;background:#000;touch-action:none;display:block;border:1px solid #1f2937}
+    .resize-handle{position:absolute;right:8px;bottom:8px;width:18px;height:18px;border-radius:6px;background:#111827;border:1px solid #475569;cursor:nwse-resize;display:grid;place-items:center;color:#93c5fd;font-size:10px;user-select:none;z-index:3}
+    .zoom-bar{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;z-index:6}
+    .zoom-btn{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:#0f1b31cc;color:#dbeafe;cursor:pointer}
+    .status{padding:4px 8px;border-top:1px solid var(--line);font-size:.78rem;color:#93c5fd;background:#0c1427;white-space:nowrap;overflow:auto}
+    @media (max-width: 768px){.top{padding:6px 8px;gap:6px}.brand{font-size:.95rem}.pill{font-size:.72rem}.btn{padding:6px 8px;font-size:.78rem}.toolbar{padding:6px;gap:5px}.tool{width:34px;height:34px}.status{font-size:.74rem;padding:4px 6px}.phone-shell{border-radius:24px;padding:14px 8px 10px 8px}.phone-shell::before{top:6px;width:74px;height:14px}.phone-shell::after{top:10px;width:26px;height:4px}}
+    .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;animation:pulse 1.2s infinite}
+    @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <i class="fa-solid fa-mobile-screen-button"></i><div class="brand">Web Scrcpy</div>
+    <span class="pill">user: {{ username }}</span><div class="sp"></div>
+    <a class="btn" href="/change-password"><i class="fa-solid fa-key"></i> Đổi mật khẩu</a>
+    <a class="btn" href="/logout"><i class="fa-solid fa-right-from-bracket"></i> Đăng xuất</a>
+  </div>
+
+  <div class="toolbar">
+    <button class="tool" id="power" title="Power"><i class="fa-solid fa-power-off"></i></button>
+    <button class="tool" id="voldown" title="Volume -"><i class="fa-solid fa-volume-low"></i></button>
+    <button class="tool" id="volup" title="Volume +"><i class="fa-solid fa-volume-high"></i></button>
+    <button class="tool" id="back" title="Back"><i class="fa-solid fa-arrow-left"></i></button>
+    <button class="tool" id="home" title="Home"><i class="fa-solid fa-house"></i></button>
+    <button class="tool" id="recent" title="Recent"><i class="fa-solid fa-layer-group"></i></button>
+    <button class="tool" id="rotate" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
+    <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
+    <button class="tool" id="macroRec" title="Bắt đầu ghi macro"><i class="fa-solid fa-record-vinyl"></i></button>
+    <button class="tool" id="macroStop" title="Dừng ghi"><i class="fa-solid fa-stop"></i></button>
+    <button class="tool" id="macroPlay" title="Chạy macro"><i class="fa-solid fa-play"></i></button>
+    <button class="tool" id="macroClear" title="Xóa macro"><i class="fa-solid fa-trash"></i></button>
+    <button class="tool" id="hotkeyConfig" title="Gán phím"><i class="fa-solid fa-keyboard"></i></button>
+    <button class="tool" id="gameMode" title="Game mode: OFF"><i class="fa-solid fa-gamepad"></i></button>
+  </div>
+
+  <div class="video-wrap" id="videoWrap">
+    <div class="phone-shell" id="phoneShell">
+      <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
+      <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
+    </div>
+    <div class="zoom-bar">
+      <button class="zoom-btn" id="zoomOut" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
+      <button class="zoom-btn" id="zoomReset" title="Mặc định"><i class="fa-solid fa-arrows-rotate"></i></button>
+      <button class="zoom-btn" id="zoomIn" title="Phóng to"><i class="fa-solid fa-plus"></i></button>
+    </div>
+  </div>
+
+  <div id="status" class="status"><span class="dot"></span>Đang kết nối...</div>
+
+  <script src="/static/js/jmuxer.min.js"></script>
+  <script>
+    const st = (m)=>document.getElementById('status').innerHTML = `<span class='dot'></span>${m}`;
+    const MACRO_KEY = 'beso_macro_v1';
+    const HOTKEY_KEY = 'beso_hotkeys_v1';
+    const GAME_MODE_KEY = 'beso_game_mode_v1';
+    const DEFAULT_HOTKEYS = {
+      power:'KeyP', voldown:'Minus', volup:'Equal', back:'Backspace', home:'KeyH', recent:'KeyR', macroPlay:'KeyM',
+      moveUp:'KeyW', moveLeft:'KeyA', moveDown:'KeyS', moveRight:'KeyD', jump:'Space', skill1:'KeyJ', skill2:'KeyK', skill3:'KeyL'
+    };
+    let hotkeys = {...DEFAULT_HOTKEYS};
+    try{ hotkeys = {...DEFAULT_HOTKEYS, ...(JSON.parse(localStorage.getItem(HOTKEY_KEY)||'{}'))}; }catch{}
+
+    const videoElement = document.getElementById('player');
+    const videoWrap = document.getElementById('videoWrap');
+    const phoneShell = document.getElementById('phoneShell');
+    const resizeHandle = document.getElementById('resizeHandle');
+    let deviceW = 0, deviceH = 0;
+    let zoom = 0.82;
+    let gameMode = localStorage.getItem(GAME_MODE_KEY) === '1';
+    const heldKeys = new Set();
+    let macroEvents = [];
+    let isRecordingMacro = false;
+    let isPlayingMacro = false;
+    let macroStartAt = 0;
+    try{ macroEvents = JSON.parse(localStorage.getItem(MACRO_KEY)||'[]'); }catch{ macroEvents = []; }
+
+    function fitVideoToViewport() {
+      if (!videoWrap || !videoElement || !phoneShell || !deviceW || !deviceH) return;
+      const cw = videoWrap.clientWidth - 24;
+      const ch = videoWrap.clientHeight - 24;
+      if (!cw || !ch) return;
+
+      const baseRatio = Math.min(cw / deviceW, ch / deviceH);
+      const ratio = Math.max(0.22, Math.min(2.2, baseRatio * zoom));
+      const w = Math.max(1, Math.floor(deviceW * ratio));
+      const h = Math.max(1, Math.floor(deviceH * ratio));
+
+      videoElement.style.width = `${w}px`;
+      videoElement.style.height = `${h}px`;
+      const shellExtraW = 20; // left+right frame padding
+      const shellExtraH = 32; // top+bottom frame padding
+      phoneShell.style.width = `${w + shellExtraW}px`;
+      phoneShell.style.height = `${h + shellExtraH}px`;
+    }
+
+    function setZoom(nextZoom){
+      zoom = Math.max(0.3, Math.min(2.0, nextZoom));
+      fitVideoToViewport();
+    }
+    const jmuxer = new JMuxer({ node:'player', mode:'video', flushingTime:0, fps:60, clearBuffer:true,
+      onError:(err)=>st('Decoder error: '+(err?.message||JSON.stringify(err)))
+    });
+
+    const socket = io({reconnection:true,autoConnect:true});
+    let input = null;
+
+    function initInput(width, height) {
+      function sendControl(data){
+        socket.emit('control_data', data);
+        if (isRecordingMacro && !isPlayingMacro) {
+          let payload = data;
+          try { payload = JSON.parse(JSON.stringify(data)); } catch {}
+          macroEvents.push({ t: Date.now() - macroStartAt, type:'control', payload });
+        }
+      }
+      input = new ScrcpyInput(sendControl, videoElement, width, height, false);
+
+      const keyTap = (code, actionName='key')=>{
+        if (isRecordingMacro) {
+          macroEvents.push({ t: Date.now() - macroStartAt, type:'keyTap', code, actionName });
+        }
+        if(!input){ st('Input chưa sẵn sàng'); return; }
+        const ev = {shiftKey:false,ctrlKey:false,altKey:false,metaKey:false,getModifierState:()=>false,repeat:0};
+        input.snedKeyCode(ev,0,code); input.snedKeyCode(ev,1,code); st('Đã gửi keyevent '+code);
+      };
+      const keyDown = (code)=>{
+        if(!input){ st('Input chưa sẵn sàng'); return; }
+        const ev = {shiftKey:false,ctrlKey:false,altKey:false,metaKey:false,getModifierState:()=>false,repeat:0};
+        input.snedKeyCode(ev,0,code);
+      };
+      const keyUp = (code)=>{
+        if(!input){ return; }
+        const ev = {shiftKey:false,ctrlKey:false,altKey:false,metaKey:false,getModifierState:()=>false,repeat:0};
+        input.snedKeyCode(ev,1,code);
+      };
+
+      const doPower = ()=>{
+        input.screen_on_off(0);
+        setTimeout(()=>input.screen_on_off(1), 80);
+        st('Đã gửi Power');
+      };
+      const doVolDown = ()=>keyTap(25,'voldown');
+      const doVolUp = ()=>keyTap(24,'volup');
+      const doBack = ()=>keyTap(4,'back');
+      const doHome = ()=>keyTap(3,'home');
+      const doRecent = ()=>keyTap(187,'recent');
+
+      document.getElementById('power').onclick = ()=>{ if(isRecordingMacro) macroEvents.push({ t: Date.now()-macroStartAt, type:'power', actionName:'power' }); doPower(); };
+      document.getElementById('voldown').onclick = doVolDown;
+      document.getElementById('volup').onclick = doVolUp;
+      document.getElementById('back').onclick = doBack;
+      document.getElementById('home').onclick = doHome;
+      document.getElementById('recent').onclick = doRecent;
+      document.getElementById('rotate').onclick = ()=>st('Rotate: hiện chưa map lệnh, sẽ bổ sung nếu anh cần');
+      document.getElementById('zoomOut').onclick = ()=>setZoom(zoom - 0.12);
+      document.getElementById('zoomIn').onclick = ()=>setZoom(zoom + 0.12);
+      document.getElementById('zoomReset').onclick = ()=>setZoom(0.82);
+
+      const recBtn = document.getElementById('macroRec');
+      const stopBtn = document.getElementById('macroStop');
+      const playBtn = document.getElementById('macroPlay');
+      const clearBtn = document.getElementById('macroClear');
+      const hotkeyBtn = document.getElementById('hotkeyConfig');
+      const gameBtn = document.getElementById('gameMode');
+
+      recBtn.onclick = ()=>{
+        macroEvents = [];
+        isRecordingMacro = true;
+        macroStartAt = Date.now();
+        recBtn.classList.add('active');
+        localStorage.setItem(MACRO_KEY, JSON.stringify(macroEvents));
+        st('Bắt đầu ghi macro...');
+      };
+      stopBtn.onclick = ()=>{
+        isRecordingMacro = false;
+        recBtn.classList.remove('active');
+        localStorage.setItem(MACRO_KEY, JSON.stringify(macroEvents));
+        st(`Đã dừng ghi macro (${macroEvents.length} bước)`);
+      };
+      clearBtn.onclick = ()=>{
+        macroEvents = [];
+        localStorage.setItem(MACRO_KEY, '[]');
+        st('Đã xóa macro');
+      };
+      playBtn.onclick = async ()=>{
+        const events = Array.isArray(macroEvents) ? [...macroEvents] : [];
+        if(!events.length){ st('Chưa có macro để chạy'); return; }
+        isRecordingMacro = false;
+        recBtn.classList.remove('active');
+        isPlayingMacro = true;
+        st(`Đang chạy macro (${events.length} bước)...`);
+        const startAt = Date.now();
+        for(const ev of events){
+          const wait = Math.max(0, ev.t - (Date.now() - startAt));
+          if(wait) await new Promise(r=>setTimeout(r, wait));
+          if(ev.type==='power') doPower();
+          if(ev.type==='keyTap') keyTap(ev.code, ev.actionName || 'key');
+          if(ev.type==='control' && ev.payload){ socket.emit('control_data', ev.payload); }
+        }
+        isPlayingMacro = false;
+        st('Chạy macro xong');
+      };
+
+      const syncGameButton = ()=>{
+        gameBtn.classList.toggle('active', gameMode);
+        gameBtn.title = `Game mode: ${gameMode ? 'ON' : 'OFF'}`;
+      };
+      syncGameButton();
+      gameBtn.onclick = ()=>{
+        gameMode = !gameMode;
+        localStorage.setItem(GAME_MODE_KEY, gameMode ? '1' : '0');
+        if(!gameMode){
+          // Release held movement keys when turning game mode off
+          [19,20,21,22].forEach(code=>keyUp(code));
+          heldKeys.clear();
+        }
+        syncGameButton();
+        st(`Game mode: ${gameMode ? 'ON' : 'OFF'}`);
+      };
+
+      hotkeyBtn.onclick = ()=>{
+        const tips = `Gán phím (code KeyboardEvent):\n`+
+          `Power (${hotkeys.power})\nVol- (${hotkeys.voldown})\nVol+ (${hotkeys.volup})\nBack (${hotkeys.back})\nHome (${hotkeys.home})\nRecent (${hotkeys.recent})\nPlay Macro (${hotkeys.macroPlay})\n\nNhập JSON mới hoặc Cancel để bỏ qua.`;
+        const raw = prompt(tips, JSON.stringify(hotkeys, null, 2));
+        if(!raw) return;
+        try{
+          const next = JSON.parse(raw);
+          hotkeys = {...hotkeys, ...next};
+          localStorage.setItem(HOTKEY_KEY, JSON.stringify(hotkeys));
+          st('Đã lưu gán phím');
+        }catch{
+          st('JSON không hợp lệ, chưa lưu');
+        }
+      };
+
+      window.addEventListener('keydown', (e)=>{
+        if(['INPUT','TEXTAREA'].includes((e.target?.tagName||'').toUpperCase())) return;
+
+        const holdMap = {
+          [hotkeys.moveUp]: 19,    // DPAD_UP
+          [hotkeys.moveDown]: 20,  // DPAD_DOWN
+          [hotkeys.moveLeft]: 21,  // DPAD_LEFT
+          [hotkeys.moveRight]: 22, // DPAD_RIGHT
+        };
+        const tapMap = {
+          [hotkeys.power]: ()=>{ if(isRecordingMacro) macroEvents.push({ t: Date.now()-macroStartAt, type:'power', actionName:'power' }); doPower(); },
+          [hotkeys.voldown]: doVolDown,
+          [hotkeys.volup]: doVolUp,
+          [hotkeys.back]: doBack,
+          [hotkeys.home]: doHome,
+          [hotkeys.recent]: doRecent,
+          [hotkeys.macroPlay]: ()=>playBtn.click(),
+          [hotkeys.jump]: ()=>keyTap(62, 'jump'),
+          [hotkeys.skill1]: ()=>keyTap(29, 'skill1'), // A
+          [hotkeys.skill2]: ()=>keyTap(30, 'skill2'), // B
+          [hotkeys.skill3]: ()=>keyTap(31, 'skill3'), // C
+        };
+
+        if(gameMode && holdMap[e.code]){
+          e.preventDefault();
+          if(heldKeys.has(e.code)) return;
+          heldKeys.add(e.code);
+          keyDown(holdMap[e.code]);
+          return;
+        }
+
+        const fn = tapMap[e.code];
+        if(fn){ e.preventDefault(); fn(); }
+      });
+
+      window.addEventListener('keyup', (e)=>{
+        if(!gameMode) return;
+        const holdMap = {
+          [hotkeys.moveUp]: 19,
+          [hotkeys.moveDown]: 20,
+          [hotkeys.moveLeft]: 21,
+          [hotkeys.moveRight]: 22,
+        };
+        if(holdMap[e.code]){
+          e.preventDefault();
+          heldKeys.delete(e.code);
+          keyUp(holdMap[e.code]);
+        }
+      });
+
+      let draggingResize = false;
+      let dragStartY = 0;
+      let startZoom = 1;
+      const startResize = (clientY)=>{ draggingResize=true; dragStartY=clientY; startZoom=zoom; };
+      const moveResize = (clientY)=>{ if(!draggingResize) return; const dy = dragStartY - clientY; setZoom(startZoom + (dy / 260)); };
+      const endResize = ()=>{ draggingResize=false; };
+
+      resizeHandle.addEventListener('mousedown', (e)=>{ startResize(e.clientY); e.preventDefault(); });
+      window.addEventListener('mousemove', (e)=>moveResize(e.clientY));
+      window.addEventListener('mouseup', endResize);
+      resizeHandle.addEventListener('touchstart', (e)=>{ if(e.touches?.[0]) startResize(e.touches[0].clientY); e.preventDefault(); }, {passive:false});
+      window.addEventListener('touchmove', (e)=>{ if(e.touches?.[0]) moveResize(e.touches[0].clientY); }, {passive:true});
+      window.addEventListener('touchend', endResize, {passive:true});
+
+      document.getElementById('fullscreen').onclick = async ()=>{
+        try{
+          if (!document.fullscreenElement) {
+            if (videoElement.requestFullscreen) await videoElement.requestFullscreen();
+            else if (videoElement.webkitRequestFullscreen) videoElement.webkitRequestFullscreen();
+            st('Đã bật fullscreen');
+          } else {
+            if (document.exitFullscreen) await document.exitFullscreen();
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            st('Đã tắt fullscreen');
+          }
+        }catch(e){
+          st('Fullscreen lỗi: '+(e?.message||'unknown'));
+        }
+      };
+    }
+
+    const parser = new VideoParser(({ type, data }) => {
+      if (type === 'nalu') {
+        jmuxer.feed({ video: data });
+      } else if (type === 'init') {
+        jmuxer.feed({ video: data['sps'] });
+        jmuxer.feed({ video: data['pps'] });
+      } else if (type === 'screen_size') {
+        deviceW = data['width'];
+        deviceH = data['height'];
+        initInput(deviceW, deviceH);
+        fitVideoToViewport();
+        st(`Kết nối OK | Screen ${deviceW}x${deviceH}`);
+      } else if (type === 'size_change') {
+        deviceW = data['width'];
+        deviceH = data['height'];
+        if (input) input.resizeScreen(deviceW, deviceH);
+        fitVideoToViewport();
+        st(`Đổi kích thước: ${deviceW}x${deviceH}`);
+      }
+    });
+
+    socket.on('video_data', (data)=>{ parser.appendData(new Uint8Array(data)); });
+    socket.on('connect', ()=>st('WS connected, đang nhận video...'));
+    socket.on('disconnect', ()=>st('WS disconnected, đang thử reconnect...'));
+    socket.on('connect_error', (e)=>st('WS lỗi: '+(e?.message||'unknown')));
+    window.addEventListener('resize', fitVideoToViewport);
+    document.addEventListener('fullscreenchange', fitVideoToViewport);
+    window.addEventListener('beforeunload', ()=>socket.disconnect());
+  </script>
+</body>
+</html>
