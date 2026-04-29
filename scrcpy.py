@@ -165,6 +165,9 @@ class Scrcpy:
         self.video_callback = None
         self.video_bit_rate = DEFAULT_VIDEO_BIT_RATE
         self.max_fps = DEFAULT_MAX_FPS
+        # Last few stderr lines from scrcpy-server, used to surface a useful
+        # reason when socket connect fails (e.g. "Display 2 not found").
+        self._server_stderr_tail: list[str] = []
         self.serial = serial or DEFAULT_ADB_SERIAL
         # display_id: 0 = main display (default), 2 = typical Samsung DeX,
         # or any secondary display id reported by `adb shell dumpsys display`.
@@ -229,7 +232,12 @@ class Scrcpy:
             line = self.android_process.stderr.readline()
             if not line:
                 break
-            log.info('scrcpy-server: %s', line.decode(errors='replace').rstrip())
+            decoded = line.decode(errors='replace').rstrip()
+            log.info('scrcpy-server: %s', decoded)
+            # Keep a bounded tail so connect failures can quote the real cause.
+            self._server_stderr_tail.append(decoded)
+            if len(self._server_stderr_tail) > 50:
+                self._server_stderr_tail.pop(0)
         self.android_process.wait()
         log.info('Server stopped')
 
@@ -307,9 +315,24 @@ class Scrcpy:
             self.control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.control_socket.connect(('localhost', LOCAL_PORT))
             log.info('Control connection established')
-        except OSError:
+        except OSError as exc:
             self.stop = True
             self._close_sockets()
+            # Common case: user toggled DeX on a non-Samsung phone (or DeX not
+            # active). The server prints "Display [id] not found" to stderr
+            # and exits before we can connect. Surface that reason so the UI
+            # can offer to disable DeX automatically.
+            tail = '\n'.join(self._server_stderr_tail[-10:])
+            display_missing = self.display_id != '0' and (
+                'not found' in tail.lower()
+                or 'invalid display' in tail.lower()
+                or 'no display' in tail.lower()
+            )
+            if display_missing:
+                raise RuntimeError(
+                    f'Display id={self.display_id} không khả dụng trên máy này '
+                    f'(DeX chưa bật hoặc máy không hỗ trợ DeX).'
+                ) from exc
             raise
 
         self.video_thread = Thread(target=self.receive_video_data, daemon=True)
