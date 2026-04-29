@@ -31,6 +31,11 @@
     video:fullscreen,video:-webkit-full-screen{width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;border-radius:0;border:0;background:#000;object-fit:contain}
     .phone-shell:fullscreen,.phone-shell:-webkit-full-screen{width:100vw!important;height:100vh!important;padding:0;border:0;border-radius:0;background:#000}
     .phone-shell:fullscreen::before,.phone-shell:fullscreen::after,.phone-shell:-webkit-full-screen::before,.phone-shell:-webkit-full-screen::after{display:none}
+    /* Landscape (post-rotation): drop the portrait-only notch + camera dot,
+       and use a thinner symmetric frame so the shell looks like a phone in
+       landscape orientation rather than a wide video stuffed into a portrait. */
+    .phone-shell.landscape{padding:8px;border-radius:22px}
+    .phone-shell.landscape::before,.phone-shell.landscape::after{display:none}
     .resize-handle{position:absolute;right:8px;bottom:8px;width:18px;height:18px;border-radius:6px;background:#111827;border:1px solid #475569;cursor:nwse-resize;display:grid;place-items:center;color:#93c5fd;font-size:10px;user-select:none;z-index:3}
     .zoom-bar{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;z-index:6}
     .zoom-btn{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:#0f1b31cc;color:#dbeafe;cursor:pointer}
@@ -131,12 +136,34 @@
       const w = Math.max(1, Math.floor(deviceW * ratio));
       const h = Math.max(1, Math.floor(deviceH * ratio));
 
+      // object-fit:contain stretches the displayed frame to fit our explicit
+      // width/height while preserving the stream's aspect ratio. Without this,
+      // a stale buffered frame in a different aspect (right after a rotation)
+      // can briefly distort the video before the new stream takes over.
+      videoElement.style.objectFit = 'contain';
       videoElement.style.width = `${w}px`;
       videoElement.style.height = `${h}px`;
-      const shellExtraW = 20; // left+right frame padding
-      const shellExtraH = 32; // top+bottom frame padding
+      const landscape = deviceW > deviceH;
+      const shellExtraW = landscape ? 16 : 20; // tighter horizontal frame in landscape
+      const shellExtraH = landscape ? 16 : 32; // hide notch space in landscape
       phoneShell.style.width = `${w + shellExtraW}px`;
       phoneShell.style.height = `${h + shellExtraH}px`;
+      // Hide the (portrait-only) speaker / camera decorations when landscape so
+      // the layout doesn't look like a portrait phone holding a wide video.
+      phoneShell.classList.toggle('landscape', landscape);
+    }
+
+    // Refit also when the browser tells us the <video>'s intrinsic dimensions
+    // changed (e.g. new SPS arrived after rotation). Without this, the video
+    // can keep displaying inside an old-aspect box for ~1 frame after rotation.
+    function scheduleRefit(){
+      // RAF coalesces multiple events into a single layout pass.
+      if (scheduleRefit._pending) return;
+      scheduleRefit._pending = true;
+      requestAnimationFrame(()=>{
+        scheduleRefit._pending = false;
+        fitVideoToViewport();
+      });
     }
 
     function setZoom(nextZoom){
@@ -149,15 +176,35 @@
         try{ jmuxer.destroy(); }catch(_e){}
         jmuxer = null;
       }
-      // MSE keeps an old SourceBuffer bound to the <video> element; force a
-      // detach so the new MediaSource can attach cleanly after a resolution
-      // change (e.g. device rotation, switch to DeX display).
-      try{ videoElement.removeAttribute('src'); videoElement.load(); }catch(_e){}
+      // Aggressive MSE teardown: Safari keeps the old MediaSource attached and
+      // refuses to accept SPS/PPS with a different resolution unless we fully
+      // detach. pause() stops decoder threads; revoking the blob URL frees the
+      // MediaSource; nullifying srcObject covers browsers that use that path;
+      // load() resets the element's media engine. Then we drop the inline
+      // width/height so a stale aspect doesn't briefly distort the next frame.
+      try{ videoElement.pause(); }catch(_e){}
+      try{
+        const oldSrc = videoElement.getAttribute('src');
+        if (oldSrc && oldSrc.startsWith('blob:')) URL.revokeObjectURL(oldSrc);
+      }catch(_e){}
+      try{ videoElement.removeAttribute('src'); }catch(_e){}
+      try{ videoElement.srcObject = null; }catch(_e){}
+      try{ videoElement.load(); }catch(_e){}
+      // Clear inline size so the new frame's intrinsic ratio drives layout
+      // until fitVideoToViewport runs again with the new deviceW/deviceH.
+      videoElement.style.width = '';
+      videoElement.style.height = '';
       jmuxer = new JMuxer({ node:'player', mode:'video', flushingTime:0, fps:60, clearBuffer:true,
         onError:(err)=>st('Decoder error: '+(err?.message||JSON.stringify(err)))
       });
     }
     createJmuxer();
+    // The browser fires 'resize' on <video> when its intrinsic dimensions
+    // change (e.g. new SPS after rotation). Refitting here makes the frame
+    // settle into the right box without waiting for the user to resize the
+    // window. 'loadedmetadata' covers the very first frame after recreation.
+    videoElement.addEventListener('resize', scheduleRefit);
+    videoElement.addEventListener('loadedmetadata', scheduleRefit);
 
     // DeX mode: send display_id=2 (typical Samsung DeX) to the server when on.
     // The server validates the value; can be overridden per-device by setting
@@ -434,13 +481,34 @@
         // Resolution actually changed (rotation, DeX switch, fold/unfold) →
         // throw away the old MSE decoder; the upcoming 'init' event will feed
         // fresh SPS/PPS into the new instance.
-        if (deviceW && deviceH && (newW !== deviceW || newH !== deviceH)){
+        const aspectFlipped =
+          deviceW && deviceH && (newW !== deviceW || newH !== deviceH);
+        // Escape hatch: some browsers (notably older Safari builds) refuse to
+        // accept a new SPS via MSE no matter how aggressively we tear down the
+        // SourceBuffer. Set localStorage.reloadOnRotate='1' to fall back to a
+        // hard page reload on resolution change — slower but always works.
+        if (aspectFlipped && localStorage.getItem('reloadOnRotate') === '1') {
+          st('Đổi kích thước: tải lại trang để khởi tạo lại decoder...');
+          setTimeout(()=>location.reload(), 200);
+          return;
+        }
+        if (aspectFlipped){
           createJmuxer();
+          // After a portrait↔landscape flip, the previous zoom level is rarely
+          // a good fit for the new aspect (the device looks tiny in the wrong
+          // dimension). Snap back to the default so the user immediately sees
+          // a sensibly framed phone shell.
+          const wasPortrait = deviceH > deviceW;
+          const isPortrait = newH > newW;
+          if (wasPortrait !== isPortrait) zoom = 0.82;
         }
         deviceW = newW;
         deviceH = newH;
         if (input) input.resizeScreen(deviceW, deviceH);
-        fitVideoToViewport();
+        // RAF refit — fitVideoToViewport reads videoWrap.clientWidth which can
+        // still reflect the old phone-shell footprint until the browser does
+        // the next layout pass.
+        scheduleRefit();
         st(`Đổi kích thước: ${deviceW}x${deviceH}`);
       }
     });
