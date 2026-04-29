@@ -79,6 +79,7 @@
     <button class="tool" id="dexMode" title="DeX Mode: OFF"><i class="fa-solid fa-display"></i></button>
     <button class="tool" id="installApk" title="Cài APK (file hoặc URL)"><i class="fa-solid fa-cube"></i></button>
     <button class="tool" id="pushFile" title="Tải file vào /sdcard/Download"><i class="fa-solid fa-upload"></i></button>
+    <button class="tool" id="kbToggle" title="Bật/tắt bàn phím (gõ chữ vào device)"><i class="fa-solid fa-i-cursor"></i></button>
     <button class="tool" id="macroRec" title="Bắt đầu ghi macro"><i class="fa-solid fa-record-vinyl"></i></button>
     <button class="tool" id="macroStop" title="Dừng ghi"><i class="fa-solid fa-stop"></i></button>
     <button class="tool" id="macroPlay" title="Chạy macro"><i class="fa-solid fa-play"></i></button>
@@ -92,6 +93,16 @@
       <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
       <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
     </div>
+    <!--
+      Off-screen capture surface for keyboard typing. Focusing this textarea
+      routes physical / on-screen keyboard input into scrcpy via inject_text
+      (for printable / IME-composed characters) and inject_keycode (for
+      Enter, Backspace, arrows, etc). The textarea itself is invisible and
+      its content is cleared after every emit so it never accumulates.
+    -->
+    <textarea id="kbCapture" autocomplete="off" autocorrect="off" autocapitalize="off"
+              spellcheck="false" inputmode="text" aria-hidden="true"
+              style="position:fixed;bottom:-50px;opacity:0;width:1px;height:1px;border:0;padding:0;outline:none;pointer-events:none"></textarea>
     <div class="zoom-bar">
       <button class="zoom-btn" id="zoomOut" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
       <button class="zoom-btn" id="zoomReset" title="Mặc định"><i class="fa-solid fa-arrows-rotate"></i></button>
@@ -401,6 +412,90 @@
           st('Upload lỗi: ' + (e?.message || e));
         }
       };
+
+      // --- Keyboard typing (inject_text + inject_keycode) -------------------
+      // Toggle: focuses a hidden <textarea> so the OS / mobile keyboard pops up
+      // and we can capture both regular characters (via 'input' / IME
+      // 'compositionend' for Vietnamese) and special keys (Enter, Backspace,
+      // arrows, ... via 'keydown').
+      const kbBtn = document.getElementById('kbToggle');
+      const kbCapture = document.getElementById('kbCapture');
+      let kbActive = false;
+      // Special keys → Android keycodes (subset that doesn't have a printable
+      // character to feed inject_text). Mapped from KeyboardEvent.key for
+      // robustness across layouts and IMEs.
+      const SPECIAL_KEYS = {
+        'Enter': 66, 'NumpadEnter': 66,
+        'Backspace': 67,
+        'Tab': 61,
+        'Escape': 111,
+        'ArrowLeft': 21, 'ArrowRight': 22, 'ArrowUp': 19, 'ArrowDown': 20,
+        'Home': 122, 'End': 123, 'PageUp': 92, 'PageDown': 93,
+        'Delete': 112,
+      };
+      function setKeyboard(on) {
+        kbActive = on;
+        if (on) {
+          kbBtn.classList.add('active');
+          kbBtn.title = 'Bàn phím: BẬT — gõ chữ vào device (click ra ngoài để tắt)';
+          kbCapture.style.pointerEvents = 'auto';
+          kbCapture.value = '';
+          // setTimeout to make iOS Safari actually pop the keyboard up.
+          setTimeout(() => kbCapture.focus(), 0);
+          st('Bàn phím: BẬT');
+        } else {
+          kbBtn.classList.remove('active');
+          kbBtn.title = 'Bật/tắt bàn phím (gõ chữ vào device)';
+          kbCapture.style.pointerEvents = 'none';
+          kbCapture.blur();
+          st('Bàn phím: TẮT');
+        }
+      }
+      kbBtn.onclick = () => setKeyboard(!kbActive);
+      kbCapture.addEventListener('blur', () => {
+        // If the textarea loses focus (user clicked elsewhere), turn the
+        // mode off so the icon state matches reality.
+        if (kbActive) setKeyboard(false);
+      });
+
+      // IME composition (e.g. Telex / Unikey for Vietnamese). We wait until
+      // 'compositionend' before sending so the diacritic has settled into a
+      // single code point (e.g. "a" then "?" -> "ả" sent once).
+      let composing = false;
+      kbCapture.addEventListener('compositionstart', () => { composing = true; });
+      kbCapture.addEventListener('compositionend', (e) => {
+        composing = false;
+        if (!input || !e.data) { kbCapture.value = ''; return; }
+        input.sendInjectText(e.data);
+        kbCapture.value = '';
+      });
+
+      // 'input' fires on every printable insertion that ISN'T part of an
+      // active IME composition. This is the path most physical keyboard
+      // strokes go through, plus mobile keyboard taps.
+      kbCapture.addEventListener('input', (e) => {
+        if (composing) return;
+        if (!input) { kbCapture.value = ''; return; }
+        // For 'insertText' we have e.data; for paste it's null and the value
+        // contains the inserted text. Either way, drain whatever is in the
+        // textarea and send it as one batch.
+        const text = e.data != null ? e.data : kbCapture.value;
+        if (text) input.sendInjectText(text);
+        kbCapture.value = '';
+      });
+
+      // keydown handles non-printable / control keys, which never trigger
+      // 'input'. Fires before 'input', so we preventDefault on the textarea
+      // so Backspace doesn't try to delete from an already-empty box.
+      kbCapture.addEventListener('keydown', (e) => {
+        if (composing) return;
+        const code = SPECIAL_KEYS[e.key];
+        if (code !== undefined && input) {
+          input.sendKeyCode(e, 0, code);
+          input.sendKeyCode(e, 1, code);
+          e.preventDefault();
+        }
+      });
 
       const recBtn = document.getElementById('macroRec');
       const stopBtn = document.getElementById('macroStop');

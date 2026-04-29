@@ -396,6 +396,29 @@ class ScrcpyInput {
         this.callback(buffer);
     }
 
+    sendInjectText(text) {
+        // scrcpy INJECT_TEXT control message:
+        //   [u8 type=1][u32be byte_length][N utf8 bytes]
+        // Used for general text input — Vietnamese diacritics, emoji,
+        // anything an Android IME would normally produce. Special keys
+        // (Enter, Backspace, arrow keys) still go through inject_keycode.
+        // We chunk to 256 bytes to stay safely under scrcpy's per-message
+        // text limit (server caps at 300 in scrcpy 3.x).
+        if (!text) return;
+        const enc = new TextEncoder();
+        const bytes = enc.encode(text);
+        const CHUNK = 256;
+        for (let off = 0; off < bytes.length; off += CHUNK) {
+            const slice = bytes.subarray(off, Math.min(off + CHUNK, bytes.length));
+            const buf = new ArrayBuffer(1 + 4 + slice.length);
+            const view = new DataView(buf);
+            view.setUint8(0, 1);
+            view.setUint32(1, slice.length, false);
+            new Uint8Array(buf, 5).set(slice);
+            this.callback(buf);
+        }
+    }
+
     createTouchProtocolData(action, x, y, width, height, actionButton, buttons, pressure,
                              pointerId = 0xfffffffffffffffdn) {
         // scrcpy touch control message (big-endian):
