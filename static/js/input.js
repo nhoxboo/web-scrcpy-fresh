@@ -58,19 +58,29 @@ class ScrcpyInput {
             }
         });
 
-        document.addEventListener('mousemove', (event) => {
-            if (!leftButtonIsPressed) return;
-
+        // RAF-coalesced mousemove (same rationale as pointermove below).
+        let pendingMouseEvent = null;
+        let mouseRafScheduled = false;
+        const flushMouse = () => {
+            mouseRafScheduled = false;
+            const event = pendingMouseEvent;
+            pendingMouseEvent = null;
+            if (!event || !leftButtonIsPressed) return;
             const rect = videoElement.getBoundingClientRect();
             const local_x = event.clientX - rect.left;
             const local_y = event.clientY - rect.top;
-
-            if (videoElement.contains(event.target)) {
-                mouseX = (local_x / (rect.right - rect.left)) * this.width;
-                mouseY = (local_y / (rect.bottom - rect.top)) * this.height;
-
-                let data = this.createTouchProtocolData(2, mouseX, mouseY, this.width, this.height, 0, 0, 65535);
-                this.callback(data);
+            mouseX = (local_x / (rect.right - rect.left)) * this.width;
+            mouseY = (local_y / (rect.bottom - rect.top)) * this.height;
+            const data = this.createTouchProtocolData(2, mouseX, mouseY, this.width, this.height, 0, 0, 65535);
+            this.callback(data);
+        };
+        document.addEventListener('mousemove', (event) => {
+            if (!leftButtonIsPressed) return;
+            if (!videoElement.contains(event.target)) return;
+            pendingMouseEvent = event;
+            if (!mouseRafScheduled) {
+                mouseRafScheduled = true;
+                requestAnimationFrame(flushMouse);
             }
         });
 
@@ -122,15 +132,37 @@ class ScrcpyInput {
             ev.preventDefault();
         }, { passive: false });
 
+        // Coalesce pointermove to one emit per animation frame (~60-120 Hz)
+        // per pointer. Browsers fire pointermove at the input device's native
+        // rate (often 200-1000 Hz on styluses / high-poll-rate mice), which
+        // floods the WebSocket and adds end-to-end lag without making touch
+        // tracking visibly smoother on the device.
+        const pendingMoves = new Map();
+        let rafScheduled = false;
+        const flushMoves = () => {
+            rafScheduled = false;
+            for (const [pointerId, ev] of pendingMoves) {
+                pendingMoves.delete(pointerId);
+                const fid = touchPointers.get(pointerId);
+                if (fid === undefined) continue;
+                const p = toDevicePoint(ev);
+                const data = this.createTouchProtocolData(
+                    2, p.x, p.y, this.width, this.height, 0, 1, pointerPressure(ev), fid,
+                );
+                this.callback(data);
+            }
+        };
         videoElement.addEventListener('pointermove', (ev) => {
             if (ev.pointerType !== 'touch' && ev.pointerType !== 'pen') return;
             const fid = touchPointers.get(ev.pointerId);
             if (fid === undefined) return;
-            const p = toDevicePoint(ev);
-            const data = this.createTouchProtocolData(
-                2, p.x, p.y, this.width, this.height, 0, 1, pointerPressure(ev), fid,
-            );
-            this.callback(data);
+            // getCoalescedEvents() merges any sub-frame events the UA buffered;
+            // we keep only the freshest one per pointer.
+            pendingMoves.set(ev.pointerId, ev);
+            if (!rafScheduled) {
+                rafScheduled = true;
+                requestAnimationFrame(flushMoves);
+            }
             ev.preventDefault();
         }, { passive: false });
 
