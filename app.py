@@ -30,7 +30,7 @@ from flask_socketio import SocketIO
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from scrcpy import Scrcpy, is_valid_serial, list_adb_devices
+from scrcpy import Scrcpy, adb_install, adb_push, is_valid_serial, list_adb_devices
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +56,15 @@ CHANGE_PW_WINDOW_SECONDS = 300
 
 # Session idle lifetime; override via SESSION_LIFETIME_SECONDS env var.
 SESSION_LIFETIME_SECONDS = int(os.environ.get('SESSION_LIFETIME_SECONDS', '86400'))
+
+# APK install / file push limits. Configurable via env so a deploy can lower
+# them on a constrained box, or raise them if the user installs huge games.
+MAX_INSTALL_SIZE_MB = int(os.environ.get('MAX_INSTALL_SIZE_MB', '500'))
+MAX_PUSH_SIZE_MB = int(os.environ.get('MAX_PUSH_SIZE_MB', '500'))
+INSTALL_DEFAULT_PUSH_DEST = '/sdcard/Download/'
+INSTALL_URL_TIMEOUT_SECONDS = int(os.environ.get('INSTALL_URL_TIMEOUT_SECONDS', '120'))
+INSTALL_RATE_MAX = int(os.environ.get('INSTALL_RATE_MAX', '6'))
+INSTALL_RATE_WINDOW_SECONDS = int(os.environ.get('INSTALL_RATE_WINDOW_SECONDS', '300'))
 
 # --- audit log setup -----------------------------------------------------------
 AUDIT_LOG_FILE = os.environ.get('AUDIT_LOG_FILE', os.path.join(BASE_DIR, 'audit.log'))
@@ -242,7 +251,12 @@ def _get_csrf_token() -> str:
 
 def _validate_csrf() -> bool:
     expected = session.get('_csrf') or ''
-    received = (request.form.get('csrf_token') or '').strip()
+    # Accept the token in either the form field (classic POST) or the
+    # X-CSRF-Token header (multipart upload from fetch / XMLHttpRequest where
+    # adding form fields next to a binary file is awkward).
+    received = (request.form.get('csrf_token') or '').strip() or (
+        request.headers.get('X-CSRF-Token') or ''
+    ).strip()
     if not expected or not received:
         return False
     return hmac.compare_digest(expected, received)
@@ -308,6 +322,9 @@ app.config.update(
     SESSION_COOKIE_SAMESITE='Lax',
     SESSION_COOKIE_SECURE=os.environ.get('SESSION_COOKIE_SECURE', '0') == '1',
     PERMANENT_SESSION_LIFETIME=timedelta(seconds=SESSION_LIFETIME_SECONDS),
+    # Allow APK uploads. Use the larger of the two limits since the same
+    # MAX_CONTENT_LENGTH applies to all routes.
+    MAX_CONTENT_LENGTH=max(MAX_INSTALL_SIZE_MB, MAX_PUSH_SIZE_MB) * 1024 * 1024,
 )
 
 # When running behind a trusted reverse proxy (nginx, Caddy, Traefik, ...) set
@@ -506,6 +523,206 @@ def change_password():
     return render_template(
         'change_password.html', username=session.get('username', DEFAULT_USERNAME)
     )
+
+
+# --- APK install / file push ----------------------------------------------------
+_install_attempts: dict[str, deque] = {}
+_install_attempts_lock = threading.Lock()
+
+
+def _install_rate_check(ip: str) -> bool:
+    now = time.monotonic()
+    with _install_attempts_lock:
+        dq = _install_attempts.setdefault(ip, deque())
+        while dq and now - dq[0] > INSTALL_RATE_WINDOW_SECONDS:
+            dq.popleft()
+        if len(dq) >= INSTALL_RATE_MAX:
+            return False
+        dq.append(now)
+        return True
+
+
+def _looks_like_apk(path: str) -> bool:
+    """APK files are ZIP archives, so check the local-file-header magic.
+
+    Returns False for empty / unreadable files. Doesn't validate the manifest;
+    a malformed APK will simply fail at `adb install` with a useful error.
+    """
+    try:
+        with open(path, 'rb') as f:
+            sig = f.read(4)
+    except OSError:
+        return False
+    return sig[:2] == b'PK'
+
+
+def _download_to_tempfile(url: str, max_bytes: int, timeout: float) -> tuple[str, str]:
+    """Download `url` into a temp file, enforcing the size cap as we stream.
+
+    Returns (path, error). On success error is empty; on failure path is empty.
+    Uses urllib (stdlib) to avoid adding `requests` as a dependency.
+    """
+    import tempfile
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        return '', f'Only http/https URLs are allowed (got {parsed.scheme!r})'
+    if not parsed.netloc:
+        return '', 'URL is missing a host'
+
+    req = urllib.request.Request(url, headers={'User-Agent': 'web-scrcpy/1.0'})
+    fd, tmp_path = tempfile.mkstemp(prefix='install-', suffix='.apk')
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - scheme checked above
+            with os.fdopen(fd, 'wb') as out:
+                written = 0
+                while True:
+                    chunk = resp.read(64 * 1024)
+                    if not chunk:
+                        break
+                    written += len(chunk)
+                    if written > max_bytes:
+                        out.close()
+                        os.unlink(tmp_path)
+                        return '', f'Download exceeds {max_bytes // (1024 * 1024)} MB cap'
+                    out.write(chunk)
+    except urllib.error.URLError as e:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        return '', f'Download failed: {e}'
+    except Exception as e:  # noqa: BLE001
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        return '', f'Download failed: {e}'
+    return tmp_path, ''
+
+
+@app.route('/api/install', methods=['POST'])
+@login_required
+def api_install():
+    """Install an APK on the currently selected device.
+
+    Two modes (mutually exclusive):
+      * multipart/form-data with `file=<.apk>`
+      * form field `url=<https://.../app.apk>` (downloaded server-side first)
+    """
+    ip = request.remote_addr or '-'
+    if not _install_rate_check(ip):
+        _audit('install_rate_limited')
+        return jsonify(ok=False, error='Quá nhiều lần cài đặt, thử lại sau.'), 429
+
+    serial = _selected_serial()
+    if not serial:
+        # adb_install() with serial=None lets adb pick the only attached device,
+        # which is fine for a single-device setup. Surface a clear hint when
+        # multiple devices may be attached.
+        log.info('api_install: no serial selected, letting adb auto-pick')
+
+    file = request.files.get('file')
+    url = (request.form.get('url') or '').strip()
+    if not file and not url:
+        return jsonify(ok=False, error='Cần file APK hoặc url.'), 400
+    if file and url:
+        return jsonify(ok=False, error='Chọn file HOẶC url, không cả hai.'), 400
+
+    import tempfile
+
+    apk_path = ''
+    cleanup = False
+    try:
+        if file:
+            if not file.filename or not file.filename.lower().endswith('.apk'):
+                return jsonify(ok=False, error='File phải có đuôi .apk'), 400
+            fd, apk_path = tempfile.mkstemp(prefix='install-', suffix='.apk')
+            os.close(fd)
+            file.save(apk_path)
+            cleanup = True
+        else:
+            apk_path, err = _download_to_tempfile(
+                url, MAX_INSTALL_SIZE_MB * 1024 * 1024, INSTALL_URL_TIMEOUT_SECONDS
+            )
+            if err:
+                _audit('install_url_download_failed', error=err[:120])
+                return jsonify(ok=False, error=err), 400
+            cleanup = True
+
+        size = os.path.getsize(apk_path)
+        if size > MAX_INSTALL_SIZE_MB * 1024 * 1024:
+            return jsonify(ok=False, error=f'File quá lớn (>{MAX_INSTALL_SIZE_MB} MB)'), 413
+        if not _looks_like_apk(apk_path):
+            return jsonify(ok=False, error='Không phải file APK hợp lệ.'), 400
+
+        ok, output = adb_install(apk_path, serial=serial)
+        _audit('install', source='url' if url else 'upload', size=size, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output)
+        return jsonify(ok=False, error=output or 'adb install failed'), 500
+    finally:
+        if cleanup and apk_path and os.path.isfile(apk_path):
+            try:
+                os.unlink(apk_path)
+            except OSError:
+                pass
+
+
+@app.route('/api/push', methods=['POST'])
+@login_required
+def api_push():
+    """Push a file to /sdcard/Download/ (or any caller-supplied dest)."""
+    ip = request.remote_addr or '-'
+    if not _install_rate_check(ip):
+        _audit('push_rate_limited')
+        return jsonify(ok=False, error='Quá nhiều lần upload, thử lại sau.'), 429
+
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify(ok=False, error='Thiếu file.'), 400
+
+    dest_dir = (request.form.get('dest') or INSTALL_DEFAULT_PUSH_DEST).strip()
+    if not dest_dir.startswith('/') or '..' in dest_dir.split('/'):
+        return jsonify(ok=False, error='Đường dẫn đích không hợp lệ.'), 400
+    if not dest_dir.endswith('/'):
+        dest_dir += '/'
+
+    from werkzeug.utils import secure_filename
+
+    safe_name = secure_filename(file.filename) or 'upload.bin'
+    dest_path = dest_dir + safe_name
+
+    import tempfile
+
+    fd, tmp_path = tempfile.mkstemp(prefix='push-')
+    os.close(fd)
+    try:
+        file.save(tmp_path)
+        size = os.path.getsize(tmp_path)
+        if size > MAX_PUSH_SIZE_MB * 1024 * 1024:
+            return jsonify(ok=False, error=f'File quá lớn (>{MAX_PUSH_SIZE_MB} MB)'), 413
+        ok, output = adb_push(tmp_path, dest_path, serial=_selected_serial())
+        _audit('push', dest=dest_path, size=size, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output, dest=dest_path)
+        return jsonify(ok=False, error=output or 'adb push failed'), 500
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+@app.errorhandler(413)
+def _too_large(_e):
+    """Friendlier message for over-MAX_CONTENT_LENGTH uploads."""
+    if request.path.startswith('/api/'):
+        return jsonify(ok=False, error='File vượt quá giới hạn upload.'), 413
+    return ('File quá lớn.', 413)
 
 
 @app.route('/healthz')
