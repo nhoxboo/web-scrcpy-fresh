@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chọn thiết bị</title>
+  <link href="/static/css/font-awesome.min.css" rel="stylesheet">
+  <style>
+    body { margin:0; min-height:100vh; background:#0b1020; font-family:system-ui,sans-serif; color:#e5e7eb; }
+    .wrap { max-width:760px; margin:24px auto; padding:0 16px; }
+    .card { background:#111827; border:1px solid #334155; border-radius:16px; padding:20px; margin-bottom:16px; }
+    h2 { margin:0 0 12px; font-size:1.2rem; }
+    .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .pill { padding:4px 10px; border-radius:999px; background:#1f2937; font-size:.85rem; }
+    .pill.user { background:#1e3a8a; }
+    .pill.ok { background:#166534; }
+    .pill.warn { background:#7c2d12; }
+    .pill.dim { background:#374151; color:#9ca3af; }
+    .device { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border:1px solid #334155; border-radius:12px; margin-top:10px; background:#0b1220; }
+    .device.selected { border-color:#2563eb; box-shadow:0 0 0 2px #1e40af44 inset; }
+    .meta { display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .serial { font-family:ui-monospace,Menlo,Consolas,monospace; word-break:break-all; }
+    .model { color:#9ca3af; font-size:.9rem; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    button, .btn { padding:8px 12px; border-radius:10px; border:none; cursor:pointer; font-weight:500; text-decoration:none; color:inherit; }
+    .btn-primary { background:#2563eb; color:#fff; }
+    .btn-primary[disabled] { background:#374151; cursor:default; }
+    .btn-ghost { background:#1f2937; color:#d1d5db; }
+    .btn-danger { background:#7c2d12; color:#fde68a; }
+    .empty { padding:18px; text-align:center; color:#9ca3af; }
+    .flash { margin:10px 0; color:#93c5fd; font-size:.92rem; }
+    a.back { color:#93c5fd; }
+    .toolbar { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="toolbar">
+      <h2><i class="fa-solid fa-mobile-screen-button"></i> Thiết bị Android</h2>
+      <div class="row">
+        <span class="pill user"><i class="fa-solid fa-user"></i> {{ username }}</span>
+        <a class="btn btn-ghost" href="/"><i class="fa-solid fa-arrow-left"></i> Về trang chính</a>
+        <a class="btn btn-ghost" href="{{ url_for('devices') }}"><i class="fa-solid fa-rotate"></i> Refresh</a>
+      </div>
+    </div>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}<div class="flash">{{ messages[-1] }}</div>{% endif %}
+    {% endwith %}
+    <p style="margin:6px 0 0;color:#9ca3af;font-size:.9rem">
+      Chạy <code style="background:#0b1220;padding:2px 6px;border-radius:6px">adb devices -l</code>.
+      Click "Chọn" để mirror máy đó. Lựa chọn lưu theo phiên đăng nhập.
+      {% if default_serial %}
+        Mặc định (env/CLI): <code>{{ default_serial }}</code>.
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="card">
+    {% if devices %}
+      {% for d in devices %}
+        <div class="device {% if d.serial == selected %}selected{% endif %}">
+          <div class="meta">
+            <div class="row">
+              <span class="serial">{{ d.serial }}</span>
+              {% if d.state == 'device' %}
+                <span class="pill ok">{{ d.state }}</span>
+              {% elif d.state == 'unauthorized' %}
+                <span class="pill warn">unauthorized</span>
+              {% else %}
+                <span class="pill dim">{{ d.state }}</span>
+              {% endif %}
+              {% if d.serial == selected %}
+                <span class="pill user">đang dùng</span>
+              {% endif %}
+              {% if d.serial == default_serial and d.serial != selected %}
+                <span class="pill dim">env default</span>
+              {% endif %}
+            </div>
+            <div class="model">
+              {% if d.model %}{{ d.model }}{% endif %}
+              {% if d.product %} · {{ d.product }}{% endif %}
+              {% if d.transport_id %} · t{{ d.transport_id }}{% endif %}
+            </div>
+          </div>
+          <div class="actions">
+            <form method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="serial" value="{{ d.serial }}">
+              <button class="btn-primary" type="submit"
+                {% if d.serial == selected %}disabled{% endif %}
+                {% if d.state != 'device' %}disabled title="Cần state=device để mirror"{% endif %}>
+                <i class="fa-solid fa-check"></i>
+                {% if d.serial == selected %}Đang chọn{% else %}Chọn{% endif %}
+              </button>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">
+        <p><i class="fa-solid fa-plug-circle-xmark"></i> Không thấy thiết bị nào.</p>
+        <p style="font-size:.9rem">Cắm USB &amp; bật USB Debugging, hoặc <code>adb connect &lt;ip:port&gt;</code> qua mạng. Sau đó Refresh.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if selected %}
+    <div class="card">
+      <form method="post" class="row" style="justify-content:space-between">
+        <div>
+          <div>Đang chọn: <code>{{ selected }}</code></div>
+          <div style="color:#9ca3af;font-size:.9rem">Bỏ chọn để quay về mặc định env/CLI hoặc auto.</div>
+        </div>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="clear">
+        <button class="btn-danger" type="submit"><i class="fa-solid fa-xmark"></i> Bỏ chọn</button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+</body>
+</html>
