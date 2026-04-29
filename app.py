@@ -30,7 +30,7 @@ from flask_socketio import SocketIO
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from scrcpy import Scrcpy
+from scrcpy import Scrcpy, is_valid_serial, list_adb_devices
 
 logging.basicConfig(
     level=logging.INFO,
@@ -350,10 +350,81 @@ def _security_headers(response):
 
 
 # --- routes ----------------------------------------------------------------------
+def _selected_serial() -> str | None:
+    """Resolve which adb serial to drive: per-session pick > env/CLI default."""
+    chosen = (session.get('adb_serial') or '').strip()
+    if chosen:
+        return chosen
+    return adb_serial
+
+
+def _selected_device_label() -> str:
+    """Best-effort 'serial (model)' label for the currently selected device."""
+    serial = _selected_serial()
+    if not serial:
+        return ''
+    for d in list_adb_devices():
+        if d.get('serial') == serial:
+            model = d.get('model') or ''
+            return f'{serial} ({model})' if model else serial
+    return serial
+
+
 @app.route('/')
 @login_required
 def index():
-    return render_template('index.html', username=session.get('username', DEFAULT_USERNAME))
+    return render_template(
+        'index.html',
+        username=session.get('username', DEFAULT_USERNAME),
+        device_label=_selected_device_label(),
+        device_serial=_selected_serial() or '',
+    )
+
+
+@app.route('/devices', methods=['GET', 'POST'])
+@login_required
+def devices():
+    if request.method == 'POST':
+        action = (request.form.get('action') or '').strip()
+        if action == 'clear':
+            session.pop('adb_serial', None)
+            _audit('device_cleared', user=session.get('username', '-'))
+            flash('Đã bỏ chọn thiết bị; sẽ dùng mặc định (env/CLI hoặc auto).')
+            return redirect(url_for('devices'))
+
+        serial = (request.form.get('serial') or '').strip()
+        if not serial:
+            flash('Vui lòng chọn một thiết bị.')
+        elif not is_valid_serial(serial):
+            flash('Serial không hợp lệ.')
+        else:
+            attached = {d['serial'] for d in list_adb_devices()}
+            if attached and serial not in attached:
+                flash('Thiết bị không còn kết nối, hãy refresh.')
+            else:
+                session['adb_serial'] = serial
+                _audit('device_selected', user=session.get('username', '-'), serial=serial)
+                flash(f'Đã chọn thiết bị {serial}.')
+                return redirect(url_for('index'))
+
+    items = list_adb_devices()
+    return render_template(
+        'devices.html',
+        username=session.get('username', DEFAULT_USERNAME),
+        devices=items,
+        selected=_selected_serial() or '',
+        default_serial=adb_serial or '',
+    )
+
+
+@app.route('/api/devices')
+@login_required
+def api_devices():
+    return {
+        'devices': list_adb_devices(),
+        'selected': _selected_serial() or '',
+        'default': adb_serial or '',
+    }
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -495,7 +566,9 @@ def handle_connect(auth=None):
                     chosen_disp = str(d)
             except (TypeError, ValueError):
                 log.warning('Invalid display_id from client: %r', req_disp)
-        scpy_ctx = Scrcpy(serial=adb_serial, display_id=chosen_disp)
+        # Per-session pick (set via /devices) wins over env/CLI default.
+        chosen_serial = _selected_serial()
+        scpy_ctx = Scrcpy(serial=chosen_serial, display_id=chosen_disp)
 
     try:
         scpy_ctx.scrcpy_start(send_video_data, video_bit_rate, max_fps=max_fps)

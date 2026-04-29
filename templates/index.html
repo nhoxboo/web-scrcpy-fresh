@@ -43,7 +43,14 @@
 <body>
   <div class="top">
     <i class="fa-solid fa-mobile-screen-button"></i><div class="brand">Web Scrcpy</div>
-    <span class="pill">user: {{ username }}</span><div class="sp"></div>
+    <span class="pill">user: {{ username }}</span>
+    {% if device_label %}
+      <span class="pill" title="Thiết bị đang điều khiển"><i class="fa-solid fa-mobile-screen"></i> {{ device_label }}</span>
+    {% else %}
+      <span class="pill" title="Chưa chọn thiết bị (đang dùng default)"><i class="fa-solid fa-mobile-screen"></i> auto</span>
+    {% endif %}
+    <a class="btn" href="/devices" title="Chọn thiết bị khác"><i class="fa-solid fa-shuffle"></i> Đổi máy</a>
+    <div class="sp"></div>
     <a class="btn" href="/change-password"><i class="fa-solid fa-key"></i> Đổi mật khẩu</a>
     <form method="post" action="/logout" style="display:inline;margin:0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

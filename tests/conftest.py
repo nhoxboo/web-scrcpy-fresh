@@ -19,10 +19,11 @@ def _install_fake_scrcpy():
     class Scrcpy:  # noqa: D401 - test stub
         """No-op replacement for the real Scrcpy class."""
 
-        def __init__(self, serial=None):
+        def __init__(self, serial=None, display_id=None):
             self.started = False
             self.stopped = False
             self.serial = serial
+            self.display_id = display_id
 
         def scrcpy_start(self, video_callback, video_bit_rate, max_fps=None):  # noqa: ARG002
             self.started = True
@@ -33,7 +34,18 @@ def _install_fake_scrcpy():
         def scrcpy_send_control(self, data):  # noqa: ARG002
             pass
 
+    # Tests can monkeypatch list_adb_devices to inject fixtures.
+    def list_adb_devices(adb_path=None, timeout=5.0):  # noqa: ARG001
+        return []
+
+    def is_valid_serial(serial: str) -> bool:
+        if not serial or len(serial) > 64:
+            return False
+        return all(c.isalnum() or c in '-_.:' for c in serial)
+
     module.Scrcpy = Scrcpy
+    module.list_adb_devices = list_adb_devices
+    module.is_valid_serial = is_valid_serial
     sys.modules['scrcpy'] = module
 
 

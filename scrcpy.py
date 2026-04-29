@@ -27,6 +27,56 @@ def _resolve_adb_path() -> str:
 ADB_PATH = _resolve_adb_path()
 SCRCPY_SERVER_PATH = os.path.join(os.path.dirname(__file__), 'scrcpy-server')
 DEVICE_SERVER_PATH = '/data/local/tmp/scrcpy-server.jar'
+
+
+def list_adb_devices(adb_path: str | None = None, timeout: float = 5.0) -> list[dict]:
+    """Run `adb devices -l` and return a list of dicts with serial/state/model.
+
+    Each entry: {'serial': str, 'state': str, 'model': str, 'product': str,
+    'transport_id': str, 'usb': str}. Empty list if adb is not available or
+    no devices are attached. Never raises (returns [] on failure).
+    """
+    cmd = [adb_path or ADB_PATH, 'devices', '-l']
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        log.warning('list_adb_devices failed: %s', e)
+        return []
+    if result.returncode != 0:
+        log.warning('adb devices returned %d: %s', result.returncode, result.stderr.strip())
+        return []
+    devices: list[dict] = []
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line or line.lower().startswith('list of devices'):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        entry = {
+            'serial': parts[0],
+            'state': parts[1],
+            'model': '',
+            'product': '',
+            'transport_id': '',
+            'usb': '',
+        }
+        for token in parts[2:]:
+            if ':' in token:
+                key, _, value = token.partition(':')
+                if key in entry:
+                    entry[key] = value
+        devices.append(entry)
+    return devices
+
+
+def is_valid_serial(serial: str) -> bool:
+    """Cheap structural check for an ADB serial (alnum, dash, dot, colon)."""
+    if not serial or len(serial) > 64:
+        return False
+    return all(c.isalnum() or c in '-_.:' for c in serial)
+
+
 LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
 DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '4000000')
 DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')
