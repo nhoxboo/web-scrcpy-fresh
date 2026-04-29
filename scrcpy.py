@@ -77,6 +77,64 @@ def is_valid_serial(serial: str) -> bool:
     return all(c.isalnum() or c in '-_.:' for c in serial)
 
 
+def adb_install(
+    apk_path: str,
+    serial: str | None = None,
+    reinstall: bool = True,
+    timeout: float = 300.0,
+    adb_path: str | None = None,
+) -> tuple[bool, str]:
+    """Run `adb install` and return (ok, combined_output).
+
+    timeout is generous (5 min) because large APKs over slow USB can take a while.
+    Always non-raising — on subprocess error we return (False, error string).
+    """
+    if not os.path.isfile(apk_path):
+        return False, f'APK not found: {apk_path}'
+    cmd = [adb_path or ADB_PATH]
+    if serial:
+        cmd += ['-s', serial]
+    cmd += ['install']
+    if reinstall:
+        cmd += ['-r']
+    cmd += [apk_path]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        log.warning('adb install failed: %s', e)
+        return False, f'{type(e).__name__}: {e}'
+    out = (result.stdout or '') + (result.stderr or '')
+    # adb install reports success via "Success" in stdout even when returncode=0,
+    # and various failures in stderr. Treat returncode + presence of "Success".
+    ok = result.returncode == 0 and 'Success' in out
+    return ok, out.strip()
+
+
+def adb_push(
+    src_path: str,
+    dest_path: str,
+    serial: str | None = None,
+    timeout: float = 600.0,
+    adb_path: str | None = None,
+) -> tuple[bool, str]:
+    """Run `adb push <src> <dest>`. Returns (ok, combined_output)."""
+    if not os.path.isfile(src_path):
+        return False, f'Source not found: {src_path}'
+    if not dest_path or not dest_path.startswith('/'):
+        return False, f'Invalid destination: {dest_path!r}'
+    cmd = [adb_path or ADB_PATH]
+    if serial:
+        cmd += ['-s', serial]
+    cmd += ['push', src_path, dest_path]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        log.warning('adb push failed: %s', e)
+        return False, f'{type(e).__name__}: {e}'
+    out = (result.stdout or '') + (result.stderr or '')
+    return result.returncode == 0, out.strip()
+
+
 LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
 DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '8000000')
 DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')

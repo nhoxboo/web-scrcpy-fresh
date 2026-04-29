@@ -44,9 +44,19 @@ def _install_fake_scrcpy():
             return False
         return all(c.isalnum() or c in '-_.:' for c in serial)
 
+    # Stubs for adb_install / adb_push so the app module imports cleanly.
+    # Tests can monkeypatch these with custom behaviour.
+    def adb_install(apk_path, serial=None, reinstall=True, timeout=300.0, adb_path=None):  # noqa: ARG001
+        return True, 'Success'
+
+    def adb_push(src_path, dest_path, serial=None, timeout=600.0, adb_path=None):  # noqa: ARG001
+        return True, '1 file pushed'
+
     module.Scrcpy = Scrcpy
     module.list_adb_devices = list_adb_devices
     module.is_valid_serial = is_valid_serial
+    module.adb_install = adb_install
+    module.adb_push = adb_push
     sys.modules['scrcpy'] = module
 
 
