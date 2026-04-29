@@ -95,6 +95,7 @@ message_queue = queue.Queue()
 video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '4000000')
 max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
 adb_serial = os.environ.get('ADB_SERIAL', '').strip() or None
+display_id = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
 
 
 def _shutdown_scrcpy() -> None:
@@ -483,7 +484,18 @@ def handle_connect(auth=None):
                 'Đã có client khác đang điều khiển thiết bị. Vui lòng thử lại sau.'
             )
         client_sid = request.sid
-        scpy_ctx = Scrcpy(serial=adb_serial)
+        # Per-connection display_id from socket query (?display_id=2 for DeX),
+        # falling back to the server-wide default. Validated as an int 0..99.
+        req_disp = request.args.get('display_id') if request.args else None
+        chosen_disp = display_id
+        if req_disp is not None and req_disp != '':
+            try:
+                d = int(req_disp)
+                if 0 <= d < 100:
+                    chosen_disp = str(d)
+            except (TypeError, ValueError):
+                log.warning('Invalid display_id from client: %r', req_disp)
+        scpy_ctx = Scrcpy(serial=adb_serial, display_id=chosen_disp)
 
     try:
         scpy_ctx.scrcpy_start(send_video_data, video_bit_rate, max_fps=max_fps)
@@ -552,6 +564,11 @@ if __name__ == '__main__':
         default=adb_serial,
         help='ADB serial of the target device (default: ADB_SERIAL env, else auto)',
     )
+    parser.add_argument(
+        '--display_id',
+        default=display_id,
+        help='Display id to mirror; 0=main, 2=typical Samsung DeX (default: SCRCPY_DISPLAY_ID env or 0)',
+    )
     parser.add_argument('--port', default=8000, type=int, help='listen port')
     parser.add_argument(
         '--host', default=os.environ.get('BIND_HOST', '0.0.0.0'), help='bind host (default 0.0.0.0)'
@@ -560,12 +577,14 @@ if __name__ == '__main__':
     video_bit_rate = args.video_bit_rate
     max_fps = args.max_fps
     adb_serial = args.serial or None
+    display_id = str(args.display_id or '0')
     log.info(
-        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s, serial=%s)',
+        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s, serial=%s, display_id=%s)',
         args.host,
         args.port,
         video_bit_rate,
         max_fps,
         adb_serial or '*',
+        display_id,
     )
     socketio.run(app, host=args.host, port=args.port, allow_unsafe_werkzeug=True)

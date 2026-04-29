@@ -31,10 +31,11 @@ LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
 DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '4000000')
 DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')
 DEFAULT_ADB_SERIAL = os.environ.get('ADB_SERIAL', '').strip() or None
+DEFAULT_DISPLAY_ID = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
 
 
 class Scrcpy:
-    def __init__(self, serial: str | None = None):
+    def __init__(self, serial: str | None = None, display_id: int | str | None = None):
         self.video_socket = None
         self.control_socket = None
 
@@ -47,6 +48,9 @@ class Scrcpy:
         self.video_bit_rate = DEFAULT_VIDEO_BIT_RATE
         self.max_fps = DEFAULT_MAX_FPS
         self.serial = serial or DEFAULT_ADB_SERIAL
+        # display_id: 0 = main display (default), 2 = typical Samsung DeX,
+        # or any secondary display id reported by `adb shell dumpsys display`.
+        self.display_id = str(display_id) if display_id is not None else DEFAULT_DISPLAY_ID
         self.stop = True  # True until scrcpy_start flips it; avoids AttributeError
 
     # ---- device setup ----------------------------------------------------------
@@ -82,13 +86,15 @@ class Scrcpy:
         log.info('Starting scrcpy server in background...')
         # audio=false: audio was captured but never forwarded to the browser,
         # so disable it at the source to save device CPU + tunnel bandwidth.
+        # display_id selects which display to mirror: 0 = main, 2 = typical
+        # Samsung DeX, or any id reported by `adb shell dumpsys display`.
         cmd = self._adb(
             'shell',
             (
                 f'CLASSPATH={DEVICE_SERVER_PATH} app_process / '
                 'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true audio=false '
                 f'log_level=VERBOSE video_bit_rate={self.video_bit_rate} '
-                f'max_fps={self.max_fps}'
+                f'max_fps={self.max_fps} display_id={self.display_id}'
             ),
         )
         self.android_process = subprocess.Popen(
