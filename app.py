@@ -92,8 +92,9 @@ _state_lock = threading.Lock()
 scpy_ctx = None
 client_sid = None
 message_queue = queue.Queue()
-video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '4000000')
+video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '8000000')
 max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
+max_size = os.environ.get('SCRCPY_MAX_SIZE', '0').strip() or '0'
 adb_serial = os.environ.get('ADB_SERIAL', '').strip() or None
 display_id = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
 
@@ -568,7 +569,7 @@ def handle_connect(auth=None):
                 log.warning('Invalid display_id from client: %r', req_disp)
         # Per-session pick (set via /devices) wins over env/CLI default.
         chosen_serial = _selected_serial()
-        scpy_ctx = Scrcpy(serial=chosen_serial, display_id=chosen_disp)
+        scpy_ctx = Scrcpy(serial=chosen_serial, display_id=chosen_disp, max_size=max_size)
 
     try:
         scpy_ctx.scrcpy_start(send_video_data, video_bit_rate, max_fps=max_fps)
@@ -625,12 +626,17 @@ if __name__ == '__main__':
     parser.add_argument(
         '--video_bit_rate',
         default=video_bit_rate,
-        help='scrcpy video bit rate (default: SCRCPY_VIDEO_BIT_RATE env or 4000000)',
+        help='scrcpy video bit rate (default: SCRCPY_VIDEO_BIT_RATE env or 8000000)',
     )
     parser.add_argument(
         '--max_fps',
         default=max_fps,
         help='scrcpy max fps (default: SCRCPY_MAX_FPS env or 60)',
+    )
+    parser.add_argument(
+        '--max_size',
+        default=max_size,
+        help='Cap the longest edge in px; 0=device native (default: SCRCPY_MAX_SIZE env or 0)',
     )
     parser.add_argument(
         '--serial',
@@ -649,14 +655,16 @@ if __name__ == '__main__':
     args = parser.parse_args()
     video_bit_rate = args.video_bit_rate
     max_fps = args.max_fps
+    max_size = str(args.max_size or '0')
     adb_serial = args.serial or None
     display_id = str(args.display_id or '0')
     log.info(
-        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s, serial=%s, display_id=%s)',
+        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s, max_size=%s, serial=%s, display_id=%s)',
         args.host,
         args.port,
         video_bit_rate,
         max_fps,
+        max_size,
         adb_serial or '*',
         display_id,
     )

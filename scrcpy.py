@@ -78,14 +78,24 @@ def is_valid_serial(serial: str) -> bool:
 
 
 LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
-DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '4000000')
+DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '8000000')
 DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')
+# 0 = mirror at the device's native resolution. Setting e.g. 1920 caps the
+# longest edge so very-high-DPI phones don't drown the browser decoder, which
+# usually looks SHARPER (more bits per pixel) than uncapped 4K at the same
+# bitrate. Most modern phones look great at 1920.
+DEFAULT_MAX_SIZE = os.environ.get('SCRCPY_MAX_SIZE', '0').strip() or '0'
 DEFAULT_ADB_SERIAL = os.environ.get('ADB_SERIAL', '').strip() or None
 DEFAULT_DISPLAY_ID = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
 
 
 class Scrcpy:
-    def __init__(self, serial: str | None = None, display_id: int | str | None = None):
+    def __init__(
+        self,
+        serial: str | None = None,
+        display_id: int | str | None = None,
+        max_size: int | str | None = None,
+    ):
         self.video_socket = None
         self.control_socket = None
 
@@ -101,6 +111,8 @@ class Scrcpy:
         # display_id: 0 = main display (default), 2 = typical Samsung DeX,
         # or any secondary display id reported by `adb shell dumpsys display`.
         self.display_id = str(display_id) if display_id is not None else DEFAULT_DISPLAY_ID
+        # max_size: 0 = device native, otherwise caps the longest edge.
+        self.max_size = str(max_size) if max_size is not None else DEFAULT_MAX_SIZE
         self.stop = True  # True until scrcpy_start flips it; avoids AttributeError
 
     # ---- device setup ----------------------------------------------------------
@@ -144,7 +156,8 @@ class Scrcpy:
                 f'CLASSPATH={DEVICE_SERVER_PATH} app_process / '
                 'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true audio=false '
                 f'log_level=VERBOSE video_bit_rate={self.video_bit_rate} '
-                f'max_fps={self.max_fps} display_id={self.display_id}'
+                f'max_fps={self.max_fps} display_id={self.display_id} '
+                f'max_size={self.max_size}'
             ),
         )
         self.android_process = subprocess.Popen(
