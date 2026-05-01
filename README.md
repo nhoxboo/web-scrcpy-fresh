@@ -12,9 +12,59 @@ Bản private dùng nội bộ để điều khiển thiết bị Android qua tr
 
 ## Yêu cầu hệ thống
 - Windows/macOS/Linux
-- Python **3.7+**
-- `adb` đã cài và có trong PATH
+- Python **3.10+** (khớp matrix CI: 3.10 / 3.11 / 3.12)
+- `adb` đã cài và có trong PATH (xem [Cài đặt ADB](#cài-đặt-adb-bắt-buộc))
 - Thiết bị Android đã bật **USB Debugging**
+
+## Cài đặt ADB (bắt buộc)
+Server cần `adb` để nói chuyện với thiết bị Android. Nếu lệnh `adb version`
+trên máy báo "command not found" thì server sẽ start được nhưng socket sẽ
+ngay lập tức trả lỗi `Không thể khởi động scrcpy`.
+
+### Linux
+```bash
+# Debian / Ubuntu / Linux Mint
+sudo apt update && sudo apt install -y android-tools-adb
+
+# Arch / Manjaro
+sudo pacman -S android-tools
+
+# Fedora / RHEL
+sudo dnf install android-tools
+```
+
+### macOS
+```bash
+brew install --cask android-platform-tools
+```
+
+### Windows
+1. Tải `platform-tools-latest-windows.zip` từ
+   <https://developer.android.com/tools/releases/platform-tools>.
+2. Giải nén ra (ví dụ) `C:\platform-tools\`.
+3. Mở **System Properties → Environment Variables → Path → Edit → New** và
+   thêm đường dẫn đó. Hoặc set biến môi trường `ADB_PATH` trỏ thẳng tới
+   `adb.exe`:
+   ```powershell
+   setx ADB_PATH "C:\platform-tools\adb.exe"
+   ```
+4. Mở 1 PowerShell mới và xác nhận `adb version`.
+
+### Verify
+```bash
+adb version       # phải in "Android Debug Bridge version 1.0.x"
+adb devices       # cắm USB + accept dialog "Allow USB debugging" trên máy
+```
+
+> Lần đầu cắm USB, điện thoại sẽ hỏi **"Allow USB debugging from this
+> computer?"** — nhấn **Allow**, có thể tick **Always allow**. Nếu không thấy
+> dialog, kiểm tra lại USB cable (cần cable hỗ trợ data, không phải charge-only).
+
+Nếu adb đã cài nhưng không nằm trong `PATH` của user chạy server (thường gặp
+khi chạy qua `systemd` hoặc service), set `ADB_PATH` trong env:
+```bash
+export ADB_PATH=/usr/bin/adb
+```
 
 ## Cài đặt nhanh
 ```bash
@@ -64,6 +114,55 @@ python reset_password.py --username admin
 # hoặc không tương tác: python reset_password.py --non-interactive --username admin --password '<mới>'
 ```
 Script sẽ ghi đè `auth.json` với mật khẩu mới (đã hash). Khởi động lại app sau khi reset.
+
+### HTTPS / reverse proxy (khuyến nghị nếu mở ra Internet)
+Trang `http://...:8000` chạy được nhưng nhiều API browser yêu cầu **secure
+context (HTTPS hoặc localhost)**:
+- `navigator.clipboard.readText / writeText` (đồng bộ clipboard 2 chiều) chỉ
+  hoạt động trên HTTPS — trên domain HTTP sẽ silent fail.
+- Pointer Lock (UHID mouse) cũng yêu cầu HTTPS trong Chrome strict mode.
+
+Cách nhanh nhất là đặt **Caddy** đứng trước, nó tự lo Let's Encrypt:
+```caddyfile
+# /etc/caddy/Caddyfile
+remote.example.com {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+```bash
+sudo systemctl reload caddy
+```
+Caddy sẽ tự xin cert cho `remote.example.com` (cần DNS A record trỏ về VPS).
+Sau đó set thêm 2 env trước khi chạy app:
+```bash
+export SESSION_COOKIE_SECURE=1   # cookie chỉ gửi qua HTTPS
+export PROXY_FIX_X_FOR=1         # ProxyFix tin X-Forwarded-* từ Caddy
+```
+
+Hoặc với **nginx + certbot** (Ubuntu):
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name remote.example.com;
+    ssl_certificate     /etc/letsencrypt/live/remote.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/remote.example.com/privkey.pem;
+
+    # WebSocket cần Upgrade headers cho Socket.IO
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 3600;
+    }
+}
+```
+```bash
+sudo certbot --nginx -d remote.example.com
+```
 
 ### Health check
 `GET /healthz` trả về JSON `{"status":"ok","has_client":<bool>}` — không cần đăng nhập, dùng cho load balancer / uptime monitor.

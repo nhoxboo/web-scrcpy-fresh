@@ -843,6 +843,47 @@ def api_adb_disconnect():
     return jsonify(ok=False, error=output or 'adb disconnect failed'), 500
 
 
+# ---- Session management -----------------------------------------------------
+@app.route('/api/session/status', methods=['GET'])
+@login_required
+def api_session_status():
+    """Report whether the device session is currently held by another client.
+
+    The UI uses this to decide whether to show the "Force kick" button — we
+    don't expose any identifying info about the other client because both
+    are authenticated as the same user (single-account deployment).
+    """
+    with _state_lock:
+        active = scpy_ctx is not None
+    return jsonify(ok=True, active=active)
+
+
+@app.route('/api/session/kick', methods=['POST'])
+@login_required
+def api_session_kick():
+    """Forcibly disconnect whatever client is currently holding the socket.
+
+    Useful when a previous tab crashed or was closed without cleanly
+    releasing the lock — without this the only recovery was restarting
+    the server. handle_disconnect will run and clear scpy_ctx /
+    client_sid; the kicker then reconnects normally.
+    """
+    with _state_lock:
+        sid = client_sid
+    _audit('session_kick', target_sid=bool(sid))
+    if not sid:
+        return jsonify(ok=True, kicked=False)
+    # flask_socketio's high-level disconnect() only works inside a socket
+    # handler; from an HTTP route we have to drop down to the underlying
+    # python-socketio Server. Tests stub this attribute directly.
+    try:
+        socketio.server.disconnect(sid)
+    except Exception as exc:  # noqa: BLE001
+        log.warning('socketio.server.disconnect failed: %s', exc)
+        return jsonify(ok=False, error=str(exc)), 500
+    return jsonify(ok=True, kicked=True)
+
+
 @app.errorhandler(413)
 def _too_large(_e):
     """Friendlier message for over-MAX_CONTENT_LENGTH uploads."""
