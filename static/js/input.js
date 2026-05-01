@@ -123,6 +123,26 @@ class ScrcpyInput {
         this._uhidKeysPressed = [];    // up to 6 HID usage codes
         this._uhidButtons = 0;         // current mouse button mask
         this._pointerLockOwner = null; // element that holds pointer lock
+        // Mouse sensitivity (multiplier on browser movementX/Y deltas before
+        // they are sent as UHID mouse reports). 1.0 = passthrough; <1 slows
+        // the device cursor relative to the host mouse, >1 speeds it up.
+        // The device's own pointer-speed setting in Android stacks on top
+        // of this — adjust here first since it doesn't require touching the
+        // device settings.
+        this._uhidMouseSpeed = Number(options.uhidMouseSpeed);
+        if (!Number.isFinite(this._uhidMouseSpeed) || this._uhidMouseSpeed <= 0) {
+            this._uhidMouseSpeed = 1.0;
+        }
+        // Optional pointer ballistics: when on, movement is scaled
+        // non-linearly so small motions stay slow (precision) while fast
+        // motions get amplified (long throws), similar to Windows pointer
+        // acceleration. Off by default — a flat multiplier is more
+        // predictable for most users.
+        this._uhidMouseAccel = !!options.uhidMouseAccel;
+        // Carry sub-pixel residual across frames so a 0.5x slowdown on a
+        // 1px move doesn't quietly truncate to 0.
+        this._uhidScaleResidualX = 0;
+        this._uhidScaleResidualY = 0;
 
         let mouseX = null;
         let mouseY = null;
@@ -427,8 +447,29 @@ class ScrcpyInput {
         const flushUhidMove = () => {
             uhidMoveScheduled = false;
             if (uhidPendingDx === 0 && uhidPendingDy === 0) return;
-            const dx = uhidPendingDx, dy = uhidPendingDy;
+            const rawDx = uhidPendingDx, rawDy = uhidPendingDy;
             uhidPendingDx = 0; uhidPendingDy = 0;
+            // Apply user sensitivity. With acceleration on, also scale by a
+            // mild non-linear curve based on the move speed within this RAF
+            // tick (~16ms): big sweeps amplify, fine adjustments stay 1:1.
+            const speed = this._uhidMouseSpeed;
+            let sx = rawDx * speed, sy = rawDy * speed;
+            if (this._uhidMouseAccel) {
+                const mag = Math.hypot(rawDx, rawDy);
+                // Curve: 1.0 at mag<=4 (precision zone), grows up to ~2.0 at
+                // mag>=40. Tunable; keeps low-speed feel intact.
+                const accel = 1 + Math.min(1, Math.max(0, (mag - 4) / 36));
+                sx *= accel;
+                sy *= accel;
+            }
+            // Preserve sub-pixel residue so slow drags stay smooth.
+            sx += this._uhidScaleResidualX;
+            sy += this._uhidScaleResidualY;
+            const dx = Math.trunc(sx);
+            const dy = Math.trunc(sy);
+            this._uhidScaleResidualX = sx - dx;
+            this._uhidScaleResidualY = sy - dy;
+            if (dx === 0 && dy === 0) return;
             this._uhidSendMouse(dx, dy, 0, 0);
         };
         const uhidMouseMove = (event) => {
@@ -464,6 +505,22 @@ class ScrcpyInput {
             UHID_MOUSE_DESCRIPTOR,
         );
         this._uhidReady = true;
+    }
+
+    /**
+     * Update the UHID mouse sensitivity at runtime. Called by the toolbar
+     * slider so the user can A/B test speeds without reconnecting.
+     * Clamped to a safe range; values outside (0.05, 8) are sketchy.
+     */
+    setUhidMouseSpeed(speed) {
+        const v = Number(speed);
+        if (!Number.isFinite(v) || v <= 0) return;
+        this._uhidMouseSpeed = Math.max(0.05, Math.min(8, v));
+    }
+
+    /** Toggle Windows-style pointer ballistics for UHID mouse moves. */
+    setUhidMouseAccel(on) {
+        this._uhidMouseAccel = !!on;
     }
 
     /** Tear down the HID devices (called when DeX session ends or socket dies). */
