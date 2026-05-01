@@ -148,6 +148,199 @@ def adb_push(
     return result.returncode == 0, out.strip()
 
 
+# ----- wireless adb + simple adb-shell helpers -------------------------------
+
+
+def is_valid_host(host: str) -> bool:
+    """Allow hostname / IPv4 only (no IPv6, no shell metacharacters).
+
+    Wireless ADB only ever connects to LAN IPs in practice, so a strict
+    allow-list of `[a-zA-Z0-9.\\-]` is enough — and it makes shell injection
+    via `adb connect` impossible regardless of how we shell out.
+    """
+    if not host or len(host) > 253:
+        return False
+    return all(c.isalnum() or c in '.-' for c in host)
+
+
+def is_valid_port(port: int | str) -> bool:
+    try:
+        p = int(port)
+    except (TypeError, ValueError):
+        return False
+    return 1 <= p <= 65535
+
+
+def adb_pair(
+    host: str,
+    port: int | str,
+    code: str,
+    timeout: float = 30.0,
+    adb_path: str | None = None,
+) -> tuple[bool, str]:
+    """Pair with an Android device over Wi-Fi using `adb pair host:port code`.
+
+    Modern adb (>=1.0.41) accepts the 6-digit pairing code as the second
+    positional arg, removing the interactive prompt. We always pass it
+    explicitly so the call is non-interactive even on older builds (which
+    will read it from stdin).
+    """
+    if not is_valid_host(host):
+        return False, f'Invalid host: {host!r}'
+    if not is_valid_port(port):
+        return False, f'Invalid port: {port!r}'
+    if not code.isdigit() or not (4 <= len(code) <= 8):
+        return False, 'Pair code phải là 4-8 chữ số.'
+    target = f'{host}:{int(port)}'
+    cmd = [adb_path or ADB_PATH, 'pair', target, code]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            input=f'{code}\n',  # legacy adb that prompts will read this
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        log.warning('adb pair failed: %s', e)
+        return False, f'{type(e).__name__}: {e}'
+    out = ((result.stdout or '') + (result.stderr or '')).strip()
+    # adb pair prints "Successfully paired" on success.
+    ok = result.returncode == 0 and 'success' in out.lower()
+    return ok, out
+
+
+def adb_connect(
+    host: str,
+    port: int | str,
+    timeout: float = 15.0,
+    adb_path: str | None = None,
+) -> tuple[bool, str]:
+    """Run `adb connect host:port`. Idempotent."""
+    if not is_valid_host(host):
+        return False, f'Invalid host: {host!r}'
+    if not is_valid_port(port):
+        return False, f'Invalid port: {port!r}'
+    target = f'{host}:{int(port)}'
+    cmd = [adb_path or ADB_PATH, 'connect', target]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        log.warning('adb connect failed: %s', e)
+        return False, f'{type(e).__name__}: {e}'
+    out = ((result.stdout or '') + (result.stderr or '')).strip()
+    # adb connect always exits 0 — success is signalled by "connected to ..."
+    # vs "failed to connect" / "cannot connect" in stdout. Be permissive but
+    # check for the failure markers.
+    low = out.lower()
+    ok = result.returncode == 0 and 'cannot' not in low and 'failed' not in low
+    return ok, out
+
+
+def adb_disconnect(
+    host: str | None = None,
+    port: int | str | None = None,
+    timeout: float = 10.0,
+    adb_path: str | None = None,
+) -> tuple[bool, str]:
+    """Run `adb disconnect [host:port]`; with no args disconnects all."""
+    cmd = [adb_path or ADB_PATH, 'disconnect']
+    if host is not None:
+        if not is_valid_host(host):
+            return False, f'Invalid host: {host!r}'
+        if port is None:
+            cmd.append(host)
+        else:
+            if not is_valid_port(port):
+                return False, f'Invalid port: {port!r}'
+            cmd.append(f'{host}:{int(port)}')
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        log.warning('adb disconnect failed: %s', e)
+        return False, f'{type(e).__name__}: {e}'
+    out = ((result.stdout or '') + (result.stderr or '')).strip()
+    return result.returncode == 0, out
+
+
+def adb_shell(
+    args: list[str],
+    serial: str | None = None,
+    timeout: float = 15.0,
+    adb_path: str | None = None,
+) -> tuple[bool, str]:
+    """Run `adb [-s serial] shell <args...>`.
+
+    args is a list of already-validated argv tokens. Caller MUST NOT pass
+    user-controlled strings directly — only members of a fixed allow-list,
+    so command injection is impossible regardless of shell quoting.
+    """
+    if not args or not all(isinstance(a, str) for a in args):
+        return False, 'No shell args.'
+    cmd = [adb_path or ADB_PATH]
+    if serial:
+        cmd += ['-s', serial]
+    cmd += ['shell'] + list(args)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        log.warning('adb shell failed: %s', e)
+        return False, f'{type(e).__name__}: {e}'
+    out = ((result.stdout or '') + (result.stderr or '')).strip()
+    return result.returncode == 0, out
+
+
+def adb_simple(
+    args: list[str],
+    serial: str | None = None,
+    timeout: float = 15.0,
+    adb_path: str | None = None,
+) -> tuple[bool, str]:
+    """Run `adb [-s serial] <args...>` (no `shell` prefix). For e.g. `reboot`."""
+    if not args:
+        return False, 'No args.'
+    cmd = [adb_path or ADB_PATH]
+    if serial:
+        cmd += ['-s', serial]
+    cmd += list(args)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        log.warning('adb_simple failed: %s', e)
+        return False, f'{type(e).__name__}: {e}'
+    out = ((result.stdout or '') + (result.stderr or '')).strip()
+    return result.returncode == 0, out
+
+
+def is_valid_new_display(spec: str) -> bool:
+    """Validate `WxH`, `WxH/dpi`, `/dpi`, or empty (=any).
+
+    scrcpy 3.x accepts these forms; we restrict to digits + a single 'x'
+    + a single '/' so shell-quoting concerns can't bite us when we splice
+    the value into the scrcpy CLI.
+    """
+    if not spec:
+        return False
+    # /dpi only
+    if spec.startswith('/'):
+        return spec[1:].isdigit() and 1 <= int(spec[1:]) <= 1000
+    # split optional /dpi tail
+    if spec.count('/') > 1:
+        return False
+    head, _, dpi = spec.partition('/')
+    if dpi and (not dpi.isdigit() or not (1 <= int(dpi) <= 1000)):
+        return False
+    if 'x' not in head:
+        return False
+    if head.count('x') != 1:
+        return False
+    w, _, h = head.partition('x')
+    if not w.isdigit() or not h.isdigit():
+        return False
+    iw, ih = int(w), int(h)
+    return 100 <= iw <= 7680 and 100 <= ih <= 7680
+
+
 LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
 DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '8000000')
 DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')
@@ -166,6 +359,7 @@ class Scrcpy:
         serial: str | None = None,
         display_id: int | str | None = None,
         max_size: int | str | None = None,
+        new_display: str | None = None,
     ):
         self.video_socket = None
         self.control_socket = None
@@ -194,6 +388,15 @@ class Scrcpy:
         self.display_id = str(display_id) if display_id is not None else DEFAULT_DISPLAY_ID
         # max_size: 0 = device native, otherwise caps the longest edge.
         self.max_size = str(max_size) if max_size is not None else DEFAULT_MAX_SIZE
+        # new_display: when set (e.g. '1920x1080/160'), scrcpy creates a virtual
+        # display on the device and mirrors that one — same trick Samsung DeX
+        # uses, but available on any Android 11+. Mutually exclusive with a
+        # non-default display_id; we'll skip the display_id arg when this is on.
+        self.new_display = (
+            str(new_display).strip()
+            if new_display is not None and str(new_display).strip()
+            else None
+        )
         self.stop = True  # True until scrcpy_start flips it; avoids AttributeError
 
     # ---- device setup ----------------------------------------------------------
@@ -231,13 +434,21 @@ class Scrcpy:
         # so disable it at the source to save device CPU + tunnel bandwidth.
         # display_id selects which display to mirror: 0 = main, 2 = typical
         # Samsung DeX, or any id reported by `adb shell dumpsys display`.
+        # new_display takes precedence: scrcpy server rejects display_id when
+        # new_display is set (it creates a fresh virtual display whose id it
+        # picks). Validate the spec defensively before splicing into the CLI.
+        display_arg = ''
+        if self.new_display and is_valid_new_display(self.new_display):
+            display_arg = f'new_display={self.new_display} '
+        else:
+            display_arg = f'display_id={self.display_id} '
         cmd = self._adb(
             'shell',
             (
                 f'CLASSPATH={DEVICE_SERVER_PATH} app_process / '
                 'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true audio=false '
                 f'log_level=VERBOSE video_bit_rate={self.video_bit_rate} '
-                f'max_fps={self.max_fps} display_id={self.display_id} '
+                f'max_fps={self.max_fps} {display_arg}'
                 f'max_size={self.max_size}'
             ),
         )
@@ -399,10 +610,20 @@ class Scrcpy:
             # and exits before we can connect. Surface that reason so the UI
             # can offer to disable DeX automatically.
             tail = '\n'.join(self._server_stderr_tail[-10:])
+            tail_low = tail.lower()
+            # Friendly errors so the UI can offer auto-fallback / clear hints.
+            if self.new_display and (
+                'createvirtualdisplay' in tail_low
+                or 'permission' in tail_low
+                or 'requires android 11' in tail_low
+                or 'invalid display' in tail_low
+            ):
+                raise RuntimeError(
+                    'Virtual Desktop không khả dụng trên máy này '
+                    '(yêu cầu Android 11+; tắt Virtual Desktop để dùng màn hình chính).'
+                ) from exc
             display_missing = self.display_id != '0' and (
-                'not found' in tail.lower()
-                or 'invalid display' in tail.lower()
-                or 'no display' in tail.lower()
+                'not found' in tail_low or 'invalid display' in tail_low or 'no display' in tail_low
             )
             if display_missing:
                 raise RuntimeError(

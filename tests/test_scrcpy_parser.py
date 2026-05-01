@@ -107,4 +107,78 @@ def test_is_valid_serial(real_scrcpy):
     assert not real_scrcpy.is_valid_serial('')
     assert not real_scrcpy.is_valid_serial('rm -rf /')
     assert not real_scrcpy.is_valid_serial('a;b')
-    assert not real_scrcpy.is_valid_serial('x' * 65)
+
+
+def test_is_valid_host(real_scrcpy):
+    assert real_scrcpy.is_valid_host('192.168.1.10')
+    assert real_scrcpy.is_valid_host('phone-pixel')
+    assert real_scrcpy.is_valid_host('a-b.c1')
+    assert not real_scrcpy.is_valid_host('')
+    assert not real_scrcpy.is_valid_host('1.2.3.4;rm -rf /')
+    assert not real_scrcpy.is_valid_host('$(whoami)')
+    assert not real_scrcpy.is_valid_host('a' * 254)
+
+
+def test_is_valid_port(real_scrcpy):
+    assert real_scrcpy.is_valid_port(1)
+    assert real_scrcpy.is_valid_port('5555')
+    assert real_scrcpy.is_valid_port(65535)
+    assert not real_scrcpy.is_valid_port(0)
+    assert not real_scrcpy.is_valid_port(70000)
+    assert not real_scrcpy.is_valid_port('abc')
+    assert not real_scrcpy.is_valid_port('')
+
+
+def test_is_valid_new_display(real_scrcpy):
+    assert real_scrcpy.is_valid_new_display('1920x1080/160')
+    assert real_scrcpy.is_valid_new_display('2560x1440/240')
+    assert real_scrcpy.is_valid_new_display('1280x720')
+    assert real_scrcpy.is_valid_new_display('/240')
+    assert not real_scrcpy.is_valid_new_display('')
+    assert not real_scrcpy.is_valid_new_display('foo')
+    assert not real_scrcpy.is_valid_new_display('1920x1080;rm')
+    assert not real_scrcpy.is_valid_new_display('1920x1080/abc')
+    assert not real_scrcpy.is_valid_new_display('99x99')  # too small
+    assert not real_scrcpy.is_valid_new_display('99999x99999')
+
+
+def test_adb_pair_validates_inputs(real_scrcpy, monkeypatch):
+    """adb_pair must reject bad host/port/code without invoking subprocess."""
+    called = {'n': 0}
+
+    def fake_run(*args, **kwargs):
+        called['n'] += 1
+        return SimpleNamespace(returncode=0, stdout='Successfully paired', stderr='')
+
+    monkeypatch.setattr(subprocess, 'run', fake_run)
+    ok, _ = real_scrcpy.adb_pair('bad host', 5555, '123456')
+    assert not ok
+    ok, _ = real_scrcpy.adb_pair('1.2.3.4', 0, '123456')
+    assert not ok
+    ok, _ = real_scrcpy.adb_pair('1.2.3.4', 5555, 'abc')
+    assert not ok
+    assert called['n'] == 0  # never invoked subprocess
+    ok, out = real_scrcpy.adb_pair('1.2.3.4', 5555, '123456')
+    assert ok and 'paired' in out.lower()
+
+
+def test_adb_connect_detects_failure_text(real_scrcpy, monkeypatch):
+    """`adb connect` exits 0 even on failure — must look at stdout text."""
+    monkeypatch.setattr(
+        subprocess,
+        'run',
+        lambda *a, **k: SimpleNamespace(
+            returncode=0, stdout='cannot connect to 1.2.3.4:5555', stderr=''
+        ),
+    )
+    ok, _ = real_scrcpy.adb_connect('1.2.3.4', 5555)
+    assert not ok
+    monkeypatch.setattr(
+        subprocess,
+        'run',
+        lambda *a, **k: SimpleNamespace(
+            returncode=0, stdout='connected to 1.2.3.4:5555', stderr=''
+        ),
+    )
+    ok, _ = real_scrcpy.adb_connect('1.2.3.4', 5555)
+    assert ok

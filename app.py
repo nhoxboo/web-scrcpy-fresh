@@ -30,7 +30,21 @@ from flask_socketio import SocketIO
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from scrcpy import Scrcpy, adb_install, adb_push, is_valid_serial, list_adb_devices
+from scrcpy import (
+    Scrcpy,
+    adb_connect,
+    adb_disconnect,
+    adb_install,
+    adb_pair,
+    adb_push,
+    adb_shell,
+    adb_simple,
+    is_valid_host,
+    is_valid_new_display,
+    is_valid_port,
+    is_valid_serial,
+    list_adb_devices,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -717,6 +731,118 @@ def api_push():
             pass
 
 
+# ---- Quick controls (whitelist of adb shell actions) ------------------------
+#
+# Every entry is a fully-resolved argv list — no user input is ever spliced
+# into the command, so shell injection is impossible. The map keys are the
+# only strings the API accepts; anything else is rejected with 400.
+#
+# 'mode' = 'shell' → run via `adb [-s serial] shell <args...>`
+#         'simple' → run via `adb [-s serial] <args...>` (e.g. reboot)
+QUICK_ACTIONS: dict[str, dict] = {
+    # nav keys (very common, no perms needed)
+    'home': {'mode': 'shell', 'args': ['input', 'keyevent', 'KEYCODE_HOME']},
+    'back': {'mode': 'shell', 'args': ['input', 'keyevent', 'KEYCODE_BACK']},
+    'recent': {'mode': 'shell', 'args': ['input', 'keyevent', 'KEYCODE_APP_SWITCH']},
+    'lock': {'mode': 'shell', 'args': ['input', 'keyevent', 'KEYCODE_POWER']},
+    'wake': {'mode': 'shell', 'args': ['input', 'keyevent', 'KEYCODE_WAKEUP']},
+    # volume
+    'vol_up': {'mode': 'shell', 'args': ['input', 'keyevent', 'KEYCODE_VOLUME_UP']},
+    'vol_down': {'mode': 'shell', 'args': ['input', 'keyevent', 'KEYCODE_VOLUME_DOWN']},
+    'mute': {'mode': 'shell', 'args': ['input', 'keyevent', 'KEYCODE_VOLUME_MUTE']},
+    # radios — `svc` works on most devices without root; on some MIUI/HyperOS
+    # builds Wi-Fi enable is silently blocked at the system policy layer.
+    'wifi_on': {'mode': 'shell', 'args': ['svc', 'wifi', 'enable']},
+    'wifi_off': {'mode': 'shell', 'args': ['svc', 'wifi', 'disable']},
+    'bt_on': {'mode': 'shell', 'args': ['svc', 'bluetooth', 'enable']},
+    'bt_off': {'mode': 'shell', 'args': ['svc', 'bluetooth', 'disable']},
+    'data_on': {'mode': 'shell', 'args': ['svc', 'data', 'enable']},
+    'data_off': {'mode': 'shell', 'args': ['svc', 'data', 'disable']},
+    # intents
+    'open_settings': {'mode': 'shell', 'args': ['am', 'start', '-a', 'android.settings.SETTINGS']},
+    'open_camera': {
+        'mode': 'shell',
+        'args': ['am', 'start', '-a', 'android.media.action.IMAGE_CAPTURE'],
+    },
+    'notifications': {
+        'mode': 'shell',
+        'args': ['cmd', 'statusbar', 'expand-notifications'],
+    },
+    # device-level
+    'reboot': {'mode': 'simple', 'args': ['reboot']},
+}
+
+
+@app.route('/api/quick', methods=['POST'])
+@login_required
+def api_quick():
+    """Run a pre-approved adb-shell quick action against the selected device.
+
+    Body: form field `action=<key>` where key is in QUICK_ACTIONS.
+    """
+    action = (request.form.get('action') or '').strip()
+    spec = QUICK_ACTIONS.get(action)
+    if not spec:
+        return jsonify(ok=False, error=f'Hành động không hợp lệ: {action!r}'), 400
+    serial = _selected_serial()
+    if spec['mode'] == 'shell':
+        ok, output = adb_shell(spec['args'], serial=serial)
+    else:
+        ok, output = adb_simple(spec['args'], serial=serial)
+    _audit('quick_action', action=action, ok=ok)
+    if ok:
+        return jsonify(ok=True, output=output)
+    return jsonify(ok=False, error=output or 'adb command failed'), 500
+
+
+# ---- Wireless ADB pair / connect / disconnect -------------------------------
+@app.route('/api/adb/pair', methods=['POST'])
+@login_required
+def api_adb_pair():
+    host = (request.form.get('host') or '').strip()
+    port = (request.form.get('port') or '').strip()
+    code = (request.form.get('code') or '').strip()
+    if not is_valid_host(host) or not is_valid_port(port):
+        return jsonify(ok=False, error='Host hoặc port không hợp lệ.'), 400
+    if not code.isdigit() or not (4 <= len(code) <= 8):
+        return jsonify(ok=False, error='Pair code phải là 4-8 chữ số.'), 400
+    ok, output = adb_pair(host, port, code)
+    _audit('adb_pair', host=host, port=port, ok=ok)
+    if ok:
+        return jsonify(ok=True, output=output)
+    return jsonify(ok=False, error=output or 'adb pair failed'), 500
+
+
+@app.route('/api/adb/connect', methods=['POST'])
+@login_required
+def api_adb_connect():
+    host = (request.form.get('host') or '').strip()
+    port = (request.form.get('port') or '').strip()
+    if not is_valid_host(host) or not is_valid_port(port):
+        return jsonify(ok=False, error='Host hoặc port không hợp lệ.'), 400
+    ok, output = adb_connect(host, port)
+    _audit('adb_connect', host=host, port=port, ok=ok)
+    if ok:
+        return jsonify(ok=True, output=output)
+    return jsonify(ok=False, error=output or 'adb connect failed'), 500
+
+
+@app.route('/api/adb/disconnect', methods=['POST'])
+@login_required
+def api_adb_disconnect():
+    host = (request.form.get('host') or '').strip()
+    port = (request.form.get('port') or '').strip()
+    if host and not is_valid_host(host):
+        return jsonify(ok=False, error='Host không hợp lệ.'), 400
+    if port and not is_valid_port(port):
+        return jsonify(ok=False, error='Port không hợp lệ.'), 400
+    ok, output = adb_disconnect(host or None, port or None)
+    _audit('adb_disconnect', host=host, port=port, ok=ok)
+    if ok:
+        return jsonify(ok=True, output=output)
+    return jsonify(ok=False, error=output or 'adb disconnect failed'), 500
+
+
 @app.errorhandler(413)
 def _too_large(_e):
     """Friendlier message for over-MAX_CONTENT_LENGTH uploads."""
@@ -784,9 +910,24 @@ def handle_connect(auth=None):
                     chosen_disp = str(d)
             except (TypeError, ValueError):
                 log.warning('Invalid display_id from client: %r', req_disp)
+        # Optional virtual display (DeX-style on any Android 11+).
+        # ?new_display=1920x1080/160 — validated against a strict regex
+        # so it can't shell-inject when spliced into the scrcpy CLI.
+        req_newdisp = request.args.get('new_display') if request.args else None
+        chosen_new_display = None
+        if req_newdisp is not None and req_newdisp != '':
+            if is_valid_new_display(req_newdisp):
+                chosen_new_display = req_newdisp
+            else:
+                log.warning('Invalid new_display from client: %r', req_newdisp)
         # Per-session pick (set via /devices) wins over env/CLI default.
         chosen_serial = _selected_serial()
-        scpy_ctx = Scrcpy(serial=chosen_serial, display_id=chosen_disp, max_size=max_size)
+        scpy_ctx = Scrcpy(
+            serial=chosen_serial,
+            display_id=chosen_disp,
+            max_size=max_size,
+            new_display=chosen_new_display,
+        )
         # Forward device → browser clipboard updates. scrcpy server pushes a
         # CLIPBOARD message whenever the device clipboard changes (including
         # right after start, with the current contents).

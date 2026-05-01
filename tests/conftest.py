@@ -19,12 +19,13 @@ def _install_fake_scrcpy():
     class Scrcpy:  # noqa: D401 - test stub
         """No-op replacement for the real Scrcpy class."""
 
-        def __init__(self, serial=None, display_id=None, max_size=None):
+        def __init__(self, serial=None, display_id=None, max_size=None, new_display=None):
             self.started = False
             self.stopped = False
             self.serial = serial
             self.display_id = display_id
             self.max_size = max_size
+            self.new_display = new_display
 
         def scrcpy_start(self, video_callback, video_bit_rate, max_fps=None):  # noqa: ARG002
             self.started = True
@@ -52,11 +53,63 @@ def _install_fake_scrcpy():
     def adb_push(src_path, dest_path, serial=None, timeout=600.0, adb_path=None):  # noqa: ARG001
         return True, '1 file pushed'
 
+    def adb_pair(host, port, code, timeout=30.0, adb_path=None):  # noqa: ARG001
+        return True, f'Successfully paired to {host}:{port}'
+
+    def adb_connect(host, port, timeout=15.0, adb_path=None):  # noqa: ARG001
+        return True, f'connected to {host}:{port}'
+
+    def adb_disconnect(host=None, port=None, timeout=10.0, adb_path=None):  # noqa: ARG001
+        return True, 'disconnected'
+
+    def adb_shell(args, serial=None, timeout=15.0, adb_path=None):  # noqa: ARG001
+        return True, 'ok'
+
+    def adb_simple(args, serial=None, timeout=15.0, adb_path=None):  # noqa: ARG001
+        return True, 'ok'
+
+    def is_valid_host(host: str) -> bool:
+        if not host or len(host) > 253:
+            return False
+        return all(c.isalnum() or c in '.-' for c in host)
+
+    def is_valid_port(port) -> bool:
+        try:
+            p = int(port)
+        except (TypeError, ValueError):
+            return False
+        return 1 <= p <= 65535
+
+    def is_valid_new_display(spec: str) -> bool:
+        if not spec:
+            return False
+        if spec.startswith('/'):
+            return spec[1:].isdigit() and 1 <= int(spec[1:]) <= 1000
+        if spec.count('/') > 1:
+            return False
+        head, _, dpi = spec.partition('/')
+        if dpi and (not dpi.isdigit() or not (1 <= int(dpi) <= 1000)):
+            return False
+        if head.count('x') != 1:
+            return False
+        w, _, h = head.partition('x')
+        if not w.isdigit() or not h.isdigit():
+            return False
+        return 100 <= int(w) <= 7680 and 100 <= int(h) <= 7680
+
     module.Scrcpy = Scrcpy
     module.list_adb_devices = list_adb_devices
     module.is_valid_serial = is_valid_serial
     module.adb_install = adb_install
     module.adb_push = adb_push
+    module.adb_pair = adb_pair
+    module.adb_connect = adb_connect
+    module.adb_disconnect = adb_disconnect
+    module.adb_shell = adb_shell
+    module.adb_simple = adb_simple
+    module.is_valid_host = is_valid_host
+    module.is_valid_port = is_valid_port
+    module.is_valid_new_display = is_valid_new_display
     sys.modules['scrcpy'] = module
 
 
