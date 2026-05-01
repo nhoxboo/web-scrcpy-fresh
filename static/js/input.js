@@ -761,6 +761,29 @@ class ScrcpyInput {
         this.callback(buffer);
     }
 
+    sendSetClipboard(text, paste = false) {
+        // scrcpy SET_CLIPBOARD control message:
+        //   [u8 type=9][i64 sequence][u8 paste][u32 length][bytes...]
+        // sequence is for ACK_CLIPBOARD round-tripping; we don't track acks
+        // so 0 is fine. paste=true asks the device to paste the text into
+        // the focused field after copying.
+        if (text == null) return;
+        const enc = new TextEncoder();
+        const bytes = enc.encode(text);
+        // Server caps clipboard text at ~256k - 5; truncate defensively.
+        const MAX = (1 << 18) - 5;
+        const slice = bytes.length > MAX ? bytes.subarray(0, MAX) : bytes;
+        const buf = new ArrayBuffer(1 + 8 + 1 + 4 + slice.length);
+        const view = new DataView(buf);
+        view.setUint8(0, 9);                 // TYPE_SET_CLIPBOARD
+        // Sequence (i64 BE) — set to 0; we don't use ACK_CLIPBOARD.
+        view.setBigInt64(1, 0n, false);
+        view.setUint8(9, paste ? 1 : 0);
+        view.setUint32(10, slice.length, false);
+        new Uint8Array(buf, 14, slice.length).set(slice);
+        this.callback(buf);
+    }
+
     sendInjectText(text) {
         // scrcpy INJECT_TEXT control message:
         //   [u8 type=1][u32be byte_length][N utf8 bytes]

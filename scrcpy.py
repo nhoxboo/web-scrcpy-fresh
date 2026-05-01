@@ -163,6 +163,13 @@ class Scrcpy:
         self.android_process = None
 
         self.video_callback = None
+        # device_message_callback(msg_type: int, payload: dict) — invoked from
+        # the control reader thread when scrcpy-server pushes a message back
+        # to the client. Today we only forward TYPE_CLIPBOARD (= 0); the
+        # payload dict is {'text': str} for that type. UHID_OUTPUT (LED state
+        # etc.) is parsed but not forwarded since the browser has no use
+        # for it.
+        self.device_message_callback = None
         self.video_bit_rate = DEFAULT_VIDEO_BIT_RATE
         self.max_fps = DEFAULT_MAX_FPS
         # Last few stderr lines from scrcpy-server, used to surface a useful
@@ -257,14 +264,70 @@ class Scrcpy:
         log.info('Video data reception stopped')
 
     def handle_control_conn(self) -> None:
-        log.info('Control connection established (idle)...')
+        # The control socket is bidirectional: we send INJECT_KEYCODE,
+        # UHID_INPUT, SET_CLIPBOARD, etc. *to* the device and the device
+        # pushes DeviceMessage frames *back* (clipboard updates, ack,
+        # UHID output). Parse them frame-by-frame and dispatch via
+        # device_message_callback so app.py can forward to the browser.
+        #
+        # Wire format (scrcpy v3.1, see DeviceMessageWriter.java):
+        #   TYPE_CLIPBOARD     = 0  : u8=0  | u32 length | utf8 bytes
+        #   TYPE_ACK_CLIPBOARD = 1  : u8=1  | u64 sequence
+        #   TYPE_UHID_OUTPUT   = 2  : u8=2  | u16 id | u16 size | data
+        log.info('Control connection established (reading device messages)')
+        buf = b''
+
+        def _need(n: int) -> bool:
+            # Pull bytes until we have at least n in buf, returning False
+            # iff the socket closed mid-message.
+            nonlocal buf
+            while len(buf) < n and not self.stop:
+                try:
+                    chunk = self.control_socket.recv(4096)
+                except OSError:
+                    return False
+                if not chunk:
+                    return False
+                buf += chunk
+            return len(buf) >= n
+
         try:
-            self.control_socket.recv(1)
             while not self.stop:
-                data = self.control_socket.recv(1024)
-                if not data:
+                if not _need(1):
                     break
-                log.debug('Control msg: %r', data)
+                msg_type = buf[0]
+                if msg_type == 0:  # TYPE_CLIPBOARD
+                    if not _need(1 + 4):
+                        break
+                    length = int.from_bytes(buf[1:5], 'big')
+                    if not _need(1 + 4 + length):
+                        break
+                    text_bytes = buf[5 : 5 + length]
+                    buf = buf[5 + length :]
+                    try:
+                        text = text_bytes.decode('utf-8', errors='replace')
+                    except Exception:
+                        text = ''
+                    log.debug('Device clipboard update (%d bytes)', length)
+                    if self.device_message_callback is not None:
+                        try:
+                            self.device_message_callback(0, {'text': text})
+                        except Exception as exc:  # noqa: BLE001
+                            log.warning('device_message_callback raised: %s', exc)
+                elif msg_type == 1:  # TYPE_ACK_CLIPBOARD
+                    if not _need(1 + 8):
+                        break
+                    buf = buf[9:]  # sequence ack — we don't use it client-side
+                elif msg_type == 2:  # TYPE_UHID_OUTPUT
+                    if not _need(1 + 2 + 2):
+                        break
+                    size = int.from_bytes(buf[3:5], 'big')
+                    if not _need(1 + 2 + 2 + size):
+                        break
+                    buf = buf[5 + size :]
+                else:
+                    log.warning('Unknown device message type %d, dropping connection', msg_type)
+                    break
         except OSError as e:
             log.info('Control socket closed: %s', e)
         log.info('Control connection stopped')
