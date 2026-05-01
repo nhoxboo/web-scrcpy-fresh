@@ -464,45 +464,36 @@
     });
     let input = null;
 
-    function initInput(width, height) {
-      function sendControl(data){
-        socket.emit('control_data', data);
-        if (isRecordingMacro && !isPlayingMacro) {
-          let payload = data;
-          try { payload = JSON.parse(JSON.stringify(data)); } catch {}
-          macroEvents.push({ t: Date.now() - macroStartAt, type:'control', payload });
-        }
+    // sendControl forwards a control message to the server, recording it into
+    // an active macro if the user is recording. Hoisted to top-level so it can
+    // be created once and reused by attachInput when the stream actually
+    // connects — keeping it inside attachInput would re-create a new closure
+    // per reconnect with no benefit.
+    function sendControl(data){
+      socket.emit('control_data', data);
+      if (isRecordingMacro && !isPlayingMacro) {
+        let payload = data;
+        try { payload = JSON.parse(JSON.stringify(data)); } catch {}
+        macroEvents.push({ t: Date.now() - macroStartAt, type:'control', payload });
       }
+    }
+
+    // attachInput is the only thing that needs to wait for the server's
+    // screen_size event: ScrcpyInput needs the device's pixel dimensions to
+    // map browser pointer events into device coordinates. Everything else
+    // (toolbar bindings, keyboard typing, macro buttons, Quick Controls,
+    // Reconnect, ...) is wired at top level so the UI keeps working even
+    // when the socket is rejected (single-client lock, scrcpy-server crash,
+    // device unplugged, ...). Without this split, a rejected connection
+    // froze the entire toolbar including the Reconnect button — exactly
+    // the button the user needed to recover.
+    function attachInput(width, height) {
       input = new ScrcpyInput(sendControl, videoElement, width, height, false, {
-        // UHID gives a real USB-HID mouse + keyboard on the device side,
-        // independent of DeX. Toggleable from the toolbar.
         useUhid: uhidOn,
         uhidMouseSpeed: initUhidSpeed,
         uhidMouseAccel: initUhidAccel,
       });
-      if (uhidOn) {
-        input.enableUhid();
-        // Forward keyboard events at the document level — <video> elements
-        // don't take keyboard focus by default. Only when the user has
-        // pointer-locked the video do we hijack keys; otherwise normal
-        // browser shortcuts (F5, Ctrl+T, ...) keep working.
-        const uhidKeyDown = (ev) => {
-          if (document.pointerLockElement !== videoElement) return;
-          if (input && input._uhidKeyDown(ev)) ev.preventDefault();
-        };
-        const uhidKeyUp = (ev) => {
-          if (document.pointerLockElement !== videoElement) return;
-          if (input && input._uhidKeyUp(ev)) ev.preventDefault();
-        };
-        window.addEventListener('keydown', uhidKeyDown, true);
-        window.addEventListener('keyup', uhidKeyUp, true);
-        document.addEventListener('pointerlockchange', () => {
-          const locked = document.pointerLockElement === videoElement;
-          phoneShell.classList.toggle('locked', locked);
-          if (locked) st('UHID: chuột đã khoá. Nhấn ESC để thoát.');
-          else st('UHID: click vào màn hình để khoá chuột.');
-        });
-      }
+      if (uhidOn) input.enableUhid();
       if (dexOn) {
         // DeX-specific cosmetics: drop the phone-shell decoration (notch,
         // camera dot, rounded portrait border) and hide the Rotate button
@@ -512,11 +503,35 @@
         if (rotBtn) rotBtn.style.display = 'none';
       }
       if (uhidOn || dexOn) {
-        const hint = uhidOn
+        st(uhidOn
           ? 'Real mouse/keyboard (UHID). Click màn hình để khoá chuột, ESC để thoát.'
-          : 'DeX mode';
-        st(hint);
+          : 'DeX mode');
       }
+    }
+
+    // UHID + pointer-lock listeners. We attach them once at top level
+    // (gated by uhidOn from localStorage at page load) and they no-op until
+    // `input` exists. Previously they lived inside initInput which meant
+    // they were never installed if the WS was rejected.
+    if (uhidOn) {
+      const uhidKeyDown = (ev) => {
+        if (!input || document.pointerLockElement !== videoElement) return;
+        if (input._uhidKeyDown(ev)) ev.preventDefault();
+      };
+      const uhidKeyUp = (ev) => {
+        if (!input || document.pointerLockElement !== videoElement) return;
+        if (input._uhidKeyUp(ev)) ev.preventDefault();
+      };
+      window.addEventListener('keydown', uhidKeyDown, true);
+      window.addEventListener('keyup', uhidKeyUp, true);
+      document.addEventListener('pointerlockchange', () => {
+        const locked = document.pointerLockElement === videoElement;
+        phoneShell.classList.toggle('locked', locked);
+        if (locked) st('UHID: chuột đã khoá. Nhấn ESC để thoát.');
+        else st('UHID: click vào màn hình để khoá chuột.');
+      });
+    }
+
       // Clipboard sync (always on while connected).
       // Browser → device: when the user copies in the browser, mirror to
       // the device clipboard via SET_CLIPBOARD. Catches both Ctrl+C and
@@ -1109,7 +1124,6 @@
           st('Fullscreen lỗi: '+(e?.message||'unknown'));
         }
       };
-    }
 
     const parser = new VideoParser(({ type, data }) => {
       if (type === 'nalu') {
@@ -1120,7 +1134,7 @@
       } else if (type === 'screen_size') {
         deviceW = data['width'];
         deviceH = data['height'];
-        initInput(deviceW, deviceH);
+        attachInput(deviceW, deviceH);
         fitVideoToViewport();
         st(`Kết nối OK | Screen ${deviceW}x${deviceH}`);
       } else if (type === 'size_change') {
