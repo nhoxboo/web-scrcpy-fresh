@@ -16,9 +16,22 @@ def _resolve_adb_path() -> str:
     env_path = os.environ.get('ADB_PATH')
     if env_path and os.path.exists(env_path):
         return env_path
+
     candidate = shutil.which('adb') or shutil.which('adb.exe')
     if candidate:
         return candidate
+
+    # Workspace fallback: ../platform-tools/adb(.exe)
+    base_dir = os.path.dirname(__file__)
+    fallback_candidates = [
+        os.path.join(base_dir, '..', 'platform-tools', 'adb.exe'),
+        os.path.join(base_dir, '..', 'platform-tools', 'adb'),
+    ]
+    for fb in fallback_candidates:
+        fb_norm = os.path.normpath(fb)
+        if os.path.exists(fb_norm):
+            return fb_norm
+
     # Last-resort default so the module still imports on machines that set
     # ADB_PATH at runtime or have adb on PATH later.
     return 'adb'
