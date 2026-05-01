@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -339,6 +340,127 @@ def is_valid_new_display(spec: str) -> bool:
         return False
     iw, ih = int(w), int(h)
     return 100 <= iw <= 7680 and 100 <= ih <= 7680
+
+
+# Java package + class component name. Both segments must start with a letter
+# and contain only [a-zA-Z0-9_.$]. We cap length defensively. Anything that
+# doesn't match is treated as untrusted output and skipped.
+_PKG_RE = re.compile(r'^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+$')
+_COMPONENT_RE = re.compile(r'^[a-zA-Z][a-zA-Z0-9_$.]*$')
+
+
+def is_valid_pkg(s: str) -> bool:
+    """Validate an Android package name (e.g. com.example.app).
+
+    Used to gate values we splice into adb shell argv. Even though argv
+    avoids shell quoting issues, we still validate so that a malicious
+    `monkey` arg can't try `;rm -rf` style payloads — defence in depth.
+    """
+    return bool(s) and len(s) <= 200 and bool(_PKG_RE.match(s))
+
+
+def parse_launcher_apps(output: str) -> list[dict]:
+    """Parse `cmd package query-activities --brief --components ...` output.
+
+    Each launcher line looks like ``com.pkg.name/com.pkg.name.MainActivity``
+    or ``com.pkg.name/.RelativeActivity``. Lines that don't match this shape
+    (header lines like ``N activities found:``, blank lines, malformed
+    output) are silently dropped. We de-dup by package and sort by the
+    user-visible label so the drawer stays stable across refreshes.
+    """
+    apps: list[dict] = []
+    seen: set[str] = set()
+    for raw in (output or '').splitlines():
+        line = raw.strip()
+        if '/' not in line or ' ' in line:
+            continue
+        pkg, _, activity = line.partition('/')
+        if not is_valid_pkg(pkg):
+            continue
+        if activity.startswith('.'):
+            activity = pkg + activity
+        if not _COMPONENT_RE.match(activity.replace('.', '_').replace('$', '_')):
+            continue
+        if pkg in seen:
+            continue
+        seen.add(pkg)
+        apps.append({'pkg': pkg, 'activity': activity, 'label': humanize_pkg(pkg)})
+    apps.sort(key=lambda a: a['label'].lower())
+    return apps
+
+
+def humanize_pkg(pkg: str) -> str:
+    """Heuristic human-readable label from a package name.
+
+    The launcher would normally use the app's ``applicationLabel`` resource,
+    but resolving that requires a per-app ``dumpsys package`` round-trip
+    (expensive on phones with hundreds of apps). For an MVP launcher the
+    last segment of the package name is a decent fallback, e.g.
+    ``com.android.settings`` → ``Settings``, ``com.spotify.music`` →
+    ``Music``. Real labels can be plumbed through later if needed.
+    """
+    last = pkg.rsplit('.', 1)[-1]
+    # CamelCase / snake_case → space-separated, then title-case.
+    s = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', last)
+    s = s.replace('_', ' ').strip()
+    return s[:1].upper() + s[1:] if s else pkg
+
+
+def list_launcher_apps(
+    serial: str | None = None,
+    timeout: float = 8.0,
+    adb_path: str | None = None,
+) -> tuple[bool, list[dict] | str]:
+    """Query the connected device for apps that have a launcher entry.
+
+    Returns ``(True, [...])`` on success or ``(False, error_msg)`` on
+    failure. Uses ``cmd package query-activities`` which is available on
+    all Android 8+ devices and returns every component matching the
+    LAUNCHER intent in a single round-trip — cheaper than ``pm list
+    packages`` plus per-package activity resolution.
+    """
+    ok, output = adb_shell(
+        [
+            'cmd',
+            'package',
+            'query-activities',
+            '--brief',
+            '--components',
+            '-a',
+            'android.intent.action.MAIN',
+            '-c',
+            'android.intent.category.LAUNCHER',
+        ],
+        serial=serial,
+        timeout=timeout,
+        adb_path=adb_path,
+    )
+    if not ok:
+        return False, output
+    return True, parse_launcher_apps(output)
+
+
+def launch_app(
+    pkg: str,
+    serial: str | None = None,
+    timeout: float = 10.0,
+    adb_path: str | None = None,
+) -> tuple[bool, str]:
+    """Launch the LAUNCHER activity of ``pkg`` via the ``monkey`` shim.
+
+    ``monkey`` is preferred over ``am start -n <pkg>/<activity>`` because we
+    don't need to know the activity name and it works around apps that
+    declare multiple LAUNCHER activities. The package name is validated
+    by the caller; we double-check here for defence-in-depth.
+    """
+    if not is_valid_pkg(pkg):
+        return False, 'Invalid package name'
+    return adb_shell(
+        ['monkey', '-p', pkg, '-c', 'android.intent.category.LAUNCHER', '1'],
+        serial=serial,
+        timeout=timeout,
+        adb_path=adb_path,
+    )
 
 
 LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))

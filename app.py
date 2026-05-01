@@ -41,9 +41,12 @@ from scrcpy import (
     adb_simple,
     is_valid_host,
     is_valid_new_display,
+    is_valid_pkg,
     is_valid_port,
     is_valid_serial,
+    launch_app,
     list_adb_devices,
+    list_launcher_apps,
 )
 
 logging.basicConfig(
@@ -841,6 +844,39 @@ def api_adb_disconnect():
     if ok:
         return jsonify(ok=True, output=output)
     return jsonify(ok=False, error=output or 'adb disconnect failed'), 500
+
+
+# ---- App launcher (Virtual Desktop / DeX chrome) ----------------------------
+@app.route('/api/launcher/list', methods=['GET'])
+@login_required
+def api_launcher_list():
+    """Return apps with a LAUNCHER intent on the connected device.
+
+    Used by the desktop chrome's "Start Menu"-style app drawer so the
+    user can launch apps without having to dig through Android's own
+    launcher. Output is a list of ``{pkg, label, activity}`` dicts.
+    Falls back to ``[]`` rather than 500 when adb returns nothing — the
+    UI shows a friendly empty-state instead of a hard error.
+    """
+    serial = _selected_serial()
+    ok, result = list_launcher_apps(serial=serial)
+    if not ok:
+        return jsonify(ok=False, error=result or 'adb query-activities failed'), 500
+    return jsonify(ok=True, apps=result)
+
+
+@app.route('/api/launcher/launch', methods=['POST'])
+@login_required
+def api_launcher_launch():
+    pkg = (request.form.get('pkg') or '').strip()
+    if not is_valid_pkg(pkg):
+        return jsonify(ok=False, error='Package không hợp lệ.'), 400
+    serial = _selected_serial()
+    ok, output = launch_app(pkg, serial=serial)
+    _audit('launch_app', pkg=pkg, ok=ok)
+    if ok:
+        return jsonify(ok=True, output=output)
+    return jsonify(ok=False, error=output or 'launch failed'), 500
 
 
 @app.errorhandler(413)
