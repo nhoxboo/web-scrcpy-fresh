@@ -3,120 +3,129 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chọn thiết bị</title>
+  <title>Remote Android nhoxboo — Chọn thiết bị</title>
   <link href="/static/css/font-awesome.min.css" rel="stylesheet">
+  <link href="/static/css/glass.css" rel="stylesheet">
   <style>
-    body { margin:0; min-height:100vh; background:#0b1020; font-family:system-ui,sans-serif; color:#e5e7eb; }
-    .wrap { max-width:760px; margin:24px auto; padding:0 16px; }
-    .card { background:#111827; border:1px solid #334155; border-radius:16px; padding:20px; margin-bottom:16px; }
-    h2 { margin:0 0 12px; font-size:1.2rem; }
-    .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    .pill { padding:4px 10px; border-radius:999px; background:#1f2937; font-size:.85rem; }
-    .pill.user { background:#1e3a8a; }
-    .pill.ok { background:#166534; }
-    .pill.warn { background:#7c2d12; }
-    .pill.dim { background:#374151; color:#9ca3af; }
-    .device { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border:1px solid #334155; border-radius:12px; margin-top:10px; background:#0b1220; }
-    .device.selected { border-color:#2563eb; box-shadow:0 0 0 2px #1e40af44 inset; }
-    .meta { display:flex; flex-direction:column; gap:4px; min-width:0; }
-    .serial { font-family:ui-monospace,Menlo,Consolas,monospace; word-break:break-all; }
-    .model { color:#9ca3af; font-size:.9rem; }
-    .actions { display:flex; gap:8px; flex-wrap:wrap; }
-    button, .btn { padding:8px 12px; border-radius:10px; border:none; cursor:pointer; font-weight:500; text-decoration:none; color:inherit; }
-    .btn-primary { background:#2563eb; color:#fff; }
-    .btn-primary[disabled] { background:#374151; cursor:default; }
-    .btn-ghost { background:#1f2937; color:#d1d5db; }
-    .btn-danger { background:#7c2d12; color:#fde68a; }
-    .empty { padding:18px; text-align:center; color:#9ca3af; }
-    .flash { margin:10px 0; color:#93c5fd; font-size:.92rem; }
-    a.back { color:#93c5fd; }
-    .toolbar { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+    body { min-height: 100dvh; padding: 28px 16px; }
+    .wrap { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+    .card { padding: 22px 22px; }
+    .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .head h2 { margin: 0; font-size: 1.18rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+    .head h2 .brand-grad { font-weight: 700; }
+    .head .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .lead { margin: 8px 0 0; color: var(--muted); font-size: .92rem; line-height: 1.55; }
+    .lead code { background: rgba(255, 255, 255, 0.06); padding: 2px 8px; border-radius: 6px; }
+    .device-list { display: flex; flex-direction: column; gap: 10px; }
+    .device {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.03);
+      transition: border-color .2s var(--easing), background .2s var(--easing), transform .15s var(--easing);
+    }
+    .device:hover { border-color: var(--line-strong); background: rgba(255, 255, 255, 0.05); transform: translateY(-1px); }
+    .device.selected {
+      border-color: rgba(106, 166, 255, 0.65);
+      background: linear-gradient(135deg, rgba(106, 166, 255, 0.10), rgba(192, 132, 252, 0.10));
+      box-shadow: 0 14px 36px rgba(106, 166, 255, 0.18);
+    }
+    .meta { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .serial { font-family: ui-monospace, Menlo, Consolas, monospace; word-break: break-all; font-size: .92rem; }
+    .model { color: var(--muted); font-size: .86rem; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+    .empty p { margin: 4px 0; }
+    .flash { padding: 10px 12px; border-radius: var(--radius-sm); background: rgba(106, 166, 255, 0.10); border: 1px solid rgba(106, 166, 255, 0.30); color: #c7d2fe; font-size: .9rem; }
+    .clear-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .clear-row code { background: rgba(255, 255, 255, 0.06); padding: 2px 8px; border-radius: 6px; }
+    @media (max-width: 600px) {
+      .device { flex-direction: column; align-items: stretch; }
+    }
   </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="card">
-    <div class="toolbar">
-      <h2><i class="fa-solid fa-mobile-screen-button"></i> Thiết bị Android</h2>
+  <section class="glass card">
+    <div class="head">
+      <h2><i class="fa-solid fa-mobile-screen-button"></i> <span class="brand-grad">Remote Android nhoxboo</span> · Thiết bị</h2>
       <div class="row">
-        <span class="pill user"><i class="fa-solid fa-user"></i> {{ username }}</span>
-        <a class="btn btn-ghost" href="/"><i class="fa-solid fa-arrow-left"></i> Về trang chính</a>
-        <a class="btn btn-ghost" href="{{ url_for('devices') }}"><i class="fa-solid fa-rotate"></i> Refresh</a>
+        <span class="chip user"><i class="fa-solid fa-user"></i> {{ username }}</span>
+        <a class="glass-btn" href="/"><i class="fa-solid fa-arrow-left"></i> Trang chính</a>
+        <a class="glass-btn" href="{{ url_for('devices') }}"><i class="fa-solid fa-rotate"></i> Refresh</a>
       </div>
     </div>
     {% with messages = get_flashed_messages() %}
-      {% if messages %}<div class="flash">{{ messages[-1] }}</div>{% endif %}
+      {% if messages %}<div class="flash" style="margin-top:10px"><i class="fa-solid fa-circle-info"></i> {{ messages[-1] }}</div>{% endif %}
     {% endwith %}
-    <p style="margin:6px 0 0;color:#9ca3af;font-size:.9rem">
-      Chạy <code style="background:#0b1220;padding:2px 6px;border-radius:6px">adb devices -l</code>.
-      Click "Chọn" để mirror máy đó. Lựa chọn lưu theo phiên đăng nhập.
-      {% if default_serial %}
-        Mặc định (env/CLI): <code>{{ default_serial }}</code>.
-      {% endif %}
+    <p class="lead">
+      Danh sách lấy từ <code>adb devices -l</code>. Click <strong>Chọn</strong> để mirror máy đó — lựa chọn lưu theo phiên đăng nhập.
+      {% if default_serial %}Mặc định (env/CLI): <code>{{ default_serial }}</code>.{% endif %}
     </p>
-  </div>
+  </section>
 
-  <div class="card">
+  <section class="glass card">
     {% if devices %}
-      {% for d in devices %}
-        <div class="device {% if d.serial == selected %}selected{% endif %}">
-          <div class="meta">
-            <div class="row">
-              <span class="serial">{{ d.serial }}</span>
-              {% if d.state == 'device' %}
-                <span class="pill ok">{{ d.state }}</span>
-              {% elif d.state == 'unauthorized' %}
-                <span class="pill warn">unauthorized</span>
-              {% else %}
-                <span class="pill dim">{{ d.state }}</span>
-              {% endif %}
-              {% if d.serial == selected %}
-                <span class="pill user">đang dùng</span>
-              {% endif %}
-              {% if d.serial == default_serial and d.serial != selected %}
-                <span class="pill dim">env default</span>
-              {% endif %}
+      <div class="device-list">
+        {% for d in devices %}
+          <div class="device {% if d.serial == selected %}selected{% endif %}">
+            <div class="meta">
+              <div class="row">
+                <span class="serial">{{ d.serial }}</span>
+                {% if d.state == 'device' %}
+                  <span class="chip ok">{{ d.state }}</span>
+                {% elif d.state == 'unauthorized' %}
+                  <span class="chip warn">unauthorized</span>
+                {% else %}
+                  <span class="chip dim">{{ d.state }}</span>
+                {% endif %}
+                {% if d.serial == selected %}
+                  <span class="chip user">đang dùng</span>
+                {% endif %}
+                {% if d.serial == default_serial and d.serial != selected %}
+                  <span class="chip dim">env default</span>
+                {% endif %}
+              </div>
+              <div class="model">
+                {% if d.model %}{{ d.model }}{% endif %}
+                {% if d.product %} · {{ d.product }}{% endif %}
+                {% if d.transport_id %} · t{{ d.transport_id }}{% endif %}
+              </div>
             </div>
-            <div class="model">
-              {% if d.model %}{{ d.model }}{% endif %}
-              {% if d.product %} · {{ d.product }}{% endif %}
-              {% if d.transport_id %} · t{{ d.transport_id }}{% endif %}
+            <div class="actions">
+              <form method="post" style="margin:0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="serial" value="{{ d.serial }}">
+                <button class="glass-btn primary" type="submit"
+                  {% if d.serial == selected %}disabled{% endif %}
+                  {% if d.state != 'device' %}disabled title="Cần state=device để mirror"{% endif %}>
+                  <i class="fa-solid fa-check"></i>
+                  {% if d.serial == selected %}Đang chọn{% else %}Chọn{% endif %}
+                </button>
+              </form>
             </div>
           </div>
-          <div class="actions">
-            <form method="post">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="serial" value="{{ d.serial }}">
-              <button class="btn-primary" type="submit"
-                {% if d.serial == selected %}disabled{% endif %}
-                {% if d.state != 'device' %}disabled title="Cần state=device để mirror"{% endif %}>
-                <i class="fa-solid fa-check"></i>
-                {% if d.serial == selected %}Đang chọn{% else %}Chọn{% endif %}
-              </button>
-            </form>
-          </div>
-        </div>
-      {% endfor %}
+        {% endfor %}
+      </div>
     {% else %}
       <div class="empty">
         <p><i class="fa-solid fa-plug-circle-xmark"></i> Không thấy thiết bị nào.</p>
-        <p style="font-size:.9rem">Cắm USB &amp; bật USB Debugging, hoặc <code>adb connect &lt;ip:port&gt;</code> qua mạng. Sau đó Refresh.</p>
+        <p style="font-size:.9rem">Cắm USB &amp; bật USB Debugging, hoặc <code>adb connect &lt;ip:port&gt;</code> qua mạng. Sau đó nhấn Refresh.</p>
       </div>
     {% endif %}
-  </div>
+  </section>
 
   {% if selected %}
-    <div class="card">
-      <form method="post" class="row" style="justify-content:space-between">
+    <section class="glass card">
+      <form method="post" class="clear-row">
         <div>
           <div>Đang chọn: <code>{{ selected }}</code></div>
-          <div style="color:#9ca3af;font-size:.9rem">Bỏ chọn để quay về mặc định env/CLI hoặc auto.</div>
+          <div style="color:var(--muted);font-size:.9rem">Bỏ chọn để quay về mặc định env/CLI hoặc auto.</div>
         </div>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="clear">
-        <button class="btn-danger" type="submit"><i class="fa-solid fa-xmark"></i> Bỏ chọn</button>
+        <button class="glass-btn danger" type="submit"><i class="fa-solid fa-xmark"></i> Bỏ chọn</button>
       </form>
-    </div>
+    </section>
   {% endif %}
 </div>
 </body>
