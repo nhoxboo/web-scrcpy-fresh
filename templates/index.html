@@ -253,6 +253,25 @@
 
   <div id="status" class="status"><span class="dot"></span>Đang kết nối...</div>
 
+  <!-- Force-kick: surfaced only when the socket is rejected because another
+       client holds the device lock. Lets the legitimate session owner take
+       over without restarting the server. POST /api/session/kick will
+       disconnect whoever is currently connected, and we then auto-reconnect. -->
+  <button id="forceKick" class="force-kick" type="button" hidden>
+    <i class="fa-solid fa-user-slash" aria-hidden="true"></i>
+    <span>Đẩy client khác ra &amp; kết nối lại</span>
+  </button>
+
+  <!-- Bandwidth/FPS HUD: tiny corner overlay for debugging stream health.
+       Toggle on/off with the Game Mode-style key combo; localStorage flag
+       `streamHud` ('1' to enable). Updates once per second based on
+       cumulative bytes received and NALU count from VideoParser. -->
+  <div id="streamHud" class="stream-hud" hidden>
+    <div><span class="hud-k">FPS</span> <span id="hudFps">0</span></div>
+    <div><span class="hud-k">Mbps</span> <span id="hudKbps">0.0</span></div>
+    <div><span class="hud-k">Frames</span> <span id="hudFrames">0</span></div>
+  </div>
+
   <!-- Quick Controls overlay -->
   <div class="qc-backdrop" id="qcBackdrop">
     <div class="qc-panel" role="dialog" aria-modal="true" aria-labelledby="qcTitle">
@@ -1174,10 +1193,90 @@
       }
     });
 
+    // Stream HUD: tally bytes + frames as they come off the wire so the user
+    // can confirm whether choppy playback is bandwidth, fps, or just decoder
+    // backlog. We measure post-deserialisation (Uint8Array length) which is
+    // close enough to over-the-wire bytes for the stream's purposes.
+    let _hudBytes = 0;
+    let _hudFrames = 0;
+    let _hudLastSampleTs = performance.now();
+    const _hudEl = document.getElementById('streamHud');
+    const _hudFps = document.getElementById('hudFps');
+    const _hudKbps = document.getElementById('hudKbps');
+    const _hudFramesEl = document.getElementById('hudFrames');
+    const _refreshHud = ()=>{
+      _hudEl.hidden = localStorage.getItem('streamHud') !== '1';
+    };
+    _refreshHud();
+    const _origAppend = parser.appendData.bind(parser);
+    parser.appendData = (chunk) => {
+      _hudBytes += chunk.byteLength || 0;
+      _hudFrames += 1; // 1 NALU ≈ 1 frame for scrcpy's keyframe cadence
+      return _origAppend(chunk);
+    };
+    setInterval(()=>{
+      const now = performance.now();
+      const dt = (now - _hudLastSampleTs) / 1000;
+      _hudLastSampleTs = now;
+      if (dt <= 0) return;
+      const mbps = (_hudBytes * 8 / dt / 1e6).toFixed(2);
+      const fps = Math.round(_hudFrames / dt);
+      _hudKbps.textContent = mbps;
+      _hudFps.textContent = String(fps);
+      _hudFramesEl.textContent = String(_hudFrames);
+      _hudBytes = 0;
+      _hudFrames = 0;
+    }, 1000);
+    // Toggle HUD with Ctrl+Shift+H so power users can flip it without going
+    // into DevTools, but no toolbar real estate is consumed by default.
+    document.addEventListener('keydown', (e)=>{
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyH') {
+        e.preventDefault();
+        const cur = localStorage.getItem('streamHud') === '1';
+        localStorage.setItem('streamHud', cur ? '0' : '1');
+        _refreshHud();
+        st(cur ? 'HUD: OFF' : 'HUD: ON (Ctrl+Shift+H để tắt)');
+      }
+    });
+
     socket.on('video_data', (data)=>{ parser.appendData(new Uint8Array(data)); });
-    socket.on('connect', ()=>st('WS connected, đang nhận video...'));
+    socket.on('connect', ()=>{
+      st('WS connected, đang nhận video...');
+      document.getElementById('forceKick').hidden = true;
+    });
     socket.on('disconnect', ()=>st('WS disconnected, đang thử reconnect...'));
-    socket.on('connect_error', (e)=>st('WS lỗi: '+(e?.message||'unknown')));
+    // Surface the force-kick CTA whenever the server rejects the socket
+    // because another client holds the device. The button POSTs /api/session/kick
+    // and reconnects after the previous session releases.
+    socket.on('connect_error', (e)=>{
+      const msg = e?.message || 'unknown';
+      st('WS lỗi: ' + msg);
+      const isLocked = msg.includes('client khác');
+      document.getElementById('forceKick').hidden = !isLocked;
+    });
+    document.getElementById('forceKick').addEventListener('click', async ()=>{
+      const btn = document.getElementById('forceKick');
+      btn.disabled = true;
+      try {
+        const csrf = document.querySelector('meta[name="csrf-token"]').content;
+        const fd = new FormData();
+        fd.append('csrf_token', csrf);
+        const r = await fetch('/api/session/kick', { method:'POST', body: fd, credentials:'same-origin' });
+        const j = await r.json().catch(()=>({}));
+        if (j.ok) {
+          st('Đã đẩy client khác — đang kết nối lại...');
+          btn.hidden = true;
+          // Server-side disconnect is async; give it a beat before retry.
+          setTimeout(()=>{ try { socket.connect(); } catch (_) {} }, 600);
+        } else {
+          st('Kick lỗi: ' + (j.error || 'unknown'));
+        }
+      } catch(e) {
+        st('Kick lỗi: ' + (e?.message || String(e)));
+      } finally {
+        btn.disabled = false;
+      }
+    });
     window.addEventListener('resize', fitVideoToViewport);
     document.addEventListener('fullscreenchange', fitVideoToViewport);
     window.addEventListener('beforeunload', ()=>socket.disconnect());
