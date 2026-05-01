@@ -110,6 +110,23 @@ def _install_fake_scrcpy():
     module.is_valid_host = is_valid_host
     module.is_valid_port = is_valid_port
     module.is_valid_new_display = is_valid_new_display
+
+    import re as _re
+
+    _PKG_RE = _re.compile(r'^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+$')
+
+    def is_valid_pkg(s):
+        return bool(s) and len(s) <= 200 and bool(_PKG_RE.match(s))
+
+    def list_launcher_apps(serial=None, timeout=8.0, adb_path=None):  # noqa: ARG001
+        return True, []
+
+    def launch_app(pkg, serial=None, timeout=10.0, adb_path=None):  # noqa: ARG001
+        return (True, 'Events injected: 1') if is_valid_pkg(pkg) else (False, 'bad pkg')
+
+    module.is_valid_pkg = is_valid_pkg
+    module.list_launcher_apps = list_launcher_apps
+    module.launch_app = launch_app
     sys.modules['scrcpy'] = module
 
 

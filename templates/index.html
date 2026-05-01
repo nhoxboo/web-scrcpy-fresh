@@ -285,6 +285,53 @@
     </div>
   </div>
 
+  <!-- Desktop chrome: only visible when Virtual Desktop or DeX is active.
+       Bottom-of-screen taskbar with start button + quick navigation + clock,
+       plus an app-drawer modal that lists every app on the device that has a
+       LAUNCHER intent (queried via /api/launcher/list). Click an icon to
+       launch the app on the device. Designed to feel like a stripped-down
+       Samsung DeX taskbar — see Shrey113/Android-Dex for inspiration. -->
+  <div class="desktop-chrome" id="desktopChrome" aria-hidden="true">
+    <div class="dock">
+      <button class="dock-btn dock-launcher" id="dockLauncher" type="button"
+              title="App drawer (mở danh sách ứng dụng)">
+        <i class="fa-solid fa-grip" aria-hidden="true"></i>
+        <span>Apps</span>
+      </button>
+      <div class="dock-divider" aria-hidden="true"></div>
+      <button class="dock-btn" id="dockHome" type="button" title="Home">
+        <i class="fa-solid fa-house" aria-hidden="true"></i>
+      </button>
+      <button class="dock-btn" id="dockBack" type="button" title="Back">
+        <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+      </button>
+      <button class="dock-btn" id="dockRecent" type="button" title="Recent">
+        <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+      </button>
+      <div class="dock-spacer" aria-hidden="true"></div>
+      <button class="dock-btn dock-tray" id="dockNotifications" type="button"
+              title="Mở notification shade">
+        <i class="fa-solid fa-bell" aria-hidden="true"></i>
+      </button>
+      <div class="dock-clock" id="dockClock" aria-live="polite">--:--</div>
+    </div>
+  </div>
+
+  <!-- App drawer (shown by clicking the launcher button on the dock). -->
+  <div class="ad-backdrop" id="appDrawerBackdrop" aria-hidden="true">
+    <div class="ad-panel" role="dialog" aria-modal="true" aria-labelledby="adTitle">
+      <div class="ad-row">
+        <h3 id="adTitle"><i class="fa-solid fa-grip"></i> Ứng dụng trên thiết bị</h3>
+        <button id="adClose" type="button"><i class="fa-solid fa-xmark"></i> Đóng</button>
+      </div>
+      <input id="adSearch" class="ad-search" type="text" placeholder="Tìm app..."
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div class="ad-grid" id="adGrid" role="grid" aria-busy="false">
+        <div class="ad-empty" id="adEmpty">Đang tải...</div>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/js/jmuxer.min.js"></script>
   <script>
     const st = (m)=>document.getElementById('status').innerHTML = `<span class='dot'></span>${m}`;
@@ -1181,6 +1228,151 @@
     window.addEventListener('resize', fitVideoToViewport);
     document.addEventListener('fullscreenchange', fitVideoToViewport);
     window.addEventListener('beforeunload', ()=>socket.disconnect());
+
+    // -------------------------------------------------------------------
+    // Desktop chrome (taskbar + app drawer) — only visible when Virtual
+    // Desktop or DeX is active. Wired at top-level so the dock and drawer
+    // remain functional even if scrcpy never connects (e.g. someone wants
+    // to launch an app without touching the screen at all).
+    // -------------------------------------------------------------------
+    (function setupDesktopChrome(){
+      const chromeOn = vdesktopOn || dexOn;
+      if (chromeOn) document.body.classList.add('desktop-chrome-on');
+      const desktopCsrf = document.querySelector('meta[name="csrf-token"]').content;
+
+      // Dock clock — keep ticking even when chrome is hidden so a future
+      // toggle-without-reload (PR C territory) doesn't show "--:--".
+      const clockEl = document.getElementById('dockClock');
+      const tickClock = ()=>{
+        const d = new Date();
+        const hh = String(d.getHours()).padStart(2,'0');
+        const mm = String(d.getMinutes()).padStart(2,'0');
+        clockEl.textContent = `${hh}:${mm}`;
+      };
+      tickClock();
+      setInterval(tickClock, 30*1000);
+
+      // Map the dock nav buttons to the same /api/quick whitelist the Quick
+      // Controls panel uses — single source of truth on the backend.
+      const quick = async (action) => {
+        const fd = new FormData();
+        fd.append('action', action);
+        fd.append('csrf_token', desktopCsrf);
+        try {
+          const r = await fetch('/api/quick', { method:'POST', body: fd, credentials:'same-origin' });
+          const j = await r.json().catch(()=>({}));
+          if (!j.ok) st('Dock lỗi: ' + (j.error || 'unknown'));
+        } catch(e){ st('Dock lỗi: ' + (e?.message||String(e))); }
+      };
+      document.getElementById('dockHome').onclick = ()=> quick('home');
+      document.getElementById('dockBack').onclick = ()=> quick('back');
+      document.getElementById('dockRecent').onclick = ()=> quick('recent');
+      document.getElementById('dockNotifications').onclick = ()=> quick('notifications');
+
+      // App drawer.
+      const adBack = document.getElementById('appDrawerBackdrop');
+      const adGrid = document.getElementById('adGrid');
+      const adSearch = document.getElementById('adSearch');
+      let cachedApps = null;
+
+      const renderApps = (apps, filter='') => {
+        adGrid.innerHTML = '';
+        const q = filter.trim().toLowerCase();
+        const visible = q
+          ? apps.filter(a => a.label.toLowerCase().includes(q) || a.pkg.toLowerCase().includes(q))
+          : apps;
+        if (!visible.length) {
+          const e = document.createElement('div');
+          e.className = 'ad-empty';
+          e.textContent = apps.length
+            ? 'Không có app nào khớp.'
+            : 'Không tìm thấy ứng dụng nào — cần kết nối thiết bị qua adb.';
+          adGrid.appendChild(e);
+          return;
+        }
+        for (const a of visible) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'ad-app';
+          btn.title = a.pkg;
+          const icon = document.createElement('div');
+          icon.className = 'ad-icon';
+          icon.textContent = (a.label || a.pkg).slice(0, 1).toUpperCase();
+          // Stable per-package hue so different apps look different but a
+          // given app keeps the same color across refreshes.
+          let hash = 0;
+          for (const ch of a.pkg) hash = (hash * 31 + ch.charCodeAt(0)) & 0xffffffff;
+          const hue = Math.abs(hash) % 360;
+          icon.style.background = `linear-gradient(135deg, hsl(${hue} 80% 60%), hsl(${(hue+50)%360} 80% 55%))`;
+          const lbl = document.createElement('div');
+          lbl.className = 'ad-label';
+          lbl.textContent = a.label || a.pkg;
+          btn.appendChild(icon);
+          btn.appendChild(lbl);
+          btn.onclick = async ()=>{
+            btn.disabled = true;
+            try {
+              const fd = new FormData();
+              fd.append('pkg', a.pkg);
+              fd.append('csrf_token', desktopCsrf);
+              const r = await fetch('/api/launcher/launch', { method:'POST', body: fd, credentials:'same-origin' });
+              const j = await r.json().catch(()=>({}));
+              if (j.ok) {
+                st('Đã mở ' + (a.label || a.pkg));
+                showDrawer(false);
+              } else {
+                st('Mở app lỗi: ' + (j.error || 'unknown'));
+              }
+            } catch(e){ st('Mở app lỗi: ' + (e?.message||String(e))); }
+            finally { btn.disabled = false; }
+          };
+          adGrid.appendChild(btn);
+        }
+      };
+
+      const showDrawer = async (show) => {
+        adBack.classList.toggle('show', show);
+        adBack.setAttribute('aria-hidden', show ? 'false' : 'true');
+        if (!show) return;
+        adSearch.value = '';
+        adSearch.focus();
+        if (cachedApps) {
+          renderApps(cachedApps);
+          return;
+        }
+        adGrid.innerHTML = '<div class="ad-empty">Đang tải...</div>';
+        try {
+          const r = await fetch('/api/launcher/list', { credentials:'same-origin' });
+          const j = await r.json().catch(()=>({}));
+          if (j.ok) {
+            cachedApps = j.apps || [];
+            renderApps(cachedApps);
+          } else {
+            adGrid.innerHTML = '';
+            const e = document.createElement('div');
+            e.className = 'ad-empty';
+            e.textContent = 'Lỗi: ' + (j.error || 'unknown');
+            adGrid.appendChild(e);
+          }
+        } catch(e) {
+          adGrid.innerHTML = '';
+          const el = document.createElement('div');
+          el.className = 'ad-empty';
+          el.textContent = 'Mạng lỗi: ' + (e?.message||String(e));
+          adGrid.appendChild(el);
+        }
+      };
+
+      document.getElementById('dockLauncher').onclick = ()=> showDrawer(true);
+      document.getElementById('adClose').onclick = ()=> showDrawer(false);
+      adBack.addEventListener('click', (e)=>{ if (e.target === adBack) showDrawer(false); });
+      document.addEventListener('keydown', (e)=>{
+        if (e.key === 'Escape' && adBack.classList.contains('show')) showDrawer(false);
+      });
+      adSearch.addEventListener('input', ()=>{
+        if (cachedApps) renderApps(cachedApps, adSearch.value);
+      });
+    })();
   </script>
 </body>
 </html>
