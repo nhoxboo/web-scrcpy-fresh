@@ -75,7 +75,14 @@
     /* image-rendering: keep edges crisp on integer-scaled HiDPI screens.
        'auto' lets the browser bilinearly smooth at non-integer ratios so
        text doesn't look jagged when the video is shrunk to fit the viewport. */
-    video{max-width:none;max-height:none;object-fit:contain;border-radius:20px;background:#000;touch-action:none;display:block;border:1px solid #1f2937;image-rendering:auto;image-rendering:-webkit-optimize-contrast}
+    /* Disable native HTML5 drag-and-drop and text selection on the video.
+       Otherwise holding the left button and dragging triggers the browser's
+       built-in image drag (with the "forbidden" cursor since there's no
+       drop target), which steals mousemove events and makes touch-mode
+       drag feel sluggish. user-select:none also stops the browser from
+       starting a text selection that flashes on the page. */
+    video{max-width:none;max-height:none;object-fit:contain;border-radius:20px;background:#000;touch-action:none;display:block;border:1px solid #1f2937;image-rendering:auto;image-rendering:-webkit-optimize-contrast;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
+    .phone-shell{user-select:none;-webkit-user-select:none}
     /* In fullscreen, let the video fill the screen instead of keeping the shrunk inline size. */
     video:fullscreen,video:-webkit-full-screen{width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;border-radius:0;border:0;background:#000;object-fit:contain}
     .phone-shell:fullscreen,.phone-shell:-webkit-full-screen{width:100vw!important;height:100vh!important;padding:0;border:0;border-radius:0;background:#000}

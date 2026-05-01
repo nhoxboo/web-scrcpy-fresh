@@ -151,6 +151,19 @@ class ScrcpyInput {
 
         const isUhid = () => this.useUhid && this._uhidReady;
 
+        // Kill the browser's native HTML5 drag-and-drop on the video. When
+        // the user holds left-button and drags inside the <video> element,
+        // Chromium/WebKit otherwise initiates an image-drag operation,
+        // which (a) shows the "forbidden" 🚫 cursor since there's no drop
+        // target, and (b) hijacks mousemove events from us so the touch
+        // gesture sent to scrcpy stops mid-flight. Setting draggable=false
+        // doesn't fully cover Safari, so we also preventDefault() on
+        // dragstart and selectstart.
+        try { videoElement.draggable = false; } catch (e) { /* ignore */ }
+        const blockDrag = (ev) => { ev.preventDefault(); ev.stopPropagation(); };
+        videoElement.addEventListener('dragstart', blockDrag);
+        videoElement.addEventListener('selectstart', blockDrag);
+
         document.addEventListener('mousedown', (event) => {
             if (isUhid()) return; // UHID path handles its own mousedown
             const rect = videoElement.getBoundingClientRect();
@@ -166,6 +179,12 @@ class ScrcpyInput {
 
                     let data = this.createTouchProtocolData(0, mouseX, mouseY, this.width, this.height, 0, 0, 65535);
                     this.callback(data);
+                    // Suppress the native drag/select that the browser
+                    // would otherwise trigger when the cursor moves while
+                    // the button is held — same reason as the dragstart
+                    // listener above. Must be in mousedown because that's
+                    // the gesture's entry point.
+                    event.preventDefault();
                 } else if (event.button === 2) {
                     rightButtonIsPressed = true;
 
