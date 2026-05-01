@@ -34,7 +34,7 @@ def test_correct_login_redirects_and_grants_session(client, csrf, default_creden
     assert resp.headers['Location'].endswith('/')
     home = client.get('/')
     assert home.status_code == 200
-    assert b'Web Scrcpy Panel' in home.data
+    assert b'Remote Android nhoxboo' in home.data
 
 
 def test_wrong_password_shows_error(client, csrf, default_credentials):
