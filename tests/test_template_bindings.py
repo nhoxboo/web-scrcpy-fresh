@@ -24,17 +24,17 @@ INDEX_HTML = Path(__file__).resolve().parent.parent / "templates" / "index.html"
 # they should be bound at top level, not inside a function that only runs on
 # `screen_size`.
 SOCKET_INDEPENDENT_BUTTON_IDS = (
-    "dexMode",       # localStorage flag + reload
+    "dexMode",  # localStorage flag + reload
     "vdesktopMode",  # localStorage flag + reload
-    "uhidInput",     # localStorage flag + reload
-    "quickCtl",      # opens overlay; POSTs go via /api/quick (ADB only)
-    "reconnect",     # MUST work to retry a rejected/dead socket
-    "installApk",    # POSTs /api/install (ADB only)
-    "pushFile",      # POSTs /api/push (ADB only)
-    "kbToggle",      # focuses textarea (no input dep)
+    "uhidInput",  # localStorage flag + reload
+    "quickCtl",  # opens overlay; POSTs go via /api/quick (ADB only)
+    "reconnect",  # MUST work to retry a rejected/dead socket
+    "installApk",  # POSTs /api/install (ADB only)
+    "pushFile",  # POSTs /api/push (ADB only)
+    "kbToggle",  # focuses textarea (no input dep)
     "hotkeyConfig",  # localStorage hotkey config
-    "gameMode",      # localStorage toggle
-    "fullscreen",    # browser fullscreen API
+    "gameMode",  # localStorage toggle
+    "fullscreen",  # browser fullscreen API
     "zoomOut",
     "zoomIn",
     "zoomReset",
@@ -88,9 +88,7 @@ def test_screen_size_handler_calls_attach_input():
         "screen_size handler must call attachInput so ScrcpyInput is created"
     )
     # Make sure the old name wasn't left behind by accident.
-    assert "initInput(" not in js, (
-        "stale initInput(...) reference in screen_size handler"
-    )
+    assert "initInput(" not in js, "stale initInput(...) reference in screen_size handler"
 
 
 def test_socket_independent_buttons_are_bound_outside_attach_input():
