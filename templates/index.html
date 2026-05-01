@@ -86,6 +86,7 @@
     <button class="tool" id="rotate" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
     <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
     <button class="tool" id="dexMode" title="DeX Mode: OFF"><i class="fa-solid fa-display"></i></button>
+    <button class="tool" id="uhidInput" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
     <button class="tool" id="reconnect" title="Kết nối lại"><i class="fa-solid fa-plug-circle-bolt"></i></button>
     <button class="tool" id="installApk" title="Cài APK (file hoặc URL)"><i class="fa-solid fa-cube"></i></button>
     <button class="tool" id="pushFile" title="Tải file vào /sdcard/Download"><i class="fa-solid fa-upload"></i></button>
@@ -238,6 +239,14 @@
     // localStorage.dexDisplayId to the right id from `adb shell dumpsys display`.
     const dexOn = localStorage.getItem('dexMode') === '1';
     const dexId = parseInt(localStorage.getItem('dexDisplayId') || '2', 10) || 2;
+    // UHID input is independent of DeX. When ON the browser registers a
+    // virtual HID mouse + keyboard on the device, giving a real cursor and
+    // proper modifier keys regardless of whether DeX is active. Default is
+    // ON because the experience is closer to a desktop remote-control tool;
+    // user can flip it OFF via the toolbar to fall back to touch input
+    // (useful for typing Vietnamese via the Android IME, which UHID
+    // bypasses).
+    const uhidOn = (localStorage.getItem('uhidInput') ?? '1') === '1';
     const socket = io({
       reconnection:true,
       autoConnect:true,
@@ -273,43 +282,85 @@
         }
       }
       input = new ScrcpyInput(sendControl, videoElement, width, height, false, {
-        // When DeX is on, route mouse + keyboard through UHID so the user
-        // gets a real cursor + real keyboard on the DeX desktop, like
-        // plugging a USB mouse + keyboard into the phone.
-        useUhid: dexOn,
+        // UHID gives a real USB-HID mouse + keyboard on the device side,
+        // independent of DeX. Toggleable from the toolbar.
+        useUhid: uhidOn,
       });
-      if (dexOn) {
+      if (uhidOn) {
         input.enableUhid();
-        // Hide the phone shell's portrait notch/camera dot and shrink
-        // borders — DeX is a desktop UI, not a phone screen.
-        phoneShell.classList.add('dex');
-        // Hide rotate button: DeX UI doesn't rotate.
-        const rotBtn = document.getElementById('rotate');
-        if (rotBtn) rotBtn.style.display = 'none';
-        st('DeX: real mouse + keyboard (UHID). Click màn hình để khoá chuột, ESC để thoát.');
-        // Track pointer lock state for the visual hint.
-        document.addEventListener('pointerlockchange', () => {
-          const locked = document.pointerLockElement === videoElement;
-          phoneShell.classList.toggle('locked', locked);
-          if (locked) st('DeX (UHID): chuột đã khoá. Nhấn ESC để thoát.');
-          else st('DeX (UHID): click vào màn hình để khoá chuột lại.');
-        });
-        // Forward keyboard events at the document level once UHID is up,
-        // because <video> elements don't take keyboard focus by default.
-        // Only when pointer-locked (i.e. user is actively driving DeX) do
-        // we hijack the keys, otherwise the user can still use browser
-        // shortcuts like F5, Ctrl+T, etc.
-        const dexKeyDown = (ev) => {
+        // Forward keyboard events at the document level — <video> elements
+        // don't take keyboard focus by default. Only when the user has
+        // pointer-locked the video do we hijack keys; otherwise normal
+        // browser shortcuts (F5, Ctrl+T, ...) keep working.
+        const uhidKeyDown = (ev) => {
           if (document.pointerLockElement !== videoElement) return;
           if (input && input._uhidKeyDown(ev)) ev.preventDefault();
         };
-        const dexKeyUp = (ev) => {
+        const uhidKeyUp = (ev) => {
           if (document.pointerLockElement !== videoElement) return;
           if (input && input._uhidKeyUp(ev)) ev.preventDefault();
         };
-        window.addEventListener('keydown', dexKeyDown, true);
-        window.addEventListener('keyup', dexKeyUp, true);
+        window.addEventListener('keydown', uhidKeyDown, true);
+        window.addEventListener('keyup', uhidKeyUp, true);
+        document.addEventListener('pointerlockchange', () => {
+          const locked = document.pointerLockElement === videoElement;
+          phoneShell.classList.toggle('locked', locked);
+          if (locked) st('UHID: chuột đã khoá. Nhấn ESC để thoát.');
+          else st('UHID: click vào màn hình để khoá chuột.');
+        });
       }
+      if (dexOn) {
+        // DeX-specific cosmetics: drop the phone-shell decoration (notch,
+        // camera dot, rounded portrait border) and hide the Rotate button
+        // because DeX desktop doesn't rotate.
+        phoneShell.classList.add('dex');
+        const rotBtn = document.getElementById('rotate');
+        if (rotBtn) rotBtn.style.display = 'none';
+      }
+      if (uhidOn || dexOn) {
+        const hint = uhidOn
+          ? 'Real mouse/keyboard (UHID). Click màn hình để khoá chuột, ESC để thoát.'
+          : 'DeX mode';
+        st(hint);
+      }
+      // Clipboard sync (always on while connected).
+      // Browser → device: when the user copies in the browser, mirror to
+      // the device clipboard via SET_CLIPBOARD. Catches both Ctrl+C and
+      // programmatic copies. We use the document-level 'copy' event because
+      // navigator.clipboard.read() requires a user gesture and a permission
+      // grant we may not have.
+      document.addEventListener('copy', () => {
+        try {
+          // Read the freshly-copied selection. setTimeout(0) yields so the
+          // browser has actually populated the clipboard.
+          setTimeout(async () => {
+            try {
+              const text = await navigator.clipboard.readText();
+              if (text && input) input.sendSetClipboard(text, false);
+            } catch { /* permission denied — fall back silently */ }
+          }, 0);
+        } catch { /* ignore */ }
+      });
+      // Device → browser: server pushes 'device_clipboard' whenever the
+      // device clipboard changes (including initial state at connect).
+      // Best-effort write into the browser clipboard; if the permission
+      // isn't granted, surface the text in the status bar so the user can
+      // grab it manually.
+      let lastDeviceClip = null;
+      socket.on('device_clipboard', async (payload) => {
+        const text = (payload && payload.text) || '';
+        if (!text || text === lastDeviceClip) return;
+        lastDeviceClip = text;
+        try {
+          await navigator.clipboard.writeText(text);
+          st('Đã đồng bộ clipboard từ thiết bị (' + text.length + ' ký tự).');
+        } catch {
+          // Browsers require focus + permission for writeText; show a tiny
+          // hint so the user knows the value is available.
+          const preview = text.slice(0, 60).replace(/\s+/g, ' ');
+          st('Clipboard từ thiết bị: ' + preview + (text.length > 60 ? '…' : ''));
+        }
+      });
 
       const keyTap = (code, actionName='key')=>{
         if (isRecordingMacro) {
@@ -376,6 +427,25 @@
         }
         localStorage.setItem('dexMode', cur ? '0' : '1');
         st(cur ? 'Tắt DeX, đang tải lại...' : 'Bật DeX, đang tải lại...');
+        setTimeout(()=>location.reload(), 250);
+      };
+
+      // UHID toggle: independent of DeX. Reload so UHID_CREATE / control
+      // listeners are wired (or unwired) cleanly — the alternative is to
+      // hot-swap event listeners at runtime, which is fragile.
+      const uhidBtn = document.getElementById('uhidInput');
+      const refreshUhidBtn = ()=>{
+        const on = (localStorage.getItem('uhidInput') ?? '1') === '1';
+        uhidBtn.classList.toggle('active', on);
+        uhidBtn.title = on
+          ? 'Real mouse/keyboard (UHID): ON — click để tắt'
+          : 'Real mouse/keyboard (UHID): OFF — touch + IME (gõ tiếng Việt)';
+      };
+      refreshUhidBtn();
+      uhidBtn.onclick = ()=>{
+        const cur = (localStorage.getItem('uhidInput') ?? '1') === '1';
+        localStorage.setItem('uhidInput', cur ? '0' : '1');
+        st(cur ? 'Tắt UHID, đang tải lại...' : 'Bật UHID, đang tải lại...');
         setTimeout(()=>location.reload(), 250);
       };
       // Manual reconnect: useful when the device is unplugged/replugged or

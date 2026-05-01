@@ -787,6 +787,23 @@ def handle_connect(auth=None):
         # Per-session pick (set via /devices) wins over env/CLI default.
         chosen_serial = _selected_serial()
         scpy_ctx = Scrcpy(serial=chosen_serial, display_id=chosen_disp, max_size=max_size)
+        # Forward device → browser clipboard updates. scrcpy server pushes a
+        # CLIPBOARD message whenever the device clipboard changes (including
+        # right after start, with the current contents).
+        sid_for_clip = request.sid
+
+        def _on_device_message(msg_type: int, payload: dict) -> None:
+            if msg_type != 0:  # only clipboard
+                return
+            text = payload.get('text', '')
+            if text is None:
+                return
+            try:
+                socketio.emit('device_clipboard', {'text': text}, to=sid_for_clip)
+            except Exception as exc:  # noqa: BLE001
+                log.warning('emit device_clipboard failed: %s', exc)
+
+        scpy_ctx.device_message_callback = _on_device_message
 
     try:
         scpy_ctx.scrcpy_start(send_video_data, video_bit_rate, max_fps=max_fps)
