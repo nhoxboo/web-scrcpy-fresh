@@ -40,6 +40,15 @@
        landscape orientation rather than a wide video stuffed into a portrait. */
     .phone-shell.landscape{padding:8px;border-radius:22px}
     .phone-shell.landscape::before,.phone-shell.landscape::after{display:none}
+    /* DeX mode: drop the phone shell entirely. DeX is a desktop-style UI,
+       and the rounded "phone" frame around it makes no sense. We also
+       hide the notch/camera dot so the desktop fills the available area
+       like a laptop would. */
+    .phone-shell.dex{padding:0;border-radius:8px;border-color:#4b5563}
+    .phone-shell.dex::before,.phone-shell.dex::after{display:none}
+    /* When pointer lock is engaged for UHID mouse, give the user a clear
+       hint that their mouse is captured (and how to release it). */
+    .phone-shell.dex.locked{outline:2px solid #38bdf8}
     .resize-handle{position:absolute;right:8px;bottom:8px;width:18px;height:18px;border-radius:6px;background:#111827;border:1px solid #475569;cursor:nwse-resize;display:grid;place-items:center;color:#93c5fd;font-size:10px;user-select:none;z-index:3}
     .zoom-bar{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;z-index:6}
     .zoom-btn{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:#0f1b31cc;color:#dbeafe;cursor:pointer}
@@ -263,7 +272,44 @@
           macroEvents.push({ t: Date.now() - macroStartAt, type:'control', payload });
         }
       }
-      input = new ScrcpyInput(sendControl, videoElement, width, height, false);
+      input = new ScrcpyInput(sendControl, videoElement, width, height, false, {
+        // When DeX is on, route mouse + keyboard through UHID so the user
+        // gets a real cursor + real keyboard on the DeX desktop, like
+        // plugging a USB mouse + keyboard into the phone.
+        useUhid: dexOn,
+      });
+      if (dexOn) {
+        input.enableUhid();
+        // Hide the phone shell's portrait notch/camera dot and shrink
+        // borders — DeX is a desktop UI, not a phone screen.
+        phoneShell.classList.add('dex');
+        // Hide rotate button: DeX UI doesn't rotate.
+        const rotBtn = document.getElementById('rotate');
+        if (rotBtn) rotBtn.style.display = 'none';
+        st('DeX: real mouse + keyboard (UHID). Click màn hình để khoá chuột, ESC để thoát.');
+        // Track pointer lock state for the visual hint.
+        document.addEventListener('pointerlockchange', () => {
+          const locked = document.pointerLockElement === videoElement;
+          phoneShell.classList.toggle('locked', locked);
+          if (locked) st('DeX (UHID): chuột đã khoá. Nhấn ESC để thoát.');
+          else st('DeX (UHID): click vào màn hình để khoá chuột lại.');
+        });
+        // Forward keyboard events at the document level once UHID is up,
+        // because <video> elements don't take keyboard focus by default.
+        // Only when pointer-locked (i.e. user is actively driving DeX) do
+        // we hijack the keys, otherwise the user can still use browser
+        // shortcuts like F5, Ctrl+T, etc.
+        const dexKeyDown = (ev) => {
+          if (document.pointerLockElement !== videoElement) return;
+          if (input && input._uhidKeyDown(ev)) ev.preventDefault();
+        };
+        const dexKeyUp = (ev) => {
+          if (document.pointerLockElement !== videoElement) return;
+          if (input && input._uhidKeyUp(ev)) ev.preventDefault();
+        };
+        window.addEventListener('keydown', dexKeyDown, true);
+        window.addEventListener('keyup', dexKeyUp, true);
+      }
 
       const keyTap = (code, actionName='key')=>{
         if (isRecordingMacro) {
