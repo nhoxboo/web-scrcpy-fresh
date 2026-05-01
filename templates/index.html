@@ -113,6 +113,34 @@
     .uhid-speed .v{min-width:42px;text-align:right;font-variant-numeric:tabular-nums;color:var(--accent-1)}
     .uhid-speed label{display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:var(--muted)}
     .uhid-speed input[type=checkbox]{accent-color:var(--accent-2)}
+    /* Quick Controls overlay panel — opens from the toolbar. Floating glass
+       card, click outside to dismiss. Buttons map 1:1 to /api/quick actions. */
+    .qc-backdrop{position:fixed;inset:0;background:rgba(5,7,16,.55);backdrop-filter:blur(2px);
+      -webkit-backdrop-filter:blur(2px);z-index:50;display:none;align-items:flex-start;justify-content:center;
+      padding:80px 16px}
+    .qc-backdrop.show{display:flex}
+    .qc-panel{
+      width:min(560px,100%);max-height:80vh;overflow:auto;padding:18px 20px;
+      background:rgba(20,22,38,.78);backdrop-filter:blur(22px) saturate(160%);
+      -webkit-backdrop-filter:blur(22px) saturate(160%);border:1px solid var(--line);
+      border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.55);color:#e5e7eb;
+    }
+    .qc-panel h3{margin:0 0 4px;font-size:1.05rem;font-weight:600;display:flex;align-items:center;gap:8px}
+    .qc-panel .lead{margin:0 0 12px;color:var(--muted);font-size:.85rem}
+    .qc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+    .qc-grid .qc-btn{
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+      padding:12px 6px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);
+      color:#cfd6ed;cursor:pointer;font-size:.78rem;line-height:1.15;text-align:center;
+      transition:all .15s var(--easing,ease);
+    }
+    .qc-grid .qc-btn i{font-size:1.1rem}
+    .qc-grid .qc-btn:hover{border-color:var(--line-strong);background:rgba(255,255,255,.08);transform:translateY(-1px)}
+    .qc-grid .qc-btn.danger:hover{border-color:#fca5a5;background:rgba(239,68,68,.12);color:#fecaca}
+    .qc-grid .qc-btn[disabled]{opacity:.5;cursor:wait}
+    .qc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+    .qc-row button{padding:6px 12px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#e5e7eb;border-radius:10px;cursor:pointer}
+    .qc-out{margin-top:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;color:var(--muted);min-height:1.2em;word-break:break-all}
     .resize-handle{
       position:absolute;right:10px;bottom:10px;width:20px;height:20px;border-radius:7px;
       background:rgba(15,17,30,.65);border:1px solid var(--line-strong);
@@ -180,6 +208,8 @@
     <button class="tool" id="rotate" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
     <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
     <button class="tool" id="dexMode" title="DeX Mode: OFF"><i class="fa-solid fa-display"></i></button>
+    <button class="tool" id="vdesktopMode" title="Virtual Desktop: OFF — DeX-style cho mọi Android (cần Android 11+). Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
+    <button class="tool" id="quickCtl" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
     <button class="tool" id="uhidInput" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
     <div class="uhid-speed" id="uhidSpeedBox" title="Tốc độ chuột UHID — kéo để chỉnh, không cần reload">
       <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
@@ -222,6 +252,38 @@
   </div>
 
   <div id="status" class="status"><span class="dot"></span>Đang kết nối...</div>
+
+  <!-- Quick Controls overlay -->
+  <div class="qc-backdrop" id="qcBackdrop">
+    <div class="qc-panel" role="dialog" aria-modal="true" aria-labelledby="qcTitle">
+      <div class="qc-row">
+        <h3 id="qcTitle"><i class="fa-solid fa-sliders"></i> Quick Controls</h3>
+        <button id="qcClose" type="button"><i class="fa-solid fa-xmark"></i> Đóng</button>
+      </div>
+      <p class="lead">Lệnh chạy qua <code>adb shell</code> trên thiết bị đang chọn. Một số lệnh (Wi-Fi/BT) có thể bị chặn ở chính sách hệ thống của OEM (MIUI/HyperOS) và sẽ trả về lỗi.</p>
+      <div class="qc-grid">
+        <button class="qc-btn" data-act="home" type="button"><i class="fa-solid fa-house"></i><span>Home</span></button>
+        <button class="qc-btn" data-act="back" type="button"><i class="fa-solid fa-arrow-left"></i><span>Back</span></button>
+        <button class="qc-btn" data-act="recent" type="button"><i class="fa-solid fa-layer-group"></i><span>Recent</span></button>
+        <button class="qc-btn" data-act="lock" type="button"><i class="fa-solid fa-lock"></i><span>Lock</span></button>
+        <button class="qc-btn" data-act="wake" type="button"><i class="fa-solid fa-sun"></i><span>Wake</span></button>
+        <button class="qc-btn" data-act="vol_up" type="button"><i class="fa-solid fa-volume-high"></i><span>Vol +</span></button>
+        <button class="qc-btn" data-act="vol_down" type="button"><i class="fa-solid fa-volume-low"></i><span>Vol −</span></button>
+        <button class="qc-btn" data-act="mute" type="button"><i class="fa-solid fa-volume-xmark"></i><span>Mute</span></button>
+        <button class="qc-btn" data-act="wifi_on" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi ON</span></button>
+        <button class="qc-btn" data-act="wifi_off" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi OFF</span></button>
+        <button class="qc-btn" data-act="bt_on" type="button"><i class="fa-brands fa-bluetooth-b"></i><span>BT ON</span></button>
+        <button class="qc-btn" data-act="bt_off" type="button"><i class="fa-brands fa-bluetooth-b"></i><span>BT OFF</span></button>
+        <button class="qc-btn" data-act="data_on" type="button"><i class="fa-solid fa-tower-cell"></i><span>Data ON</span></button>
+        <button class="qc-btn" data-act="data_off" type="button"><i class="fa-solid fa-tower-cell"></i><span>Data OFF</span></button>
+        <button class="qc-btn" data-act="open_settings" type="button"><i class="fa-solid fa-gear"></i><span>Settings</span></button>
+        <button class="qc-btn" data-act="open_camera" type="button"><i class="fa-solid fa-camera"></i><span>Camera</span></button>
+        <button class="qc-btn" data-act="notifications" type="button"><i class="fa-solid fa-bell"></i><span>Noti drawer</span></button>
+        <button class="qc-btn danger" data-act="reboot" data-confirm="Khởi động lại thiết bị?" type="button"><i class="fa-solid fa-power-off"></i><span>Reboot</span></button>
+      </div>
+      <div class="qc-out" id="qcOut"></div>
+    </div>
+  </div>
 
   <script src="/static/js/jmuxer.min.js"></script>
   <script>
@@ -339,6 +401,12 @@
     // localStorage.dexDisplayId to the right id from `adb shell dumpsys display`.
     const dexOn = localStorage.getItem('dexMode') === '1';
     const dexId = parseInt(localStorage.getItem('dexDisplayId') || '2', 10) || 2;
+    // Virtual Desktop: server-side `--new-display=WxH/dpi`. Mutually
+    // exclusive with DeX (scrcpy refuses both). When DeX is ON we ignore
+    // vdesktop so the user's explicit DeX choice wins; otherwise we
+    // request a virtual display the size of a typical landscape desktop.
+    const vdesktopOn = !dexOn && localStorage.getItem('vdesktopMode') === '1';
+    const vdesktopSpec = (localStorage.getItem('vdesktopSpec') || '1920x1080/160').trim();
     // UHID input is independent of DeX. When ON the browser registers a
     // virtual HID mouse + keyboard on the device, giving a real cursor and
     // proper modifier keys regardless of whether DeX is active. Default is
@@ -356,10 +424,13 @@
     };
     const initUhidSpeed = parseSpeed(localStorage.getItem('uhidMouseSpeed'));
     const initUhidAccel = localStorage.getItem('uhidMouseAccel') === '1';
+    const _socketQuery = dexOn
+      ? { display_id: String(dexId) }
+      : (vdesktopOn ? { new_display: vdesktopSpec } : {});
     const socket = io({
       reconnection:true,
       autoConnect:true,
-      query: dexOn ? { display_id: String(dexId) } : {},
+      query: _socketQuery,
     });
     socket.on('connect', ()=> st('Đã kết nối.'));
     socket.on('disconnect', (reason)=> st('Mất kết nối: '+reason));
@@ -373,6 +444,18 @@
       if (dexCurrentlyOn && looksLikeDexFail) {
         localStorage.setItem('dexMode', '0');
         st('Máy này không hỗ trợ DeX. Đã tự tắt DeX, đang tải lại...');
+        socket.disconnect();
+        setTimeout(()=>location.reload(), 800);
+        return;
+      }
+      // Same auto-fallback for Virtual Desktop on devices that don't
+      // support new_display (Android < 11, or OEMs that block virtual
+      // displays). Reset the flag and reload to mirror the main display.
+      const vdesktopCurrentlyOn = localStorage.getItem('vdesktopMode') === '1';
+      const looksLikeVdesktopFail = /virtual desktop.*không khả dụng/i.test(msg);
+      if (vdesktopCurrentlyOn && looksLikeVdesktopFail) {
+        localStorage.setItem('vdesktopMode', '0');
+        st('Virtual Desktop không khả dụng. Đã tự tắt, đang tải lại...');
         socket.disconnect();
         setTimeout(()=>location.reload(), 800);
         return;
@@ -537,9 +620,96 @@
           }
         }
         localStorage.setItem('dexMode', cur ? '0' : '1');
+        // DeX wins over Virtual Desktop — they're mutually exclusive at the
+        // scrcpy layer, so when the user enables DeX we must clear the
+        // vdesktop flag, otherwise it would silently come back next reload.
+        if (!cur) localStorage.setItem('vdesktopMode', '0');
         st(cur ? 'Tắt DeX, đang tải lại...' : 'Bật DeX, đang tải lại...');
         setTimeout(()=>location.reload(), 250);
       };
+
+      // Virtual Desktop (scrcpy --new-display): a DeX-style virtual display
+      // on any Android 11+. Mutually exclusive with DeX. Shift-click to
+      // override the WxH/dpi spec (default 1920x1080/160).
+      const vdBtn = document.getElementById('vdesktopMode');
+      const refreshVdBtn = ()=>{
+        const on = localStorage.getItem('vdesktopMode') === '1';
+        const spec = localStorage.getItem('vdesktopSpec') || '1920x1080/160';
+        vdBtn.classList.toggle('active', on);
+        vdBtn.title = on
+          ? `Virtual Desktop: ON (${spec}) — Shift-click để chỉnh kích thước`
+          : 'Virtual Desktop: OFF — DeX-style cho mọi Android 11+. Shift-click để chỉnh.';
+      };
+      refreshVdBtn();
+      vdBtn.onclick = (e)=>{
+        if (e.shiftKey) {
+          const cur = localStorage.getItem('vdesktopSpec') || '1920x1080/160';
+          const ans = prompt(
+            'Kích thước Virtual Desktop (WxH/dpi, ví dụ 1920x1080/160 hoặc 2560x1440/240):',
+            cur
+          );
+          if (ans === null) return;
+          const v = ans.trim();
+          // Match server-side is_valid_new_display: digits, single 'x',
+          // optional /dpi. No need for strict regex; the backend rejects
+          // anything else and we surface that error.
+          if (!/^\d{2,4}x\d{2,4}(\/\d{1,4})?$|^\/\d{1,4}$/.test(v)) {
+            st('Spec không hợp lệ. Ví dụ: 1920x1080/160');
+            return;
+          }
+          localStorage.setItem('vdesktopSpec', v);
+          refreshVdBtn();
+          // Don't auto-toggle on shift-click — only spec-edit. User
+          // clicks again (no shift) to enable.
+          if (localStorage.getItem('vdesktopMode') !== '1') return;
+          st('Đổi kích thước Virtual Desktop, đang tải lại...');
+          setTimeout(()=>location.reload(), 250);
+          return;
+        }
+        const cur = localStorage.getItem('vdesktopMode') === '1';
+        localStorage.setItem('vdesktopMode', cur ? '0' : '1');
+        if (!cur) localStorage.setItem('dexMode', '0'); // mutually exclusive
+        st(cur ? 'Tắt Virtual Desktop, đang tải lại...' : 'Bật Virtual Desktop, đang tải lại...');
+        setTimeout(()=>location.reload(), 250);
+      };
+
+      // Quick Controls overlay: opens a glass panel of pre-approved adb
+      // shell actions (nav keys, volume, Wi-Fi/BT/data toggles, intents,
+      // reboot). Each button POSTs /api/quick with a key from the server's
+      // QUICK_ACTIONS whitelist — no shell injection surface.
+      const qcBtn = document.getElementById('quickCtl');
+      const qcBackdrop = document.getElementById('qcBackdrop');
+      const qcClose = document.getElementById('qcClose');
+      const qcOut = document.getElementById('qcOut');
+      const showQc = (v)=>{ qcBackdrop.classList.toggle('show', v); if (v) qcOut.textContent=''; };
+      qcBtn.onclick = ()=> showQc(true);
+      qcClose.onclick = ()=> showQc(false);
+      qcBackdrop.addEventListener('click', (e)=>{ if (e.target === qcBackdrop) showQc(false); });
+      document.addEventListener('keydown', (e)=>{
+        if (e.key === 'Escape' && qcBackdrop.classList.contains('show')) showQc(false);
+      });
+      const _qcCsrf = document.querySelector('meta[name="csrf-token"]').content;
+      qcBackdrop.querySelectorAll('.qc-btn').forEach(btn => {
+        btn.addEventListener('click', async ()=>{
+          const act = btn.getAttribute('data-act');
+          const confirmMsg = btn.getAttribute('data-confirm');
+          if (confirmMsg && !confirm(confirmMsg)) return;
+          btn.setAttribute('disabled', 'true');
+          qcOut.textContent = `→ ${act}...`;
+          try {
+            const fd = new FormData();
+            fd.append('action', act);
+            fd.append('csrf_token', _qcCsrf);
+            const r = await fetch('/api/quick', { method:'POST', body: fd, credentials:'same-origin' });
+            const j = await r.json().catch(()=>({}));
+            qcOut.textContent = (j.ok ? '✔ ' : '✖ ') + (j.output || j.error || JSON.stringify(j));
+          } catch (e) {
+            qcOut.textContent = '✖ ' + (e && e.message || String(e));
+          } finally {
+            btn.removeAttribute('disabled');
+          }
+        });
+      });
 
       // UHID toggle: independent of DeX. Reload so UHID_CREATE / control
       // listeners are wired (or unwired) cleanly — the alternative is to

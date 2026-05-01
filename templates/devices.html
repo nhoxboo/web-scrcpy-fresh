@@ -127,6 +127,78 @@
       </form>
     </section>
   {% endif %}
+
+  <section class="glass card" id="wireless">
+    <h3 style="margin:0 0 4px;font-size:1.05rem;font-weight:600;display:flex;align-items:center;gap:8px">
+      <i class="fa-solid fa-wifi"></i> Kết nối qua Wi-Fi
+    </h3>
+    <p class="lead" style="margin-top:6px">
+      Trên thiết bị: bật <strong>Settings → Developer Options → Wireless debugging</strong> →
+      <em>Pair device with pairing code</em> để lấy <code>IP:cổng</code> và mã 6 chữ số.
+      Sau khi pair lần đầu, lần sau chỉ cần <strong>Connect</strong> tới <code>IP:cổng debug</code>
+      (cổng debug khác cổng pair, lấy ở cùng mục <em>Wireless debugging</em>).
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+      <div>
+        <strong style="font-size:.92rem">1. Pair lần đầu</strong>
+        <form id="pairForm" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label style="font-size:.82rem;color:var(--muted)">Pair host (IP)
+            <input name="host" required placeholder="192.168.1.100" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#e5e7eb">
+          </label>
+          <label style="font-size:.82rem;color:var(--muted)">Pair port
+            <input name="port" type="number" min="1" max="65535" required placeholder="37123" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#e5e7eb">
+          </label>
+          <label style="font-size:.82rem;color:var(--muted)">Pair code (6 chữ số)
+            <input name="code" required pattern="\d{4,8}" inputmode="numeric" placeholder="123456" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#e5e7eb">
+          </label>
+          <button class="glass-btn primary" type="submit"><i class="fa-solid fa-link"></i> Pair</button>
+        </form>
+      </div>
+      <div>
+        <strong style="font-size:.92rem">2. Kết nối (đã pair rồi)</strong>
+        <form id="connForm" style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label style="font-size:.82rem;color:var(--muted)">Connect host
+            <input name="host" required placeholder="192.168.1.100" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#e5e7eb">
+          </label>
+          <label style="font-size:.82rem;color:var(--muted)">Connect port
+            <input name="port" type="number" min="1" max="65535" required value="5555" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:#e5e7eb">
+          </label>
+          <button class="glass-btn primary" type="submit" style="margin-top:auto"><i class="fa-solid fa-plug"></i> Connect</button>
+        </form>
+      </div>
+    </div>
+    <pre id="wireOut" style="margin-top:12px;font-size:.78rem;color:var(--muted);background:rgba(0,0,0,.25);padding:10px 12px;border-radius:8px;min-height:1.6em;white-space:pre-wrap;word-break:break-all"></pre>
+  </section>
 </div>
+<script>
+  // Tiny helper: POST a form via fetch and pipe the JSON result into #wireOut.
+  // The page reloads on success so the new TCP/IP serial shows up in the
+  // device list above and the user can immediately click "Chọn" on it.
+  const wireOut = document.getElementById('wireOut');
+  const _csrf = '{{ csrf_token() }}';
+  const wirePost = async (url, form) => {
+    wireOut.textContent = `→ POST ${url}...`;
+    const fd = new FormData(form);
+    fd.set('csrf_token', _csrf);
+    try {
+      const r = await fetch(url, { method:'POST', body: fd, credentials:'same-origin' });
+      const j = await r.json().catch(()=>({}));
+      wireOut.textContent = (j.ok ? '✔ ' : '✖ ') + (j.output || j.error || JSON.stringify(j));
+      if (j.ok) setTimeout(()=>location.reload(), 1100);
+    } catch (e) {
+      wireOut.textContent = '✖ ' + (e && e.message || String(e));
+    }
+  };
+  document.getElementById('pairForm').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    wirePost('/api/adb/pair', e.target);
+  });
+  document.getElementById('connForm').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    wirePost('/api/adb/connect', e.target);
+  });
+</script>
 </body>
 </html>
