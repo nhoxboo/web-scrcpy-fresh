@@ -1,15 +1,138 @@
+// ---- HID report descriptors -------------------------------------------------
+// Boot-protocol keyboard: 8-byte report (1 modifier byte + 1 reserved +
+// up to 6 simultaneously pressed key usage codes). Compatible with every
+// Android version that supports UHID (Android 11+).
+const UHID_KEYBOARD_DESCRIPTOR = new Uint8Array([
+    0x05, 0x01,             // Usage Page (Generic Desktop)
+    0x09, 0x06,             // Usage (Keyboard)
+    0xA1, 0x01,             // Collection (Application)
+    0x05, 0x07,             //   Usage Page (Keyboard)
+    0x19, 0xE0,             //   Usage Min (224 — LCtrl)
+    0x29, 0xE7,             //   Usage Max (231 — RGui)
+    0x15, 0x00, 0x25, 0x01, //   Logical 0..1
+    0x75, 0x01, 0x95, 0x08, //   8 bits of modifiers
+    0x81, 0x02,             //   Input (Data,Var,Abs)
+    0x95, 0x01, 0x75, 0x08, //   1 reserved byte
+    0x81, 0x03,             //   Input (Const,Var,Abs)
+    0x95, 0x06, 0x75, 0x08, //   6 keys, 8 bits each
+    0x15, 0x00, 0x25, 0x65, //   Logical 0..101
+    0x05, 0x07,             //   Usage Page (Keyboard)
+    0x19, 0x00, 0x29, 0x65, //   Usage 0..101
+    0x81, 0x00,             //   Input (Data,Array)
+    0xC0,                   // End Collection
+]);
+
+// Mouse with relative X/Y as i16 + V wheel + H wheel (AC Pan).
+// Report = 7 bytes:
+//   [0]      buttons mask (5 bits)
+//   [1..2]   dx (i16, little-endian)
+//   [3..4]   dy (i16, little-endian)
+//   [5]      vertical wheel (i8)
+//   [6]      horizontal wheel (i8)
+const UHID_MOUSE_DESCRIPTOR = new Uint8Array([
+    0x05, 0x01,             // Usage Page (Generic Desktop)
+    0x09, 0x02,             // Usage (Mouse)
+    0xA1, 0x01,             // Collection (Application)
+    0x09, 0x01,             //   Usage (Pointer)
+    0xA1, 0x00,             //   Collection (Physical)
+    0x05, 0x09,             //     Usage Page (Buttons)
+    0x19, 0x01, 0x29, 0x05, //     Buttons 1..5
+    0x15, 0x00, 0x25, 0x01,
+    0x95, 0x05, 0x75, 0x01,
+    0x81, 0x02,             //     Input (Data,Var,Abs)
+    0x95, 0x01, 0x75, 0x03,
+    0x81, 0x03,             //     3-bit padding
+    0x05, 0x01,             //     Generic Desktop
+    0x09, 0x30, 0x09, 0x31, //     X, Y
+    0x16, 0x01, 0x80,       //     Logical Min -32767
+    0x26, 0xFF, 0x7F,       //     Logical Max 32767
+    0x75, 0x10, 0x95, 0x02,
+    0x81, 0x06,             //     Input (Data,Var,Rel)
+    0x09, 0x38,             //     Usage (Wheel)
+    0x15, 0x81, 0x25, 0x7F, //     -127..127
+    0x75, 0x08, 0x95, 0x01,
+    0x81, 0x06,             //     Input (Data,Var,Rel)
+    0x05, 0x0C,             //     Usage Page (Consumer)
+    0x0A, 0x38, 0x02,       //     Usage (AC Pan)
+    0x95, 0x01, 0x75, 0x08,
+    0x81, 0x06,             //     Input (Data,Var,Rel)
+    0xC0,                   //   End Collection
+    0xC0,                   // End Collection
+]);
+
+// KeyboardEvent.code -> HID Usage ID for Keyboard/Keypad page (0x07).
+// Spec: USB HID Usage Tables 1.12, section 10 (Keyboard/Keypad Page).
+// Modifier keys live in HID_MODIFIER_BITS instead and toggle the byte 0
+// of the boot keyboard report.
+const HID_KEYBOARD_USAGE = {
+    'KeyA': 0x04, 'KeyB': 0x05, 'KeyC': 0x06, 'KeyD': 0x07, 'KeyE': 0x08,
+    'KeyF': 0x09, 'KeyG': 0x0a, 'KeyH': 0x0b, 'KeyI': 0x0c, 'KeyJ': 0x0d,
+    'KeyK': 0x0e, 'KeyL': 0x0f, 'KeyM': 0x10, 'KeyN': 0x11, 'KeyO': 0x12,
+    'KeyP': 0x13, 'KeyQ': 0x14, 'KeyR': 0x15, 'KeyS': 0x16, 'KeyT': 0x17,
+    'KeyU': 0x18, 'KeyV': 0x19, 'KeyW': 0x1a, 'KeyX': 0x1b, 'KeyY': 0x1c,
+    'KeyZ': 0x1d,
+    'Digit1': 0x1e, 'Digit2': 0x1f, 'Digit3': 0x20, 'Digit4': 0x21,
+    'Digit5': 0x22, 'Digit6': 0x23, 'Digit7': 0x24, 'Digit8': 0x25,
+    'Digit9': 0x26, 'Digit0': 0x27,
+    'Enter': 0x28, 'Escape': 0x29, 'Backspace': 0x2a, 'Tab': 0x2b,
+    'Space': 0x2c, 'Minus': 0x2d, 'Equal': 0x2e, 'BracketLeft': 0x2f,
+    'BracketRight': 0x30, 'Backslash': 0x31, 'Semicolon': 0x33,
+    'Quote': 0x34, 'Backquote': 0x35, 'Comma': 0x36, 'Period': 0x37,
+    'Slash': 0x38, 'CapsLock': 0x39,
+    'F1': 0x3a, 'F2': 0x3b, 'F3': 0x3c, 'F4': 0x3d, 'F5': 0x3e,
+    'F6': 0x3f, 'F7': 0x40, 'F8': 0x41, 'F9': 0x42, 'F10': 0x43,
+    'F11': 0x44, 'F12': 0x45,
+    'PrintScreen': 0x46, 'ScrollLock': 0x47, 'Pause': 0x48,
+    'Insert': 0x49, 'Home': 0x4a, 'PageUp': 0x4b, 'Delete': 0x4c,
+    'End': 0x4d, 'PageDown': 0x4e,
+    'ArrowRight': 0x4f, 'ArrowLeft': 0x50, 'ArrowDown': 0x51, 'ArrowUp': 0x52,
+    'NumLock': 0x53, 'NumpadDivide': 0x54, 'NumpadMultiply': 0x55,
+    'NumpadSubtract': 0x56, 'NumpadAdd': 0x57, 'NumpadEnter': 0x58,
+    'Numpad1': 0x59, 'Numpad2': 0x5a, 'Numpad3': 0x5b, 'Numpad4': 0x5c,
+    'Numpad5': 0x5d, 'Numpad6': 0x5e, 'Numpad7': 0x5f, 'Numpad8': 0x60,
+    'Numpad9': 0x61, 'Numpad0': 0x62, 'NumpadDecimal': 0x63,
+    'IntlBackslash': 0x64, 'ContextMenu': 0x65,
+};
+
+// Modifier keys map to bits in byte 0 of the boot keyboard report.
+const HID_MODIFIER_BITS = {
+    'ControlLeft': 0x01, 'ShiftLeft': 0x02, 'AltLeft': 0x04, 'MetaLeft': 0x08,
+    'ControlRight': 0x10, 'ShiftRight': 0x20, 'AltRight': 0x40, 'MetaRight': 0x80,
+};
+
 class ScrcpyInput {
-    constructor(callback, videoElement, width, height, debug = false) {
+    constructor(callback, videoElement, width, height, debug = false, options = {}) {
         this.callback = callback
         this.width = width
         this.height = height
         this.debug = debug
+        // useUhid: when true, mouse and keyboard are routed through UHID
+        // (HID-over-AOA via scrcpy UHID_CREATE / UHID_INPUT control messages)
+        // instead of inject_keycode + touch events. This gives a real cursor
+        // + real keyboard on Samsung DeX (and any Android virtual display),
+        // and is what makes desktop-style UI usable.
+        this.useUhid = !!options.useUhid;
+        this.videoElement = videoElement;
+        // Will be initialized after the video metadata arrives (we need a
+        // valid socket/control connection too, since UHID_CREATE only makes
+        // sense after the server is ready). See enableUhid().
+        this._uhidReady = false;
+        this._uhidKeyboardId = 1;
+        this._uhidMouseId = 2;
+        this._uhidMods = 0;            // current modifier byte
+        this._uhidKeysPressed = [];    // up to 6 HID usage codes
+        this._uhidButtons = 0;         // current mouse button mask
+        this._pointerLockOwner = null; // element that holds pointer lock
+
         let mouseX = null;
         let mouseY = null;
         let leftButtonIsPressed = false;
         let rightButtonIsPressed = false;
 
+        const isUhid = () => this.useUhid && this._uhidReady;
+
         document.addEventListener('mousedown', (event) => {
+            if (isUhid()) return; // UHID path handles its own mousedown
             const rect = videoElement.getBoundingClientRect();
             const local_x = event.clientX - rect.left;
             const local_y = event.clientY - rect.top;
@@ -33,6 +156,7 @@ class ScrcpyInput {
         });
 
         document.addEventListener('mouseup', (event) => {
+            if (isUhid()) return;
             if (!leftButtonIsPressed) return;
 
             const rect = videoElement.getBoundingClientRect();
@@ -75,6 +199,7 @@ class ScrcpyInput {
             this.callback(data);
         };
         document.addEventListener('mousemove', (event) => {
+            if (isUhid()) return;
             if (!leftButtonIsPressed) return;
             if (!videoElement.contains(event.target)) return;
             pendingMouseEvent = event;
@@ -187,6 +312,13 @@ class ScrcpyInput {
         });
 
         videoElement.addEventListener('wheel', (event) => {
+            if (isUhid()) {
+                // In UHID mode, wheel is delivered as a HID mouse report
+                // with vertical/horizontal wheel bytes. See _uhidSendMouse.
+                this._uhidSendWheel(event.deltaX, event.deltaY);
+                event.preventDefault();
+                return;
+            }
             const hScroll = event.deltaX;
             const vScroll = event.deltaY;
             const deltaMode = event.deltaMode;
@@ -219,6 +351,12 @@ class ScrcpyInput {
         });
 
         videoElement.addEventListener('keydown', async (event) => {
+            if (isUhid()) {
+                if (this._uhidKeyDown(event)) {
+                    event.preventDefault();
+                }
+                return;
+            }
             const androidKeyCode = this.mapToAndroidKeyCode(event);
             if (androidKeyCode !== null) {
                 this.sendKeyCode(event, 0, androidKeyCode)
@@ -236,6 +374,12 @@ class ScrcpyInput {
         });
 
         videoElement.addEventListener('keyup', async (event) => {
+            if (isUhid()) {
+                if (this._uhidKeyUp(event)) {
+                    event.preventDefault();
+                }
+                return;
+            }
             const androidKeyCode = this.mapToAndroidKeyCode(event);
             if (androidKeyCode !== null) {
                 this.sendKeyCode(event, 1, androidKeyCode)
@@ -243,6 +387,227 @@ class ScrcpyInput {
                 console.log(`key: ${event.code}, not mapped to android key code`);
             }
         });
+
+        // ---- UHID mouse handling --------------------------------------------
+        // We use Pointer Lock so movementX/Y are real relative deltas (the
+        // browser cursor disappears, mouse motion is captured). This matches
+        // how every remote-desktop client (Parsec, Moonlight, NoMachine) does
+        // mouse capture, and it lets the device-side cursor — driven by the
+        // emulated USB HID mouse — move freely on the DeX desktop.
+        const uhidMouseDown = (event) => {
+            if (!isUhid()) return;
+            if (!videoElement.contains(event.target)) return;
+            // First click: request pointer lock so subsequent mouse motion
+            // is delivered as relative deltas. The button event itself is
+            // also sent so the user can drag from outside-locked into a
+            // click without losing the press.
+            if (document.pointerLockElement !== videoElement) {
+                try { videoElement.requestPointerLock(); } catch (e) { /* ignore */ }
+            }
+            const bit = this._uhidButtonBit(event.button);
+            if (bit !== null) {
+                this._uhidButtons |= bit;
+                this._uhidSendMouse(0, 0, 0, 0);
+            }
+            event.preventDefault();
+        };
+        const uhidMouseUp = (event) => {
+            if (!isUhid()) return;
+            const bit = this._uhidButtonBit(event.button);
+            if (bit !== null) {
+                this._uhidButtons &= ~bit;
+                this._uhidSendMouse(0, 0, 0, 0);
+            }
+            event.preventDefault();
+        };
+        // RAF-coalesce relative mouse deltas so we don't flood the WebSocket
+        // on high-poll-rate mice. Accumulated dx/dy is sent as a single HID
+        // report per frame.
+        let uhidPendingDx = 0, uhidPendingDy = 0, uhidMoveScheduled = false;
+        const flushUhidMove = () => {
+            uhidMoveScheduled = false;
+            if (uhidPendingDx === 0 && uhidPendingDy === 0) return;
+            const dx = uhidPendingDx, dy = uhidPendingDy;
+            uhidPendingDx = 0; uhidPendingDy = 0;
+            this._uhidSendMouse(dx, dy, 0, 0);
+        };
+        const uhidMouseMove = (event) => {
+            if (!isUhid()) return;
+            if (document.pointerLockElement !== videoElement) return;
+            uhidPendingDx += event.movementX || 0;
+            uhidPendingDy += event.movementY || 0;
+            if (!uhidMoveScheduled) {
+                uhidMoveScheduled = true;
+                requestAnimationFrame(flushUhidMove);
+            }
+        };
+        videoElement.addEventListener('mousedown', uhidMouseDown);
+        document.addEventListener('mouseup', uhidMouseUp);
+        document.addEventListener('mousemove', uhidMouseMove);
+    }
+
+    // ---- UHID public API -------------------------------------------------------
+
+    /**
+     * Register HID keyboard + mouse devices with the scrcpy server. Must be
+     * called after the control socket is up. Idempotent: subsequent calls
+     * with the same useUhid flag are no-ops.
+     */
+    enableUhid() {
+        if (!this.useUhid || this._uhidReady) return;
+        this.sendUhidCreate(
+            this._uhidKeyboardId, 0x18d1, 0x4ee0, 'web-scrcpy keyboard',
+            UHID_KEYBOARD_DESCRIPTOR,
+        );
+        this.sendUhidCreate(
+            this._uhidMouseId, 0x18d1, 0x4ee1, 'web-scrcpy mouse',
+            UHID_MOUSE_DESCRIPTOR,
+        );
+        this._uhidReady = true;
+    }
+
+    /** Tear down the HID devices (called when DeX session ends or socket dies). */
+    disableUhid() {
+        if (!this._uhidReady) return;
+        try { this.sendUhidDestroy(this._uhidKeyboardId); } catch (e) { /* ignore */ }
+        try { this.sendUhidDestroy(this._uhidMouseId); } catch (e) { /* ignore */ }
+        this._uhidReady = false;
+        this._uhidMods = 0;
+        this._uhidKeysPressed = [];
+        this._uhidButtons = 0;
+        try {
+            if (document.pointerLockElement === this.videoElement) {
+                document.exitPointerLock();
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    sendUhidCreate(id, vendorId, productId, name, descriptor) {
+        // scrcpy UHID_CREATE control message (server v3.1+):
+        //   u8 type=12 | u16 id | u16 vendor_id | u16 product_id |
+        //   u8 name_len | name bytes (UTF-8) | u16 desc_len | desc bytes
+        const nameBytes = new TextEncoder().encode(name);
+        const buf = new ArrayBuffer(1 + 2 + 2 + 2 + 1 + nameBytes.length + 2 + descriptor.length);
+        const view = new DataView(buf);
+        let offset = 0;
+        view.setUint8(offset, 12); offset += 1;
+        view.setUint16(offset, id, false); offset += 2;
+        view.setUint16(offset, vendorId, false); offset += 2;
+        view.setUint16(offset, productId, false); offset += 2;
+        view.setUint8(offset, nameBytes.length); offset += 1;
+        new Uint8Array(buf, offset, nameBytes.length).set(nameBytes);
+        offset += nameBytes.length;
+        view.setUint16(offset, descriptor.length, false); offset += 2;
+        new Uint8Array(buf, offset, descriptor.length).set(descriptor);
+        this.callback(buf);
+    }
+
+    sendUhidInput(id, data) {
+        // u8 type=13 | u16 id | u16 size | data bytes
+        const buf = new ArrayBuffer(1 + 2 + 2 + data.length);
+        const view = new DataView(buf);
+        view.setUint8(0, 13);
+        view.setUint16(1, id, false);
+        view.setUint16(3, data.length, false);
+        new Uint8Array(buf, 5, data.length).set(data);
+        this.callback(buf);
+    }
+
+    sendUhidDestroy(id) {
+        // u8 type=14 | u16 id
+        const buf = new ArrayBuffer(3);
+        const view = new DataView(buf);
+        view.setUint8(0, 14);
+        view.setUint16(1, id, false);
+        this.callback(buf);
+    }
+
+    // ---- UHID keyboard internals ---------------------------------------------
+
+    _uhidKeyDown(event) {
+        const modBit = HID_MODIFIER_BITS[event.code];
+        if (modBit !== undefined) {
+            this._uhidMods |= modBit;
+            this._uhidSendKeyboardReport();
+            return true;
+        }
+        const usage = HID_KEYBOARD_USAGE[event.code];
+        if (usage === undefined) return false;
+        if (!this._uhidKeysPressed.includes(usage)) {
+            if (this._uhidKeysPressed.length < 6) {
+                this._uhidKeysPressed.push(usage);
+            }
+        }
+        this._uhidSendKeyboardReport();
+        return true;
+    }
+
+    _uhidKeyUp(event) {
+        const modBit = HID_MODIFIER_BITS[event.code];
+        if (modBit !== undefined) {
+            this._uhidMods &= ~modBit;
+            this._uhidSendKeyboardReport();
+            return true;
+        }
+        const usage = HID_KEYBOARD_USAGE[event.code];
+        if (usage === undefined) return false;
+        const i = this._uhidKeysPressed.indexOf(usage);
+        if (i >= 0) this._uhidKeysPressed.splice(i, 1);
+        this._uhidSendKeyboardReport();
+        return true;
+    }
+
+    _uhidSendKeyboardReport() {
+        // Boot keyboard report: 8 bytes
+        //   [0] modifiers, [1] reserved, [2..7] up to 6 key usage codes
+        const r = new Uint8Array(8);
+        r[0] = this._uhidMods & 0xff;
+        for (let i = 0; i < 6; i++) {
+            r[2 + i] = this._uhidKeysPressed[i] || 0;
+        }
+        this.sendUhidInput(this._uhidKeyboardId, r);
+    }
+
+    // ---- UHID mouse internals -------------------------------------------------
+
+    _uhidButtonBit(button) {
+        // Web button → HID button bit. Buttons are 1..5.
+        switch (button) {
+            case 0: return 0x01; // left
+            case 1: return 0x04; // middle
+            case 2: return 0x02; // right
+            case 3: return 0x08; // back / X1
+            case 4: return 0x10; // forward / X2
+            default: return null;
+        }
+    }
+
+    _uhidSendMouse(dx, dy, wheelV, wheelH) {
+        // 7-byte mouse report:
+        //   [0] buttons, [1..2] dx (i16 LE), [3..4] dy (i16 LE),
+        //   [5] vertical wheel (i8), [6] horizontal wheel (i8)
+        const clamp16 = (v) => Math.max(-32767, Math.min(32767, v | 0));
+        const clamp8 = (v) => Math.max(-127, Math.min(127, v | 0));
+        const r = new Uint8Array(7);
+        const dv = new DataView(r.buffer);
+        r[0] = this._uhidButtons & 0xff;
+        dv.setInt16(1, clamp16(dx), true);
+        dv.setInt16(3, clamp16(dy), true);
+        dv.setInt8(5, clamp8(wheelV));
+        dv.setInt8(6, clamp8(wheelH));
+        this.sendUhidInput(this._uhidMouseId, r);
+    }
+
+    _uhidSendWheel(deltaX, deltaY) {
+        // Browser wheel deltas are pixel-based and can be large (~100 per
+        // notch). Compress to HID's ±127 range with sign preserved.
+        const sign = (v) => (v > 0 ? 1 : v < 0 ? -1 : 0);
+        // HID wheel "vertical" is positive = up (away from user), but
+        // browser deltaY positive = scroll down. Invert so DeX scrolls in
+        // the natural direction.
+        const wv = -sign(deltaY) * Math.min(127, Math.ceil(Math.abs(deltaY) / 40) || 1);
+        const wh = sign(deltaX) * Math.min(127, Math.ceil(Math.abs(deltaX) / 40) || 1);
+        this._uhidSendMouse(0, 0, wv, wh);
     }
 
     resizeScreen(width, height) {
