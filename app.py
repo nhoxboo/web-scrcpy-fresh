@@ -1098,8 +1098,7 @@ if __name__ == '__main__':
     async_mode = socketio.async_mode  # type: ignore[attr-defined]
     if async_mode in ('eventlet', 'gevent', 'gevent_uwsgi'):
         log.info(
-            'Async backend: %s (production-grade WSGI). Stream sẽ mượt — '
-            'không cần gunicorn.',
+            'Async backend: %s (production-grade WSGI). Stream sẽ mượt — không cần gunicorn.',
             async_mode,
         )
     elif os.environ.get('DISABLE_DEV_BANNER') != '1':
