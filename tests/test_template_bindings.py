@@ -25,6 +25,7 @@ INDEX_HTML = Path(__file__).resolve().parent.parent / "templates" / "index.html"
 # `screen_size`.
 SOCKET_INDEPENDENT_BUTTON_IDS = (
     "vdesktopMode",  # localStorage flag + reload
+    "displaySettings",  # opens modal; saves localStorage; reload
     "uhidInput",  # localStorage flag + reload
     "quickCtl",  # opens overlay; POSTs go via /api/quick (ADB only)
     "reconnect",  # MUST work to retry a rejected/dead socket

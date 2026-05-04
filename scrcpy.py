@@ -312,6 +312,44 @@ def adb_simple(
     return result.returncode == 0, out
 
 
+def is_valid_int_in_range(value: object, lo: int, hi: int) -> bool:
+    """True iff `value` is a stringy integer within [lo, hi].
+
+    Used to defensively validate per-session overrides (max_size, bit_rate,
+    max_fps) coming from socket query strings before splicing into the
+    scrcpy CLI. Returns False for None, empty, negatives, decimals, or out
+    of range. Accepts bare ints as well as strings.
+    """
+    if value is None:
+        return False
+    if isinstance(value, int) and not isinstance(value, bool):
+        return lo <= value <= hi
+    s = str(value).strip()
+    if not s or not s.isdigit():
+        return False
+    return lo <= int(s) <= hi
+
+
+def is_valid_max_size(value: object) -> bool:
+    """`max_size` is the longest edge cap; 0 disables, else 100..7680 px."""
+    if value is None:
+        return False
+    s = str(value).strip()
+    if s == '0':
+        return True
+    return is_valid_int_in_range(s, 100, 7680)
+
+
+def is_valid_bit_rate(value: object) -> bool:
+    """Bitrate in bps; sane range 100 kbps – 50 Mbps."""
+    return is_valid_int_in_range(value, 100_000, 50_000_000)
+
+
+def is_valid_max_fps(value: object) -> bool:
+    """FPS cap; scrcpy supports 1..240."""
+    return is_valid_int_in_range(value, 1, 240)
+
+
 def is_valid_new_display(spec: str) -> bool:
     """Validate `WxH`, `WxH/dpi`, `/dpi`, or empty (=any).
 

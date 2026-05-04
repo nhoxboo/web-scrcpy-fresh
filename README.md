@@ -329,6 +329,22 @@ SCRCPY_MAX_FPS=30
 
 > **Tại sao max_size=1920 lại sắc nét hơn 0 (native)?** Bitrate 10M cho 4K phải chia đều cho ~8 triệu pixel → bit/pixel thấp → blocky. Cùng bitrate cap về 2 triệu pixel (1920×1080) → 4× bit/pixel → sắc hơn rõ. Chỉ tắt cap (set 0) khi phone có native res nhỏ (<1080p).
 
+### Display Settings (per-session, không cần restart server)
+
+Nút 🖳 **Display Settings** trên toolbar (giữa Virtual Desktop và Quick Controls) mở modal cho phép đổi 4 thông số ngay trên trình duyệt:
+
+- **Force resolution** — bật để ép virtual display ở `WxH/dpi` cố định (qua `scrcpy --new-display`). 5 preset: 1080p ngang/dọc, Tablet 1600×900, 720p, QHD 2560×1440. Hữu ích cho:
+  - Điện thoại gập (Z Fold/Flip) chỉ mở màn ngoài → ép 1080p ngang để giao diện không bị méo
+  - Máy non-Samsung muốn UI desktop-style mà không có DeX
+  - Test app ở resolution chuẩn (1080×1920) trên máy 4K
+- **Max size cap** — preset 0 (native) / 1280 / 1600 / 1920 (mặc định) / 2560, hoặc số custom. Ghi đè `SCRCPY_MAX_SIZE` env cho phiên hiện tại.
+- **Bitrate (Mbps)** — float 0.1..50, ghi đè `SCRCPY_VIDEO_BIT_RATE`.
+- **Max FPS** — int 1..240, ghi đè `SCRCPY_MAX_FPS`.
+
+Sau khi bấm **Áp dụng**, trang sẽ tự reload với query params tương ứng (`?new_display=1920x1080/160&max_size=1920&bit_rate=10000000&max_fps=60`). Cài đặt được lưu localStorage nên sống qua các lần reload tiếp theo. **Reset** xoá toàn bộ override, quay về mặc định server.
+
+Khác với env var: env vars là default toàn server, Display Settings là per-trình-duyệt nên 2 user xem cùng 1 server có thể có cài đặt khác nhau.
+
 ### HUD bandwidth/FPS để debug
 
 ```js
@@ -354,6 +370,7 @@ Hoặc Ctrl+Shift+H (chuyển trạng thái nhanh). Overlay góc dưới hiện 
 | 📷 | Screenshot | Ctrl+Shift+S — chụp ảnh PNG ở native res |
 | ⏺ | Recording | Ctrl+Shift+R — quay webm/mp4 → tải về |
 | 🖥 | Virtual Desktop | `--new-display=1920x1080/160` — Shift-click để chỉnh resolution/dpi |
+| 🖳 | Display Settings | modal đổi độ phân giải / max_size / bitrate / FPS — per-session, lưu localStorage |
 | 🎚 | Quick Controls | panel mở ra với các nút nhanh |
 | 🖱 | UHID toggle | bật/tắt chuột+phím thật (default ON) |
 | | UHID speed | slider tốc độ + checkbox accel |

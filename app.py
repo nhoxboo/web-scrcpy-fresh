@@ -39,7 +39,10 @@ from scrcpy import (
     adb_push,
     adb_shell,
     adb_simple,
+    is_valid_bit_rate,
     is_valid_host,
+    is_valid_max_fps,
+    is_valid_max_size,
     is_valid_new_display,
     is_valid_port,
     is_valid_serial,
@@ -964,14 +967,42 @@ def handle_connect(auth=None):
                 chosen_new_display = req_newdisp
             else:
                 log.warning('Invalid new_display from client: %r', req_newdisp)
+        # Per-session display tuning from the in-browser "Display Settings"
+        # modal: max_size cap, bit rate, max fps. Each is validated against
+        # a sane numeric range before splicing into the scrcpy CLI; bad
+        # values silently fall back to the server-wide default.
+        req_maxsize = request.args.get('max_size') if request.args else None
+        chosen_max_size = max_size
+        if req_maxsize is not None and req_maxsize != '':
+            if is_valid_max_size(req_maxsize):
+                chosen_max_size = str(int(req_maxsize))
+            else:
+                log.warning('Invalid max_size from client: %r', req_maxsize)
+        req_bitrate = request.args.get('bit_rate') if request.args else None
+        chosen_bit_rate = video_bit_rate
+        if req_bitrate is not None and req_bitrate != '':
+            if is_valid_bit_rate(req_bitrate):
+                chosen_bit_rate = str(int(req_bitrate))
+            else:
+                log.warning('Invalid bit_rate from client: %r', req_bitrate)
+        req_maxfps = request.args.get('max_fps') if request.args else None
+        chosen_max_fps = max_fps
+        if req_maxfps is not None and req_maxfps != '':
+            if is_valid_max_fps(req_maxfps):
+                chosen_max_fps = str(int(req_maxfps))
+            else:
+                log.warning('Invalid max_fps from client: %r', req_maxfps)
         # Per-session pick (set via /devices) wins over env/CLI default.
         chosen_serial = _selected_serial()
         scpy_ctx = Scrcpy(
             serial=chosen_serial,
             display_id=chosen_disp,
-            max_size=max_size,
+            max_size=chosen_max_size,
             new_display=chosen_new_display,
         )
+        # Stash chosen bit rate / fps so the start call below uses them.
+        scpy_ctx._chosen_bit_rate = chosen_bit_rate  # noqa: SLF001
+        scpy_ctx._chosen_max_fps = chosen_max_fps  # noqa: SLF001
         # Forward device → browser clipboard updates. scrcpy server pushes a
         # CLIPBOARD message whenever the device clipboard changes (including
         # right after start, with the current contents).
@@ -990,8 +1021,14 @@ def handle_connect(auth=None):
 
         scpy_ctx.device_message_callback = _on_device_message
 
+    # Use per-session overrides stashed above when present, else fall
+    # back to the server-wide defaults. getattr() with a default is safe
+    # for the reconnect path where scpy_ctx already exists from a
+    # previous connection and no fresh overrides were captured.
+    chosen_bit_rate = getattr(scpy_ctx, '_chosen_bit_rate', video_bit_rate)
+    chosen_max_fps = getattr(scpy_ctx, '_chosen_max_fps', max_fps)
     try:
-        scpy_ctx.scrcpy_start(send_video_data, video_bit_rate, max_fps=max_fps)
+        scpy_ctx.scrcpy_start(send_video_data, chosen_bit_rate, max_fps=chosen_max_fps)
     except RuntimeError as e:
         log.warning('scrcpy_start refused: %s', e)
         with _state_lock:
