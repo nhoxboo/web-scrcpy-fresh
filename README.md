@@ -13,8 +13,9 @@ Live demo (Nam): http://nhoxboo.changeip.co:8000/
 4. [Cài ADB](#cài-adb-android-debug-bridge)
 5. [Triển khai production](#triển-khai-production)
    - [Docker (DỄ NHẤT)](#a-docker-dễ-nhất)
-   - [Gunicorn + eventlet](#b-gunicorn--eventlet-tự-cấu-hình)
-   - [Dev server (KHÔNG cho production)](#c-dev-server--werkzeug-không-dùng-cho-production)
+   - [Gunicorn + eventlet (Linux / macOS)](#b-gunicorn--eventlet-tự-cấu-hình)
+   - [Windows (eventlet WSGI thuần)](#c-windows-eventlet-wsgi-thuần--không-cần-gunicorn)
+   - [Dev server (KHÔNG cho production)](#d-dev-server--werkzeug-không-dùng-cho-production)
 6. [HTTPS + reverse proxy](#https--reverse-proxy)
 7. [Tinh chỉnh chất lượng video](#tinh-chỉnh-chất-lượng-video)
 8. [Hướng dẫn sử dụng UI](#hướng-dẫn-sử-dụng-ui)
@@ -199,16 +200,64 @@ sudo journalctl -fu web-scrcpy
 
 > **Bắt buộc 1 worker.** State scrcpy session là process-local; nhiều worker sẽ tranh nhau device. Để scale, đặt mỗi container/máy 1 device và load-balance bằng reverse proxy.
 
-### c) Dev server / Werkzeug (KHÔNG dùng cho production)
+### c) Windows (eventlet WSGI thuần — không cần gunicorn)
 
-`python app.py` chạy Werkzeug **single-threaded** — stutter ngay khi có 1 user thật connect. Dev mode in cảnh báo lớn ở console; tắt bằng `DISABLE_DEV_BANNER=1`.
+Gunicorn dùng `fork()` không có trên Windows nên **không chạy được** trên Windows host. May là Flask-SocketIO + eventlet đã tự là một WSGI server production-grade — chỉ cần cài rồi `python app.py` là đủ. Hiệu năng tương đương `gunicorn --worker-class eventlet`, có WebSocket native, không single-threaded. App tự detect và **không** in cảnh báo Werkzeug khi eventlet được dùng.
 
-Cách tự kiểm tra mình đang chạy production hay dev:
+**Cách 1 — script PowerShell có sẵn (khuyến nghị):**
+```powershell
+# Mở PowerShell tại thư mục repo
+PowerShell -ExecutionPolicy Bypass -File scripts\start-windows.ps1
+
+# Tham số tuỳ chọn
+PowerShell -ExecutionPolicy Bypass -File scripts\start-windows.ps1 -Port 9000 -BindHost 127.0.0.1
+PowerShell -ExecutionPolicy Bypass -File scripts\start-windows.ps1 -SkipInstall   # đã cài deps rồi
+PowerShell -ExecutionPolicy Bypass -File scripts\start-windows.ps1 -GenerateSecret # ép tạo FLASK_SECRET_KEY mới
+```
+Script tự động:
+1. Tạo virtualenv `.venv` nếu thiếu
+2. Cài `requirements-prod.txt` (eventlet)
+3. Verify `eventlet`, `adb` (cảnh báo nếu thiếu, không crash)
+4. Tạo `.env` từ `.env.example` + sinh `FLASK_SECRET_KEY` random nếu thiếu
+5. Load `.env` vào process env
+6. Chạy `python app.py` với eventlet WSGI
+
+**Hoặc double-click `scripts\start-windows.bat`** (wrapper cho người không quen PowerShell).
+
+**Cách 2 — chạy tay:**
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-prod.txt
+$env:FLASK_SECRET_KEY = python -c "import secrets; print(secrets.token_hex(32))"
+python app.py
+```
+Console phải in:
+```
+Async backend: eventlet (production-grade WSGI). Stream sẽ mượt — không cần gunicorn.
+```
+Nếu thay vào đó in cảnh báo Werkzeug → `pip install eventlet` chưa thành công, kiểm tra log pip.
+
+**Tự khởi động khi boot Windows** (NSSM hoặc Task Scheduler):
+- NSSM (https://nssm.cc/):
+  ```cmd
+  nssm install RemoteAndroidNhoxboo "C:\path\to\scripts\start-windows.bat"
+  nssm set    RemoteAndroidNhoxboo AppDirectory "C:\path\to\repo"
+  nssm start  RemoteAndroidNhoxboo
+  ```
+- Task Scheduler: tạo task action `powershell.exe`, args `-ExecutionPolicy Bypass -File "C:\path\to\repo\scripts\start-windows.ps1"`, trigger "At startup", run with highest privileges.
+
+### d) Dev server / Werkzeug (KHÔNG dùng cho production)
+
+`python app.py` **không có eventlet** sẽ rơi xuống Werkzeug single-threaded → stutter. Dev mode in cảnh báo lớn ở console (kèm hướng dẫn cho từng OS); tắt bằng `DISABLE_DEV_BANNER=1`.
+
+Cách tự kiểm tra mình đang chạy production hay dev (Linux/macOS):
 ```bash
 curl -I http://your-host:8000/
 # Server: gunicorn  → đúng (production)
 # Server: Werkzeug/X → SAI (đang dùng dev server, sẽ lag)
 ```
+Trên Windows (eventlet thay vì gunicorn) header `Server:` không phải `gunicorn`. Cách kiểm tra trên Windows: nhìn console log lúc start — phải có dòng `Async backend: eventlet (production-grade WSGI)`.
 
 ---
 
@@ -414,6 +463,9 @@ Sự kiện được log: login (success/fail), logout, password change, /api/in
 ├── Procfile                # honcho / Heroku-style
 ├── Dockerfile              # production image (Python 3.12 + adb + gunicorn)
 ├── docker-compose.yml      # 1-command deploy
+├── scripts/
+│   ├── start-windows.ps1   # Windows launcher (eventlet WSGI, no gunicorn)
+│   └── start-windows.bat   # cmd.exe wrapper
 ├── .env.example            # template env vars
 ├── scrcpy-server           # Java server JAR (push to device on connect)
 ├── static/                 # CSS, vendored JS (jmuxer, fontawesome, socket.io)
@@ -495,7 +547,12 @@ Browser cần permission. Trên HTTP (không HTTPS) browser sẽ silent fail. Tr
 Một số OEM (MIUI, ColorOS, OneUI mới) chặn `svc wifi enable` từ adb. UI sẽ hiện stderr cụ thể. Workaround: bật tay trong Settings.
 
 ### "Werkzeug single-threaded" cảnh báo trên console
-Bạn đang chạy `python app.py` (dev mode) — chuyển sang gunicorn để tránh stutter. Xem [Triển khai production](#triển-khai-production). Nếu cố tình chạy dev (debug local), set `DISABLE_DEV_BANNER=1` để tắt banner.
+Bạn chạy `python app.py` mà chưa cài eventlet → SocketIO fallback về Werkzeug.
+
+- **Linux/macOS**: dùng gunicorn (`pip install -r requirements-prod.txt && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:8000 wsgi:app`)
+- **Windows**: chạy `scripts\start-windows.ps1` hoặc `pip install -r requirements-prod.txt && python app.py` — sau khi eventlet được cài, app log sẽ in `Async backend: eventlet (production-grade WSGI)` thay cho cảnh báo
+
+Nếu cố tình chạy dev local: `DISABLE_DEV_BANNER=1` để tắt banner.
 
 ### Reset hoàn toàn
 ```bash
