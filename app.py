@@ -1087,23 +1087,42 @@ if __name__ == '__main__':
         adb_serial or '*',
         display_id,
     )
-    # Loud warning: the Werkzeug dev server is single-threaded and will
-    # stutter video noticeably under any real load. The Procfile / wsgi.py
-    # ship the production-grade gunicorn+eventlet path; users running
-    # `python app.py` for production deserve to know they're leaving
-    # performance on the table. Set DISABLE_DEV_BANNER=1 to silence.
-    if os.environ.get('DISABLE_DEV_BANNER') != '1':
+    # SocketIO picks the best async backend it can find when async_mode=None:
+    # eventlet -> gevent_uwsgi -> gevent -> threading. The first three are
+    # production-grade WSGI servers with proper WebSocket support; threading
+    # falls back to Werkzeug which is single-threaded and stutters under any
+    # real load. We only want to bother the user with a "wrong server!"
+    # banner when actually in threading mode — eventlet running on
+    # `python app.py` is perfectly fine for production (especially on Windows
+    # where gunicorn doesn't run).
+    async_mode = socketio.async_mode  # type: ignore[attr-defined]
+    if async_mode in ('eventlet', 'gevent', 'gevent_uwsgi'):
+        log.info(
+            'Async backend: %s (production-grade WSGI). Stream sẽ mượt — không cần gunicorn.',
+            async_mode,
+        )
+    elif os.environ.get('DISABLE_DEV_BANNER') != '1':
+        # Threading / Werkzeug fallback. Print a loud warning so whoever
+        # runs `python app.py` on a real server is pushed to install
+        # eventlet (Windows + every other OS) or gunicorn (Linux/macOS).
         bar = '!' * 72
         bind = f'0.0.0.0:{args.port}'
         log.warning(
             '\n%s\n'
             '! Đang chạy Werkzeug development server (single-threaded).\n'
-            '! Stream video sẽ KHÔNG mượt cho production. Chạy gunicorn:\n'
+            '! Stream video sẽ KHÔNG mượt khi có user kết nối thực tế.\n'
             '!\n'
+            '! Linux / macOS — khuyến nghị gunicorn:\n'
             '!   pip install -r requirements-prod.txt\n'
             '!   gunicorn --worker-class eventlet -w 1 --bind %s wsgi:app\n'
-            '!\n'
             '! Hoặc dùng `honcho start` (đọc Procfile có sẵn).\n'
+            '!\n'
+            '! Windows — gunicorn không chạy được, dùng eventlet thuần:\n'
+            '!   pip install -r requirements-prod.txt\n'
+            '!   python app.py    (tự động dùng eventlet sau khi cài)\n'
+            '! Hoặc chạy script:\n'
+            '!   PowerShell -ExecutionPolicy Bypass -File scripts\\start-windows.ps1\n'
+            '!\n'
             '! Đặt DISABLE_DEV_BANNER=1 để ẩn cảnh báo này.\n'
             '%s',
             bar,
