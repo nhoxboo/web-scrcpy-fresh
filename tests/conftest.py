@@ -97,6 +97,30 @@ def _install_fake_scrcpy():
             return False
         return 100 <= int(w) <= 7680 and 100 <= int(h) <= 7680
 
+    def _is_valid_int_in_range(value, lo, hi):
+        if value is None:
+            return False
+        if isinstance(value, int) and not isinstance(value, bool):
+            return lo <= value <= hi
+        s = str(value).strip()
+        if not s or not s.isdigit():
+            return False
+        return lo <= int(s) <= hi
+
+    def is_valid_max_size(value) -> bool:
+        if value is None:
+            return False
+        s = str(value).strip()
+        if s == '0':
+            return True
+        return _is_valid_int_in_range(s, 100, 7680)
+
+    def is_valid_bit_rate(value) -> bool:
+        return _is_valid_int_in_range(value, 100_000, 50_000_000)
+
+    def is_valid_max_fps(value) -> bool:
+        return _is_valid_int_in_range(value, 1, 240)
+
     module.Scrcpy = Scrcpy
     module.list_adb_devices = list_adb_devices
     module.is_valid_serial = is_valid_serial
@@ -110,6 +134,9 @@ def _install_fake_scrcpy():
     module.is_valid_host = is_valid_host
     module.is_valid_port = is_valid_port
     module.is_valid_new_display = is_valid_new_display
+    module.is_valid_max_size = is_valid_max_size
+    module.is_valid_bit_rate = is_valid_bit_rate
+    module.is_valid_max_fps = is_valid_max_fps
     sys.modules['scrcpy'] = module
 
 

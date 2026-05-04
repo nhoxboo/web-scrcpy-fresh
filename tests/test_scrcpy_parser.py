@@ -142,6 +142,47 @@ def test_is_valid_new_display(real_scrcpy):
     assert not real_scrcpy.is_valid_new_display('99999x99999')
 
 
+def test_is_valid_max_size(real_scrcpy):
+    # 0 means "no cap" (native); else 100..7680.
+    assert real_scrcpy.is_valid_max_size('0')
+    assert real_scrcpy.is_valid_max_size(0)
+    assert real_scrcpy.is_valid_max_size('100')
+    assert real_scrcpy.is_valid_max_size('1920')
+    assert real_scrcpy.is_valid_max_size('7680')
+    assert not real_scrcpy.is_valid_max_size('99')  # below floor
+    assert not real_scrcpy.is_valid_max_size('7681')  # above ceiling
+    assert not real_scrcpy.is_valid_max_size('-1')
+    assert not real_scrcpy.is_valid_max_size('abc')
+    assert not real_scrcpy.is_valid_max_size('')
+    assert not real_scrcpy.is_valid_max_size(None)
+
+
+def test_is_valid_bit_rate(real_scrcpy):
+    # 100 kbps .. 50 Mbps (bps).
+    assert real_scrcpy.is_valid_bit_rate('100000')
+    assert real_scrcpy.is_valid_bit_rate('10000000')
+    assert real_scrcpy.is_valid_bit_rate(50_000_000)
+    assert not real_scrcpy.is_valid_bit_rate('99999')  # below floor
+    assert not real_scrcpy.is_valid_bit_rate('50000001')  # above ceiling
+    assert not real_scrcpy.is_valid_bit_rate('0')
+    assert not real_scrcpy.is_valid_bit_rate('1.5e6')  # no scientific notation
+    assert not real_scrcpy.is_valid_bit_rate('')
+    assert not real_scrcpy.is_valid_bit_rate(None)
+
+
+def test_is_valid_max_fps(real_scrcpy):
+    assert real_scrcpy.is_valid_max_fps('1')
+    assert real_scrcpy.is_valid_max_fps('60')
+    assert real_scrcpy.is_valid_max_fps('240')
+    assert real_scrcpy.is_valid_max_fps(60)
+    assert not real_scrcpy.is_valid_max_fps('0')
+    assert not real_scrcpy.is_valid_max_fps('241')
+    assert not real_scrcpy.is_valid_max_fps('-1')
+    assert not real_scrcpy.is_valid_max_fps('foo')
+    assert not real_scrcpy.is_valid_max_fps('')
+    assert not real_scrcpy.is_valid_max_fps(None)
+
+
 def test_adb_pair_validates_inputs(real_scrcpy, monkeypatch):
     """adb_pair must reject bad host/port/code without invoking subprocess."""
     called = {'n': 0}

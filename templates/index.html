@@ -140,6 +140,28 @@
     .qc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
     .qc-row button{padding:6px 12px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#e5e7eb;border-radius:10px;cursor:pointer}
     .qc-out{margin-top:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;color:var(--muted);min-height:1.2em;word-break:break-all}
+    /* Display Settings modal — same glass panel system as Quick Controls
+       but content-heavy (multiple sections). Reuses .qc-backdrop /
+       .qc-panel styling above; ds-* classes layout the per-section UI. */
+    .ds-section{margin:14px 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025)}
+    .ds-section h4{margin:0 0 6px;font-size:.85rem;font-weight:600;color:#e5e7eb;letter-spacing:.02em}
+    .ds-section .ds-help{margin:0 0 10px;color:var(--muted);font-size:.74rem;line-height:1.4}
+    .ds-section .ds-help code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;font-size:.72rem}
+    .ds-toggle{display:inline-flex;align-items:center;gap:8px;font-size:.82rem;color:#dbe1f3;cursor:pointer;margin-bottom:8px;user-select:none}
+    .ds-toggle input{width:16px;height:16px;accent-color:var(--accent-1)}
+    .ds-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+    .ds-presets button{padding:6px 10px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#cfd6ed;border-radius:9px;cursor:pointer;font-size:.74rem;transition:all .12s var(--easing,ease)}
+    .ds-presets button:hover{border-color:var(--line-strong);background:rgba(255,255,255,.09);color:#fff}
+    .ds-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:.78rem;color:#cfd6ed}
+    .ds-row label{display:inline-flex;align-items:center;gap:6px}
+    .ds-row input[type=number]{width:90px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:rgba(15,17,30,.55);color:#e5e7eb;font-size:.8rem}
+    .ds-row input[type=number]:focus{outline:none;border-color:var(--accent-1);background:rgba(15,17,30,.78)}
+    .ds-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+    .ds-btn-ghost,.ds-btn-primary{padding:8px 14px;border-radius:10px;cursor:pointer;font-size:.82rem;border:1px solid var(--line);transition:all .15s var(--easing,ease)}
+    .ds-btn-ghost{background:rgba(255,255,255,.04);color:#cfd6ed}
+    .ds-btn-ghost:hover{border-color:var(--line-strong);background:rgba(255,255,255,.08)}
+    .ds-btn-primary{background:linear-gradient(135deg,var(--accent-1),var(--accent-2));color:#0b0f1a;border-color:transparent;font-weight:600}
+    .ds-btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(120,180,255,.25)}
     .resize-handle{
       position:absolute;right:10px;bottom:10px;width:20px;height:20px;border-radius:7px;
       background:rgba(15,17,30,.65);border:1px solid var(--line-strong);
@@ -209,6 +231,7 @@
     <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
     <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
     <button class="tool" id="vdesktopMode" title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
+    <button class="tool" id="displaySettings" title="Cài đặt hiển thị — đổi độ phân giải, bitrate, FPS"><i class="fa-solid fa-display"></i></button>
     <button class="tool" id="quickCtl" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
     <button class="tool" id="uhidInput" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
     <div class="uhid-speed" id="uhidSpeedBox" title="Tốc độ chuột UHID — kéo để chỉnh, không cần reload">
@@ -301,6 +324,61 @@
         <button class="qc-btn danger" data-act="reboot" data-confirm="Khởi động lại thiết bị?" type="button"><i class="fa-solid fa-power-off"></i><span>Reboot</span></button>
       </div>
       <div class="qc-out" id="qcOut"></div>
+    </div>
+  </div>
+
+  <div class="qc-backdrop" id="dsBackdrop">
+    <div class="qc-panel" role="dialog" aria-modal="true" aria-labelledby="dsTitle">
+      <div class="qc-row">
+        <h3 id="dsTitle"><i class="fa-solid fa-display"></i> Cài đặt hiển thị</h3>
+        <button id="dsClose" type="button"><i class="fa-solid fa-xmark"></i> Đóng</button>
+      </div>
+      <p class="lead">Đổi độ phân giải / bitrate / FPS cho phiên hiện tại. Có hiệu lực sau khi <strong>Áp dụng</strong> (sẽ tải lại trang).</p>
+
+      <div class="ds-section">
+        <h4>Độ phân giải hiển thị</h4>
+        <p class="ds-help">Khi bật <strong>Force resolution</strong>, server sẽ tạo một virtual display với kích thước/dpi anh chọn (qua <code>scrcpy --new-display</code>) — phù hợp cho điện thoại gập chỉ mở màn ngoài, hoặc khi muốn ép tỉ lệ desktop. Tắt = mirror đúng màn hình thật.</p>
+        <label class="ds-toggle"><input type="checkbox" id="dsForceRes"> Force resolution (dùng virtual display)</label>
+        <div class="ds-presets" id="dsResPresets">
+          <button type="button" data-spec="1920x1080/160">1080p ngang (1920×1080@160dpi)</button>
+          <button type="button" data-spec="1080x1920/160">1080p dọc (1080×1920@160dpi)</button>
+          <button type="button" data-spec="1600x900/160">Tablet (1600×900@160dpi)</button>
+          <button type="button" data-spec="1280x720/160">720p ngang (1280×720@160dpi)</button>
+          <button type="button" data-spec="2560x1440/200">QHD ngang (2560×1440@200dpi)</button>
+        </div>
+        <div class="ds-row">
+          <label>Width <input type="number" id="dsResW" min="100" max="7680" step="1"></label>
+          <label>Height <input type="number" id="dsResH" min="100" max="7680" step="1"></label>
+          <label>DPI <input type="number" id="dsResDpi" min="80" max="640" step="1"></label>
+        </div>
+      </div>
+
+      <div class="ds-section">
+        <h4>Max size cap (giới hạn cạnh dài nhất)</h4>
+        <p class="ds-help">Khi <strong>không</strong> dùng Force resolution, server vẫn mirror đúng màn hình thật và scale xuống để cạnh dài nhất ≤ giá trị này. Đặt 0 để stream native (có thể nặng cho máy 4K).</p>
+        <div class="ds-presets" id="dsMaxPresets">
+          <button type="button" data-val="0">Native (0)</button>
+          <button type="button" data-val="1280">1280</button>
+          <button type="button" data-val="1600">1600</button>
+          <button type="button" data-val="1920">1920 (mặc định)</button>
+          <button type="button" data-val="2560">2560</button>
+        </div>
+        <label class="ds-row">Custom <input type="number" id="dsMaxSize" min="0" max="7680" step="1" placeholder="px"></label>
+      </div>
+
+      <div class="ds-section">
+        <h4>Bitrate &amp; FPS</h4>
+        <div class="ds-row">
+          <label>Bitrate (Mbps) <input type="number" id="dsBitMbps" min="0.1" max="50" step="0.1" placeholder="10"></label>
+          <label>Max FPS <input type="number" id="dsMaxFps" min="1" max="240" step="1" placeholder="60"></label>
+        </div>
+        <p class="ds-help">Để trống = dùng mặc định server (10 Mbps / 60 FPS).</p>
+      </div>
+
+      <div class="ds-actions">
+        <button id="dsReset" type="button" class="ds-btn-ghost">Reset về mặc định</button>
+        <button id="dsApply" type="button" class="ds-btn-primary"><i class="fa-solid fa-check"></i> Áp dụng &amp; tải lại</button>
+      </div>
     </div>
   </div>
 
@@ -444,7 +522,30 @@
     };
     const initUhidSpeed = parseSpeed(localStorage.getItem('uhidMouseSpeed'));
     const initUhidAccel = localStorage.getItem('uhidMouseAccel') === '1';
-    const _socketQuery = vdesktopOn ? { new_display: vdesktopSpec } : {};
+    // Display Settings: per-session resolution / bitrate / FPS overrides
+    // saved by the in-browser modal (#displaySettings). All values are
+    // optional — backend ignores empty + validates numerics. Read once
+    // at boot so reload is the only way to apply changes.
+    const dsCfg = (() => {
+      try {
+        const raw = localStorage.getItem('displaySettings_v1');
+        return raw ? JSON.parse(raw) : {};
+      } catch { return {}; }
+    })();
+    const _socketQuery = {};
+    // Force resolution wins over Virtual Desktop toggle (they target the
+    // same `new_display` mechanism; treat the modal as the source of truth
+    // when both are set).
+    if (dsCfg.forceRes && dsCfg.newDisplay) {
+      _socketQuery.new_display = dsCfg.newDisplay;
+    } else if (vdesktopOn) {
+      _socketQuery.new_display = vdesktopSpec;
+    }
+    if (dsCfg.maxSize !== undefined && dsCfg.maxSize !== '') {
+      _socketQuery.max_size = String(dsCfg.maxSize);
+    }
+    if (dsCfg.bitRate) _socketQuery.bit_rate = String(dsCfg.bitRate);
+    if (dsCfg.maxFps) _socketQuery.max_fps = String(dsCfg.maxFps);
     const socket = io({
       reconnection:true,
       autoConnect:true,
@@ -658,6 +759,108 @@
         const cur = localStorage.getItem('vdesktopMode') === '1';
         localStorage.setItem('vdesktopMode', cur ? '0' : '1');
         st(cur ? 'Tắt Virtual Desktop, đang tải lại...' : 'Bật Virtual Desktop, đang tải lại...');
+        setTimeout(()=>location.reload(), 250);
+      };
+
+      // Display Settings overlay: lets the user override resolution
+      // (forces a virtual display via scrcpy --new-display), max-size cap,
+      // bitrate, FPS — all per-session, persisted in localStorage. Apply
+      // reloads the page so the next socket connect carries new query
+      // params. Empty fields fall back to server defaults.
+      const dsBtn = document.getElementById('displaySettings');
+      const dsBackdrop = document.getElementById('dsBackdrop');
+      const dsClose = document.getElementById('dsClose');
+      const dsApply = document.getElementById('dsApply');
+      const dsReset = document.getElementById('dsReset');
+      const dsForceRes = document.getElementById('dsForceRes');
+      const dsResW = document.getElementById('dsResW');
+      const dsResH = document.getElementById('dsResH');
+      const dsResDpi = document.getElementById('dsResDpi');
+      const dsMaxSize = document.getElementById('dsMaxSize');
+      const dsBitMbps = document.getElementById('dsBitMbps');
+      const dsMaxFps = document.getElementById('dsMaxFps');
+      const showDs = (v)=> dsBackdrop.classList.toggle('show', v);
+
+      const loadDs = () => {
+        let cfg = {};
+        try { cfg = JSON.parse(localStorage.getItem('displaySettings_v1') || '{}'); } catch {}
+        dsForceRes.checked = !!cfg.forceRes;
+        if (cfg.newDisplay) {
+          // newDisplay = "WxH/dpi" or "WxH"
+          const m = cfg.newDisplay.match(/^(\d+)x(\d+)(?:\/(\d+))?$/);
+          if (m) {
+            dsResW.value = m[1]; dsResH.value = m[2]; dsResDpi.value = m[3] || 160;
+          }
+        } else {
+          dsResW.value = ''; dsResH.value = ''; dsResDpi.value = '';
+        }
+        dsMaxSize.value = (cfg.maxSize === undefined || cfg.maxSize === '') ? '' : cfg.maxSize;
+        dsBitMbps.value = cfg.bitRate ? (cfg.bitRate / 1_000_000) : '';
+        dsMaxFps.value = cfg.maxFps || '';
+      };
+
+      dsBtn.onclick = ()=>{ loadDs(); showDs(true); };
+      dsClose.onclick = ()=> showDs(false);
+      dsBackdrop.addEventListener('click', (e)=>{ if (e.target === dsBackdrop) showDs(false); });
+
+      // Preset buttons fill the W/H/DPI inputs and auto-enable Force.
+      document.querySelectorAll('#dsResPresets button').forEach(btn=>{
+        btn.onclick = ()=>{
+          const m = (btn.dataset.spec || '').match(/^(\d+)x(\d+)(?:\/(\d+))?$/);
+          if (!m) return;
+          dsResW.value = m[1]; dsResH.value = m[2]; dsResDpi.value = m[3] || 160;
+          dsForceRes.checked = true;
+        };
+      });
+      document.querySelectorAll('#dsMaxPresets button').forEach(btn=>{
+        btn.onclick = ()=>{ dsMaxSize.value = btn.dataset.val; };
+      });
+
+      dsReset.onclick = ()=>{
+        if (!confirm('Reset toàn bộ cài đặt hiển thị về mặc định?')) return;
+        localStorage.removeItem('displaySettings_v1');
+        loadDs();
+        st('Đã reset cài đặt hiển thị, đang tải lại...');
+        setTimeout(()=>location.reload(), 250);
+      };
+
+      dsApply.onclick = ()=>{
+        const cfg = {};
+        // Force resolution: validate W/H/DPI lazily — leave invalid → off.
+        if (dsForceRes.checked) {
+          const w = parseInt(dsResW.value, 10);
+          const h = parseInt(dsResH.value, 10);
+          const dpi = parseInt(dsResDpi.value, 10);
+          if (!(w >= 100 && w <= 7680 && h >= 100 && h <= 7680)) {
+            alert('Width / Height phải trong khoảng 100..7680'); return;
+          }
+          cfg.forceRes = true;
+          cfg.newDisplay = (dpi >= 80 && dpi <= 640) ? `${w}x${h}/${dpi}` : `${w}x${h}`;
+        }
+        // Max size cap
+        if (dsMaxSize.value !== '') {
+          const n = parseInt(dsMaxSize.value, 10);
+          if (!(n === 0 || (n >= 100 && n <= 7680))) {
+            alert('Max size phải = 0 (native) hoặc 100..7680'); return;
+          }
+          cfg.maxSize = n;
+        }
+        if (dsBitMbps.value !== '') {
+          const mbps = parseFloat(dsBitMbps.value);
+          if (!(mbps >= 0.1 && mbps <= 50)) {
+            alert('Bitrate phải trong khoảng 0.1..50 Mbps'); return;
+          }
+          cfg.bitRate = Math.round(mbps * 1_000_000);
+        }
+        if (dsMaxFps.value !== '') {
+          const fps = parseInt(dsMaxFps.value, 10);
+          if (!(fps >= 1 && fps <= 240)) {
+            alert('Max FPS phải trong khoảng 1..240'); return;
+          }
+          cfg.maxFps = fps;
+        }
+        localStorage.setItem('displaySettings_v1', JSON.stringify(cfg));
+        st('Đã lưu cài đặt hiển thị, đang tải lại...');
         setTimeout(()=>location.reload(), 250);
       };
 
