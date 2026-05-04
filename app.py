@@ -53,8 +53,11 @@ logging.basicConfig(
 log = logging.getLogger('web-scrcpy')
 
 BASE_DIR = os.path.dirname(__file__)
-AUTH_FILE = os.path.join(BASE_DIR, 'auth.json')
-SECRET_FILE = os.path.join(BASE_DIR, 'secret.key')
+# Auth + secret-key file paths. Override via env when running in Docker so
+# they live on a persistent volume (otherwise the credentials regenerate
+# every restart, including the default admin/admin123 backdoor).
+AUTH_FILE = os.environ.get('AUTH_FILE', os.path.join(BASE_DIR, 'auth.json'))
+SECRET_FILE = os.environ.get('SECRET_FILE', os.path.join(BASE_DIR, 'secret.key'))
 
 DEFAULT_USERNAME = 'admin'
 DEFAULT_PASSWORD = 'admin123'

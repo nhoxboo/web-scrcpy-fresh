@@ -87,7 +87,34 @@ ruff check . && ruff format --check .
 > Nếu bạn đang chạy `python app.py` trên server public, header HTTP sẽ
 > trả `Server: Werkzeug/...` — đó là dấu hiệu cần chuyển sang gunicorn.
 
-### Triển khai production (gunicorn + eventlet) — KHUYẾN NGHỊ
+### Triển khai production — Docker (DỄ NHẤT)
+1 lệnh là chạy được, có sẵn gunicorn + adb + healthcheck + persistent volume:
+```bash
+cp .env.example .env
+echo "FLASK_SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')" >> .env
+docker compose up -d
+docker compose logs -f
+```
+- App available tại http://localhost:8000 (đăng nhập lần đầu: `admin` / `admin123` → đổi mật khẩu ngay)
+- `auth.json` / `secret.key` / `audit.log` lưu trong named volume `webscrcpy-data` (persist qua `docker compose down`)
+- USB thiết bị: mặc định bind `/dev/bus/usb` + `privileged: true` (Linux). Trên Windows/macOS hãy dùng **Wireless ADB** (form "Pair via Wi-Fi" trên trang `/devices`) và gỡ 2 dòng đó trong `docker-compose.yml`.
+
+```bash
+# Build lại sau khi đổi code
+docker compose build --no-cache
+docker compose up -d
+
+# Reset mật khẩu (chạy reset_password.py bên trong container)
+docker compose exec web python reset_password.py --username admin
+
+# Stop + xoá tất cả (state vẫn còn nhờ volume)
+docker compose down
+
+# Stop + xoá luôn volume (mất auth + audit log!)
+docker compose down -v
+```
+
+### Triển khai production (gunicorn + eventlet, không Docker)
 ```bash
 pip install -r requirements-prod.txt
 export FLASK_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"

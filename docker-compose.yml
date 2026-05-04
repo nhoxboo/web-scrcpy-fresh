@@ -1,0 +1,66 @@
+# Web Scrcpy Fresh — docker-compose
+#
+# Quick start:
+#   1. Sao chép `.env.example` thành `.env` và set `FLASK_SECRET_KEY` mạnh:
+#        cp .env.example .env
+#        echo "FLASK_SECRET_KEY=$(python -c 'import secrets;print(secrets.token_hex(32))')" >> .env
+#   2. Cắm điện thoại + bật USB Debugging + accept dialog "Allow USB debugging"
+#   3. `docker compose up -d`
+#   4. Mở http://localhost:8000 (hoặc http://<host-IP>:8000 từ máy khác)
+#
+# USB ACCESS NOTE:
+#   Mặc định compose dùng `privileged: true` + bind `/dev/bus/usb` để
+#   container nhìn thấy điện thoại USB. Trên Linux đây là cách đơn giản
+#   nhất; trên Windows/macOS bind này không tồn tại — bạn nên dùng
+#   wireless ADB thay (xem README, tab "Pair via Wi-Fi" trong UI), và
+#   gỡ cả hai dòng `privileged` + `devices` bên dưới.
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: web-scrcpy-fresh:latest
+    container_name: web-scrcpy
+    restart: unless-stopped
+    ports:
+      # 8000 trong container -> 8000 host. Đổi vế trái nếu host đã bận cổng.
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override những giá trị quan trọng cho production. Các knob khác
+      # (bitrate / max_size / max_fps) nằm trong .env.
+      TRUST_PROXY: "1"              # tin X-Forwarded-* khi đứng sau Caddy/nginx
+      DISABLE_DEV_BANNER: "1"       # gunicorn không in banner Werkzeug, tắt cho gọn log
+      # Đẩy state file lên volume /data để persist qua restart. Nếu bỏ
+      # các dòng này, app sẽ ghi vào /app (ephemeral) và default
+      # admin/admin123 sẽ tái tạo sau mỗi `docker compose down -v`.
+      AUTH_FILE: /data/auth.json
+      SECRET_FILE: /data/secret.key
+      AUDIT_LOG_FILE: /data/audit.log
+      # FLASK_SECRET_KEY phải set trong .env. Không hardcode ở đây.
+    volumes:
+      # Persist auth.json + audit.log + secret.key qua restart.
+      - webscrcpy-data:/data
+      # Linux only: cho container nhìn thấy USB. Nếu chỉ dùng wireless ADB,
+      # bỏ block này + gỡ `privileged: true`.
+      - /dev/bus/usb:/dev/bus/usb
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    privileged: true   # cần để adb đọc USB; gỡ đi nếu chỉ dùng wireless ADB
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+volumes:
+  webscrcpy-data:
+    name: webscrcpy-data
