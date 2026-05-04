@@ -1,0 +1,62 @@
+# Don't ship test / dev / git artifacts inside the production image.
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+.devcontainer
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+.eggs
+.venv
+venv
+env
+.tox
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Docs / repo meta — runtime image doesn't need them, scrcpy-server JAR
+# stays (it's not a doc, it's pushed to the device on every connect).
+README.md
+README_zh.md
+CHANGELOG.md
+LICENSE.md
+docs
+animation.gif
+
+# Local dev state we never want baked into the image
+.env
+.env.*
+!.env.example
+auth.json
+secret.key
+audit.log
+*.log
+logs
+
+# Test data
+tests
+.coverage
+coverage.xml
+htmlcov
+
+# Pre-commit / CI
+.pre-commit-config.yaml
+.github
+.dockerignore
+Dockerfile
+docker-compose.yml
+docker-compose.*.yml
+
+# Editor noise
+*.swp
+.DS_Store
+Thumbs.db
