@@ -34,6 +34,8 @@ SOCKET_INDEPENDENT_BUTTON_IDS = (
     "hotkeyConfig",  # localStorage hotkey config
     "gameMode",  # localStorage toggle
     "fullscreen",  # browser fullscreen API
+    "screenshot",  # canvas.drawImage + toBlob (client-side only)
+    "recordToggle",  # MediaRecorder.start/stop (client-side only)
     "zoomOut",
     "zoomIn",
     "zoomReset",

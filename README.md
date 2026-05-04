@@ -7,6 +7,7 @@ Bản private dùng nội bộ để điều khiển thiết bị Android qua tr
 - Hỗ trợ thao tác chuột/bàn phím cơ bản
 - **Multi-touch** qua Pointer Events (pinch-to-zoom, 2-3 ngón)
 - Fullscreen mượt (video scale 100vw x 100vh)
+- **Chụp ảnh / quay video** màn hình thiết bị (Ctrl+Shift+S / Ctrl+Shift+R)
 - Có trang đăng nhập và đổi mật khẩu
 - Dễ chạy local trong mạng nội bộ
 
