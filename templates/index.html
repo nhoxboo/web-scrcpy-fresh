@@ -401,7 +401,14 @@
       // until fitVideoToViewport runs again with the new deviceW/deviceH.
       videoElement.style.width = '';
       videoElement.style.height = '';
-      jmuxer = new JMuxer({ node:'player', mode:'video', flushingTime:0, fps:60, clearBuffer:true,
+      // Stream pipeline tuning:
+      //   flushingTime:50 — batch ~3 NALUs per MSE append (instead of one
+      //     append per NALU at flushingTime:0). Fewer JS round-trips,
+      //     smoother decoder feed, ~negligible added latency at 60fps.
+      //   clearBuffer:false — let MSE manage its own buffer. Manual wipes
+      //     create momentary stutter on weak networks; the browser's
+      //     built-in buffer eviction is gentler.
+      jmuxer = new JMuxer({ node:'player', mode:'video', flushingTime:50, fps:60, clearBuffer:false,
         onError:(err)=>st('Decoder error: '+(err?.message||JSON.stringify(err)))
       });
     }
