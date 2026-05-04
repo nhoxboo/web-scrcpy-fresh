@@ -24,7 +24,6 @@ INDEX_HTML = Path(__file__).resolve().parent.parent / "templates" / "index.html"
 # they should be bound at top level, not inside a function that only runs on
 # `screen_size`.
 SOCKET_INDEPENDENT_BUTTON_IDS = (
-    "dexMode",  # localStorage flag + reload
     "vdesktopMode",  # localStorage flag + reload
     "uhidInput",  # localStorage flag + reload
     "quickCtl",  # opens overlay; POSTs go via /api/quick (ADB only)
@@ -76,7 +75,7 @@ def _function_body(js: str, name: str) -> str:
 def test_attach_input_function_exists():
     js = _inline_script()
     # The renamed entry point. Old name was `initInput` and held everything;
-    # the new one only creates `input` + flips DeX/UHID-specific UI state.
+    # the new one only creates `input` + flips display-mode-specific UI state.
     assert re.search(r"function\s+attachInput\s*\(", js), (
         "expected attachInput(width, height) function — see PR description for why"
     )
