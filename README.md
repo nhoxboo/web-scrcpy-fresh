@@ -81,20 +81,13 @@ ruff check . && ruff format --check .
 
 ## Cách chạy
 
-### Dev (Werkzeug)
-```bash
-python app.py --port 8000
-# tăng chất lượng video (mặc định 4 Mbps / 60 fps):
-python app.py --port 8000 --video_bit_rate 8000000 --max_fps 60
-```
+> ⚠️ **QUAN TRỌNG**: chỉ dùng Werkzeug (`python app.py`) khi dev/test trên
+> máy local. Production **bắt buộc** chạy `gunicorn` để stream video mượt —
+> Werkzeug single-threaded sẽ stutter khi có user kết nối thực tế.
+> Nếu bạn đang chạy `python app.py` trên server public, header HTTP sẽ
+> trả `Server: Werkzeug/...` — đó là dấu hiệu cần chuyển sang gunicorn.
 
-Hoặc qua env var:
-```bash
-export SCRCPY_VIDEO_BIT_RATE=8000000
-export SCRCPY_MAX_FPS=60
-```
-
-### Production (gunicorn + eventlet)
+### Triển khai production (gunicorn + eventlet) — KHUYẾN NGHỊ
 ```bash
 pip install -r requirements-prod.txt
 export FLASK_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
@@ -102,7 +95,50 @@ export SESSION_COOKIE_SECURE=1   # chỉ bật khi đứng sau HTTPS
 gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:8000 wsgi:app
 ```
 
+Hoặc dùng `honcho` (đọc `Procfile` có sẵn):
+```bash
+pip install honcho
+honcho start
+```
+
 > **Bắt buộc 1 worker.** State scrcpy session là process-local; nhiều worker sẽ tranh nhau device. Để scale, đặt sau reverse proxy (nginx/Caddy) và lock device theo từng container.
+
+### Dev / debug (Werkzeug, KHÔNG dùng cho production)
+```bash
+python app.py --port 8000
+```
+
+App sẽ in cảnh báo `!!! Đang chạy Werkzeug development server ...` — đó là
+bản thân code nhắc bạn chuyển sang gunicorn. Set `DISABLE_DEV_BANNER=1` để
+ẩn cảnh báo nếu bạn cố ý dev local.
+
+### Tinh chỉnh chất lượng / mượt video
+
+Default đã được tune cho LAN / Wi-Fi 5+ trên flagship hiện đại:
+- `SCRCPY_VIDEO_BIT_RATE=10000000` (10 Mbps)
+- `SCRCPY_MAX_FPS=60`
+- `SCRCPY_MAX_SIZE=1920` (cap longest edge — mượt + nét hơn so với native
+  trên phone 4K vì cùng bitrate được trải lên ít pixel hơn)
+
+Gợi ý điều chỉnh theo môi trường:
+
+| Tình huống | Bit rate | max_size | max_fps |
+|---|---|---|---|
+| LAN gigabit, phone flagship | 15 000 000 | 1920 | 60 |
+| Wi-Fi 5+ thông thường (mặc định) | 10 000 000 | 1920 | 60 |
+| Wi-Fi yếu / mạng nhà mạng VN | 6 000 000 | 1280 | 30 |
+| 4G/LTE / mạng quốc tế | 3 000 000 | 1080 | 30 |
+
+Đặt qua env var (`.env` hoặc inline):
+```bash
+export SCRCPY_VIDEO_BIT_RATE=15000000
+export SCRCPY_MAX_SIZE=1920
+export SCRCPY_MAX_FPS=60
+```
+
+Mở DevTools → Console rồi gõ `localStorage.setItem('streamHud','1')` (hoặc
+bấm **Ctrl+Shift+H** trong tab) để bật HUD góc màn hình hiển thị FPS / Mbps
+/ tổng số frame thực tế — dùng để verify thay đổi env có ăn không.
 
 Mở trình duyệt tại:
 - `http://localhost:8000`
