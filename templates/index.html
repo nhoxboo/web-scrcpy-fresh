@@ -141,6 +141,38 @@
     .qc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
     .qc-row button{padding:6px 12px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#e5e7eb;border-radius:10px;cursor:pointer}
     .qc-out{margin-top:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;color:var(--muted);min-height:1.2em;word-break:break-all}
+    /* Resolution / DPI section inside Quick Controls. Inputs + presets +
+       action buttons. Designed to be compact so the whole panel still fits
+       within max-height:80vh on a phone. */
+    .qc-section-title{margin:14px 0 6px;font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+    .wm-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+    .wm-row label{display:inline-flex;align-items:center;gap:6px;color:#cfd6ed;font-size:.82rem}
+    .wm-row input[type=number]{
+      width:78px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;
+      background:rgba(0,0,0,.25);color:#e5e7eb;font:inherit;font-size:.85rem;
+      font-variant-numeric:tabular-nums;text-align:right;
+    }
+    .wm-row input[type=number]:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.35)}
+    .wm-row .x{color:var(--muted)}
+    .wm-actions{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+    .wm-actions .wm-act{
+      padding:6px 10px;border:1px solid var(--line);background:rgba(255,255,255,.05);
+      color:#e5e7eb;border-radius:10px;cursor:pointer;font:inherit;font-size:.78rem;
+      display:inline-flex;align-items:center;gap:5px;
+    }
+    .wm-actions .wm-act:hover{border-color:var(--line-strong);background:rgba(255,255,255,.1)}
+    .wm-actions .wm-act.primary{border-color:rgba(106,166,255,.45);color:#dbe7ff;background:rgba(106,166,255,.12)}
+    .wm-actions .wm-act.primary:hover{background:rgba(106,166,255,.22)}
+    .wm-actions .wm-act.warn{border-color:rgba(252,211,77,.45);color:#fde68a;background:rgba(252,211,77,.08)}
+    .wm-actions .wm-act[disabled]{opacity:.5;cursor:wait}
+    .wm-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+    .wm-preset{
+      padding:5px 10px;border:1px dashed var(--line-strong);border-radius:999px;
+      background:rgba(255,255,255,.03);color:#cbd5ff;cursor:pointer;font:inherit;font-size:.74rem;
+    }
+    .wm-preset:hover{background:rgba(106,166,255,.15);border-style:solid}
+    .wm-info{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.74rem;color:var(--muted);margin-top:4px;word-break:break-all}
+    .wm-hint{margin:6px 0 0;font-size:.72rem;color:var(--muted);line-height:1.35}
     .resize-handle{
       position:absolute;right:10px;bottom:10px;width:20px;height:20px;border-radius:7px;
       background:rgba(15,17,30,.65);border:1px solid var(--line-strong);
@@ -302,6 +334,40 @@
         <button class="qc-btn" data-act="notifications" type="button"><i class="fa-solid fa-bell"></i><span>Noti drawer</span></button>
         <button class="qc-btn danger" data-act="reboot" data-confirm="Khởi động lại thiết bị?" type="button"><i class="fa-solid fa-power-off"></i><span>Reboot</span></button>
       </div>
+
+      <!-- Resolution & DPI override (adb shell wm size / wm density). Useful
+           when the device's native resolution doesn't fit a PC monitor — e.g.
+           Galaxy Z Fold 3 inner display (1768x2208) is too tall for landscape
+           streaming. Backend POSTs go to /api/adb/wm with op + validated ints. -->
+      <div class="qc-section-title"><i class="fa-solid fa-display" aria-hidden="true"></i> Độ phân giải &amp; DPI (wm size / wm density)</div>
+      <div class="wm-row">
+        <label>Size:
+          <input id="wmW" type="number" inputmode="numeric" min="100" max="7680" placeholder="1080">
+        </label>
+        <span class="x">×</span>
+        <input id="wmH" type="number" inputmode="numeric" min="100" max="7680" placeholder="2400" aria-label="height">
+        <label>DPI:
+          <input id="wmD" type="number" inputmode="numeric" min="80" max="1000" placeholder="420">
+        </label>
+      </div>
+      <div class="wm-actions">
+        <button class="wm-act primary" id="wmApplySize" type="button"><i class="fa-solid fa-check"></i>Áp dụng size</button>
+        <button class="wm-act primary" id="wmApplyDpi" type="button"><i class="fa-solid fa-check"></i>Áp dụng DPI</button>
+        <button class="wm-act" id="wmGet" type="button"><i class="fa-solid fa-rotate"></i>Lấy hiện tại</button>
+        <button class="wm-act warn" id="wmResetSize" type="button"><i class="fa-solid fa-arrows-rotate"></i>Reset size</button>
+        <button class="wm-act warn" id="wmResetDpi" type="button"><i class="fa-solid fa-arrows-rotate"></i>Reset DPI</button>
+        <button class="wm-act warn" id="wmResetAll" type="button"><i class="fa-solid fa-eraser"></i>Reset all</button>
+      </div>
+      <div class="wm-presets" id="wmPresets">
+        <button class="wm-preset" data-w="1768" data-h="2208" data-d="380" type="button">Fold 3 inner (1768×2208/380)</button>
+        <button class="wm-preset" data-w="832" data-h="2268" data-d="387" type="button">Fold 3 outer (832×2268/387)</button>
+        <button class="wm-preset" data-w="2208" data-h="1768" data-d="380" type="button">Fold 3 landscape (2208×1768/380)</button>
+        <button class="wm-preset" data-w="1080" data-h="2400" data-d="420" type="button">1080×2400 / 420</button>
+        <button class="wm-preset" data-w="720" data-h="1600" data-d="320" type="button">720×1600 / 320</button>
+      </div>
+      <div class="wm-info" id="wmInfo">Bấm "Lấy hiện tại" để đọc size/DPI từ thiết bị.</div>
+      <p class="wm-hint">Sau khi áp dụng, bấm <i class="fa-solid fa-plug-circle-bolt"></i> Reconnect để scrcpy bắt lại độ phân giải mới. Một số OEM có thể chặn lệnh này (Permission Denial). Khi reset hoặc đóng phiên, dùng "Reset all" nếu thiết bị giữ override sau khi rút cáp.</p>
+
       <div class="qc-out" id="qcOut"></div>
     </div>
   </div>
@@ -745,6 +811,117 @@
             btn.removeAttribute('disabled');
           }
         });
+      });
+
+      // wm size / wm density controls. Each button POSTs /api/adb/wm with a
+      // server-side whitelisted op + range-checked ints. Inputs cleared after
+      // a successful Get with the device's current physical size; override
+      // (if set) is shown next to the physical value in the info line.
+      const wmW = document.getElementById('wmW');
+      const wmH = document.getElementById('wmH');
+      const wmD = document.getElementById('wmD');
+      const wmInfo = document.getElementById('wmInfo');
+      const wmAllBtns = qcBackdrop.querySelectorAll('.wm-act');
+      const _wmFmt = (label, parsed)=>{
+        if (!parsed) return `${label}: -`;
+        const phys = parsed.physical || '-';
+        const ovr = parsed.override ? ` (override → ${parsed.override})` : '';
+        return `${label}: ${phys}${ovr}`;
+      };
+      const _wmDisable = (on)=>{
+        wmAllBtns.forEach(b => on ? b.setAttribute('disabled','true') : b.removeAttribute('disabled'));
+      };
+      const _wmPost = async (params)=>{
+        const fd = new FormData();
+        for (const [k, v] of Object.entries(params)) fd.append(k, String(v));
+        fd.append('csrf_token', _wmCsrf);
+        const r = await fetch('/api/adb/wm', { method:'POST', body: fd, credentials:'same-origin' });
+        return { status: r.status, json: await r.json().catch(()=>({})) };
+      };
+      const _wmCsrf = _qcCsrf;
+      const wmRefresh = async ()=>{
+        wmInfo.textContent = '→ wm size / wm density...';
+        try {
+          const { json } = await _wmPost({ op: 'get' });
+          if (json.ok) {
+            const sz = json.size || {};
+            const de = json.density || {};
+            wmInfo.textContent = `${_wmFmt('Size', sz)}   |   ${_wmFmt('DPI', de)}`;
+            // Pre-fill inputs with current physical values when empty so the
+            // user has a starting point to tweak from.
+            if (!wmW.value && sz.physical && /^\d+x\d+$/.test(sz.physical)) {
+              const [pw, ph] = sz.physical.split('x');
+              wmW.value = pw; wmH.value = ph;
+            }
+            if (!wmD.value && de.physical && /^\d+$/.test(de.physical)) {
+              wmD.value = de.physical;
+            }
+          } else {
+            wmInfo.textContent = '✖ ' + (json.error || 'wm get failed');
+          }
+        } catch (e) {
+          wmInfo.textContent = '✖ ' + (e && e.message || String(e));
+        }
+      };
+      const _wmRun = async (params, label)=>{
+        _wmDisable(true);
+        qcOut.textContent = `→ ${label}...`;
+        try {
+          const { json } = await _wmPost(params);
+          qcOut.textContent = (json.ok ? '✔ ' : '✖ ') + (json.output || json.error || JSON.stringify(json));
+          if (json.ok) await wmRefresh();
+        } catch (e) {
+          qcOut.textContent = '✖ ' + (e && e.message || String(e));
+        } finally {
+          _wmDisable(false);
+        }
+      };
+      document.getElementById('wmGet').addEventListener('click', async ()=>{
+        _wmDisable(true);
+        try { await wmRefresh(); } finally { _wmDisable(false); }
+      });
+      document.getElementById('wmApplySize').addEventListener('click', ()=>{
+        const w = parseInt(wmW.value, 10);
+        const h = parseInt(wmH.value, 10);
+        if (!Number.isFinite(w) || !Number.isFinite(h) || w < 100 || h < 100 || w > 7680 || h > 7680) {
+          qcOut.textContent = '✖ width/height phải là số nguyên 100..7680';
+          return;
+        }
+        _wmRun({ op: 'set_size', width: w, height: h }, `wm size ${w}x${h}`);
+      });
+      document.getElementById('wmApplyDpi').addEventListener('click', ()=>{
+        const d = parseInt(wmD.value, 10);
+        if (!Number.isFinite(d) || d < 80 || d > 1000) {
+          qcOut.textContent = '✖ DPI phải là số nguyên 80..1000';
+          return;
+        }
+        _wmRun({ op: 'set_density', density: d }, `wm density ${d}`);
+      });
+      document.getElementById('wmResetSize').addEventListener('click', ()=>{
+        _wmRun({ op: 'reset_size' }, 'wm size reset');
+      });
+      document.getElementById('wmResetDpi').addEventListener('click', ()=>{
+        _wmRun({ op: 'reset_density' }, 'wm density reset');
+      });
+      document.getElementById('wmResetAll').addEventListener('click', ()=>{
+        if (!confirm('Reset cả wm size và wm density về mặc định?')) return;
+        _wmRun({ op: 'reset_all' }, 'wm reset all');
+      });
+      qcBackdrop.querySelectorAll('.wm-preset').forEach(p => {
+        p.addEventListener('click', ()=>{
+          wmW.value = p.dataset.w || '';
+          wmH.value = p.dataset.h || '';
+          wmD.value = p.dataset.d || '';
+        });
+      });
+      // Auto-fetch current size/DPI the first time the user opens Quick Controls,
+      // so the info line isn't blank. Cached afterwards; manual refresh via
+      // the Get button.
+      let _wmFetched = false;
+      qcBtn.addEventListener('click', ()=>{
+        if (_wmFetched) return;
+        _wmFetched = true;
+        wmRefresh();
       });
 
       // UHID toggle: independent of DeX. Reload so UHID_CREATE / control
