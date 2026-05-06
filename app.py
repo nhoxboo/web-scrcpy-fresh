@@ -843,6 +843,144 @@ def api_adb_disconnect():
     return jsonify(ok=False, error=output or 'adb disconnect failed'), 500
 
 
+# ---- wm size / wm density (resolution & DPI override) ----------------------
+#
+# Useful for foldables (Galaxy Z Fold series) whose native inner-display
+# aspect ratio is awkward when streamed to a 16:9 monitor — overriding to
+# 1080x2400 / 420dpi (or rotating to 2208x1768) makes scrcpy behave like
+# a normal phone. Inputs are int-cast and range-checked before being
+# spliced into the argv, so no shell injection is possible.
+WM_DIM_MIN, WM_DIM_MAX = 100, 7680  # px on either edge (matches is_valid_new_display)
+WM_DPI_MIN, WM_DPI_MAX = 80, 1000  # density (DPI) sane range
+
+
+def _parse_int(value: str, low: int, high: int) -> int | None:
+    """Return int(value) when within [low, high], else None."""
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if n < low or n > high:
+        return None
+    return n
+
+
+@app.route('/api/adb/wm', methods=['POST'])
+@login_required
+def api_adb_wm():
+    """Override / read the device's display size and density via `wm`.
+
+    Body (form fields):
+      op = get | set_size | set_density | reset_size | reset_density | reset_all
+      width, height = ints (only for set_size; both required)
+      density       = int (only for set_density)
+
+    Returns JSON {ok, output} or {ok:false, error}. For op=get, also returns
+    `size` and `density` dicts parsed out of `wm size` / `wm density` output.
+    """
+    op = (request.form.get('op') or '').strip()
+    serial = _selected_serial()
+
+    if op == 'get':
+        ok_s, out_s = adb_shell(['wm', 'size'], serial=serial)
+        ok_d, out_d = adb_shell(['wm', 'density'], serial=serial)
+        _audit('adb_wm', op=op, ok=ok_s and ok_d)
+        return jsonify(
+            ok=ok_s and ok_d,
+            size=_parse_wm_size(out_s) if ok_s else None,
+            density=_parse_wm_density(out_d) if ok_d else None,
+            output=(out_s + ('\n' + out_d if out_d else '')).strip(),
+            error=None if (ok_s and ok_d) else (out_s + '\n' + out_d).strip(),
+        )
+
+    if op == 'set_size':
+        w = _parse_int(request.form.get('width', ''), WM_DIM_MIN, WM_DIM_MAX)
+        h = _parse_int(request.form.get('height', ''), WM_DIM_MIN, WM_DIM_MAX)
+        if w is None or h is None:
+            return jsonify(
+                ok=False,
+                error=f'width/height phải là số nguyên trong [{WM_DIM_MIN}, {WM_DIM_MAX}].',
+            ), 400
+        ok, output = adb_shell(['wm', 'size', f'{w}x{h}'], serial=serial)
+        _audit('adb_wm', op=op, width=w, height=h, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output or f'wm size = {w}x{h}')
+        return jsonify(ok=False, error=output or 'wm size failed'), 500
+
+    if op == 'set_density':
+        d = _parse_int(request.form.get('density', ''), WM_DPI_MIN, WM_DPI_MAX)
+        if d is None:
+            return jsonify(
+                ok=False,
+                error=f'density phải là số nguyên trong [{WM_DPI_MIN}, {WM_DPI_MAX}].',
+            ), 400
+        ok, output = adb_shell(['wm', 'density', str(d)], serial=serial)
+        _audit('adb_wm', op=op, density=d, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output or f'wm density = {d}')
+        return jsonify(ok=False, error=output or 'wm density failed'), 500
+
+    if op == 'reset_size':
+        ok, output = adb_shell(['wm', 'size', 'reset'], serial=serial)
+        _audit('adb_wm', op=op, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output or 'wm size reset')
+        return jsonify(ok=False, error=output or 'wm size reset failed'), 500
+
+    if op == 'reset_density':
+        ok, output = adb_shell(['wm', 'density', 'reset'], serial=serial)
+        _audit('adb_wm', op=op, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output or 'wm density reset')
+        return jsonify(ok=False, error=output or 'wm density reset failed'), 500
+
+    if op == 'reset_all':
+        ok_s, out_s = adb_shell(['wm', 'size', 'reset'], serial=serial)
+        ok_d, out_d = adb_shell(['wm', 'density', 'reset'], serial=serial)
+        ok = ok_s and ok_d
+        _audit('adb_wm', op=op, ok=ok)
+        out = ((out_s or '') + ('\n' + out_d if out_d else '')).strip()
+        if ok:
+            return jsonify(ok=True, output=out or 'reset size + density')
+        return jsonify(ok=False, error=out or 'wm reset_all failed'), 500
+
+    return jsonify(ok=False, error=f'op không hợp lệ: {op!r}'), 400
+
+
+def _parse_wm_size(out: str) -> dict:
+    """Parse `wm size` output.
+
+    Example outputs:
+        Physical size: 1768x2208
+        Physical size: 1768x2208\nOverride size: 1080x2400
+    """
+    result: dict[str, str] = {}
+    for line in (out or '').splitlines():
+        line = line.strip()
+        if line.lower().startswith('physical size:'):
+            result['physical'] = line.split(':', 1)[1].strip()
+        elif line.lower().startswith('override size:'):
+            result['override'] = line.split(':', 1)[1].strip()
+    return result
+
+
+def _parse_wm_density(out: str) -> dict:
+    """Parse `wm density` output.
+
+    Example outputs:
+        Physical density: 380
+        Physical density: 380\nOverride density: 420
+    """
+    result: dict[str, str] = {}
+    for line in (out or '').splitlines():
+        line = line.strip()
+        if line.lower().startswith('physical density:'):
+            result['physical'] = line.split(':', 1)[1].strip()
+        elif line.lower().startswith('override density:'):
+            result['override'] = line.split(':', 1)[1].strip()
+    return result
+
+
 # ---- Session management -----------------------------------------------------
 @app.route('/api/session/status', methods=['GET'])
 @login_required
