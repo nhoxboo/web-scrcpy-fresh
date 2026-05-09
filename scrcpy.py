@@ -520,17 +520,25 @@ class Scrcpy:
         log.info('Video data reception stopped')
 
     def receive_audio_data(self) -> None:
-        # Mirror of receive_video_data for the audio socket. The scrcpy server
-        # streams: 1 dummy byte + 4-byte codec id + repeated [8-byte PTS,
-        # 4-byte size, payload]. We forward the entire stream untouched (just
-        # consume the dummy 1-byte handshake) and let AudioParser in the
-        # browser strip the headers and feed AAC ADTS frames to JMuxer.
+        # Audio reader: server streams the codec id (4 bytes, big-endian
+        # uint32 — AAC = 0x00_61_61_63, "\0aac") followed by repeated
+        # [8-byte PTS+flags, 4-byte size, payload]. The browser-side
+        # AudioParser strips those headers and feeds ADTS-framed AAC to
+        # JMuxer.
+        #
+        # NB: scrcpy's `sendDummyByte` only writes the 1-byte handshake to
+        # the *first* socket the server accept()s (see upstream
+        # DesktopConnection.open). With our setup (video=true, audio=true)
+        # that socket is the video one — see receive_video_data — so we
+        # MUST NOT consume a leading byte from the audio socket. Doing so
+        # eats the leading NUL of the AAC codec id and the parser then
+        # decodes "aac\0x80…" → "aac\uFFFD" → status bar shows
+        # "Audio codec aac� chưa hỗ trợ trong trình duyệt".
         log.info('Receiving audio data (codec=%s)...', self.audio_codec)
         if self.audio_socket is None:
             log.info('Audio socket not connected; skipping audio reader')
             return
         try:
-            self.audio_socket.recv(1)
             while not self.stop:
                 data = self.audio_socket.recv(8192)
                 if not data:
