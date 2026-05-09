@@ -115,6 +115,9 @@ _state_lock = threading.Lock()
 scpy_ctx = None
 client_sid = None
 message_queue = queue.Queue()
+# Separate queue + emit task for audio so a slow audio consumer can't stall
+# the video pipeline (the browser handles them through different MSE buffers).
+audio_message_queue = queue.Queue()
 video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '8000000')
 max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
 max_size = os.environ.get('SCRCPY_MAX_SIZE', '0').strip() or '0'
@@ -981,6 +984,60 @@ def _parse_wm_density(out: str) -> dict:
     return result
 
 
+# ---- Free-form `adb shell` exec --------------------------------------------
+#
+# The authenticated owner of the deployment already has direct ADB access to
+# their own device, so denying them an in-browser shell adds friction without
+# adding security. The host side is still injection-proof (we never use
+# shell=True on this side and pass argv as a list); the user-supplied string
+# is handed to the *device's* shell where it expands pipes/quotes/etc.
+ADB_EXEC_MAX_CMD_LEN = 2000  # one full screenful is plenty for any reasonable command
+ADB_EXEC_MAX_OUTPUT_BYTES = 100_000  # cap the JSON response so a runaway dumpsys can't OOM
+ADB_EXEC_TIMEOUT = 30.0  # seconds; longer than wm-style ops so `pm list packages` etc fit
+
+
+@app.route('/api/adb/exec', methods=['POST'])
+@login_required
+def api_adb_exec():
+    """Run a user-supplied `adb shell <cmd>` on the selected device.
+
+    Body: form field `cmd` — the full string passed to the device shell.
+    Returns JSON {ok, output, truncated}.
+    """
+    cmd = (request.form.get('cmd') or '').strip()
+    if not cmd:
+        return jsonify(ok=False, error='Lệnh ADB rỗng.'), 400
+    if len(cmd) > ADB_EXEC_MAX_CMD_LEN:
+        return jsonify(
+            ok=False,
+            error=f'Lệnh quá dài (>{ADB_EXEC_MAX_CMD_LEN} ký tự).',
+        ), 400
+    # Disallow embedded NULs — they're not legal in argv on POSIX/Windows and
+    # will trip subprocess.run's validation anyway, but rejecting up-front
+    # gives a friendlier error message.
+    if '\x00' in cmd:
+        return jsonify(ok=False, error='Lệnh chứa ký tự NUL không hợp lệ.'), 400
+
+    serial = _selected_serial()
+    # Pass `cmd` as a *single* argv token so adb forwards it verbatim to the
+    # device shell — the device interprets pipes, &&, redirects, quoting etc.
+    # The host-side subprocess.run does NOT shell-evaluate (no shell=True), so
+    # nothing typed here can run code on the server.
+    ok, output = adb_shell([cmd], serial=serial, timeout=ADB_EXEC_TIMEOUT)
+    truncated = False
+    if output and len(output) > ADB_EXEC_MAX_OUTPUT_BYTES:
+        output = output[:ADB_EXEC_MAX_OUTPUT_BYTES] + '\n... (output truncated)'
+        truncated = True
+    # Audit log: keep the command (truncated) so the operator has a record of
+    # what was run. This is *more* sensitive than the wm endpoint so it gets
+    # logged regardless of success.
+    audit_cmd = cmd if len(cmd) <= 200 else cmd[:200] + '...'
+    _audit('adb_exec', cmd=audit_cmd, ok=ok, truncated=truncated)
+    if ok:
+        return jsonify(ok=True, output=output or '(không có output)', truncated=truncated)
+    return jsonify(ok=False, error=output or 'adb shell failed', truncated=truncated), 500
+
+
 # ---- Session management -----------------------------------------------------
 @app.route('/api/session/status', methods=['GET'])
 @login_required
@@ -1060,8 +1117,30 @@ def video_send_task():
     log.info('video_send_task stopped')
 
 
+def audio_send_task():
+    global client_sid
+    while True:
+        with _state_lock:
+            active = client_sid
+        if active is None:
+            break
+        try:
+            message = audio_message_queue.get(timeout=0.05)
+            socketio.emit('audio_data', message, to=active)
+        except queue.Empty:
+            pass
+        except Exception as e:  # noqa: BLE001 - background task shouldn't crash
+            log.error('Error sending audio data: %s', e)
+        socketio.sleep(0)
+    log.info('audio_send_task stopped')
+
+
 def send_video_data(data):
     message_queue.put(data)
+
+
+def send_audio_data(data):
+    audio_message_queue.put(data)
 
 
 @socketio.on('connect')
@@ -1099,6 +1178,12 @@ def handle_connect(auth=None):
                 chosen_new_display = req_newdisp
             else:
                 log.warning('Invalid new_display from client: %r', req_newdisp)
+        # Audio: ?audio=1 enables device-side audio capture + an extra socket
+        # for AAC frames. Default OFF so existing users (and bandwidth-tight
+        # links) aren't impacted. The browser's audio toolbar toggle sets the
+        # localStorage flag that drives this query param.
+        req_audio = request.args.get('audio') if request.args else None
+        chosen_audio = req_audio == '1' or (req_audio or '').lower() == 'true'
         # Per-session pick (set via /devices) wins over env/CLI default.
         chosen_serial = _selected_serial()
         scpy_ctx = Scrcpy(
@@ -1106,6 +1191,7 @@ def handle_connect(auth=None):
             display_id=chosen_disp,
             max_size=max_size,
             new_display=chosen_new_display,
+            enable_audio=chosen_audio,
         )
         # Forward device → browser clipboard updates. scrcpy server pushes a
         # CLIPBOARD message whenever the device clipboard changes (including
@@ -1126,7 +1212,20 @@ def handle_connect(auth=None):
         scpy_ctx.device_message_callback = _on_device_message
 
     try:
-        scpy_ctx.scrcpy_start(send_video_data, video_bit_rate, max_fps=max_fps)
+        # Drain any leftover audio bytes from a previous session before the new
+        # encoder starts pushing — otherwise the browser might decode stale
+        # AAC frames as the first sound after reconnect.
+        try:
+            while True:
+                audio_message_queue.get_nowait()
+        except queue.Empty:
+            pass
+        scpy_ctx.scrcpy_start(
+            send_video_data,
+            video_bit_rate,
+            max_fps=max_fps,
+            audio_callback=send_audio_data if chosen_audio else None,
+        )
     except RuntimeError as e:
         log.warning('scrcpy_start refused: %s', e)
         with _state_lock:
@@ -1145,7 +1244,9 @@ def handle_connect(auth=None):
         ) from e
 
     socketio.start_background_task(video_send_task)
-    log.info('Socket connected sid=%s', request.sid)
+    if chosen_audio:
+        socketio.start_background_task(audio_send_task)
+    log.info('Socket connected sid=%s audio=%s', request.sid, chosen_audio)
     return True
 
 
@@ -1173,6 +1274,22 @@ def handle_control_data(data):
             ctx.scrcpy_send_control(data)
         except Exception as e:  # noqa: BLE001
             log.warning('scrcpy_send_control failed: %s', e)
+
+
+@socketio.on('client_ping')
+def handle_client_ping(data):
+    """Echo a client-supplied timestamp back so the browser can measure RTT.
+
+    The HUD computes ping as (now - data['t']) on the client side after we
+    bounce the same payload. We don't trust or interpret `t` server-side —
+    it's just an opaque token. Ack via `server_pong` only to the requesting
+    socket so multi-tab pings don't cross-talk.
+    """
+    try:
+        token = data.get('t') if isinstance(data, dict) else None
+    except Exception:  # noqa: BLE001 - defensive against odd payloads
+        token = None
+    socketio.emit('server_pong', {'t': token}, to=request.sid)
 
 
 if __name__ == '__main__':
