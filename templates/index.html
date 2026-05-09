@@ -1806,12 +1806,19 @@
     if (audioOn){
       audioParserInstance = new AudioParser({
         onCodec: ({codec})=>{
+          // Server is asked for AAC explicitly (audio_codec=aac in scrcpy.py),
+          // so anything else here is a real misconfiguration worth surfacing.
           if (codec !== 'aac'){
             st('Audio codec '+codec+' chưa hỗ trợ trong trình duyệt.');
+          } else {
+            st('Audio: bắt đầu nhận stream AAC từ thiết bị.');
           }
         },
         onFrame: ({data, isConfig})=>{
-          if (isConfig) return; // jmuxer derives config from ADTS headers
+          // Config frames carry the AudioSpecificConfig — the parser already
+          // captured it to build ADTS headers for following frames. The raw
+          // ASC bytes themselves are not playable so we drop them.
+          if (isConfig) return;
           const mux = _ensureAudioMux();
           if (!mux) return;
           mux.feed({ audio: data });
