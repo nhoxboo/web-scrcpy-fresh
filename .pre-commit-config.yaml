@@ -10,7 +10,12 @@ repos:
       - id: detect-private-key
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    # Keep aligned with the ruff version pip installs in CI
+    # (requirements-dev.txt: ruff>=0.5,<1.0). The hook used to be pinned to
+    # v0.6.9, which formats certain assert/re.search lines differently from
+    # v0.15+, so contributors running pre-commit locally would push code
+    # that CI's `ruff format --check .` immediately rejected.
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: ['--fix']

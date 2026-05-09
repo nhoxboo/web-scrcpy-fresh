@@ -1,5 +1,6 @@
 import argparse
 import atexit
+import hashlib
 import hmac
 import json
 import logging
@@ -352,9 +353,44 @@ if os.environ.get('TRUST_PROXY') == '1':
 socketio = SocketIO(app, async_mode=None)
 
 
+def _compute_static_ver() -> str:
+    """Hash the contents of `static/` so deploys invalidate browser caches.
+
+    Without this every <script src="/static/js/foo.js"> is served by the
+    browser from disk cache after the first hit, so anyone who logged in
+    before a JS bug-fix deploy keeps running the broken file. We mix the
+    SHA-1 hash of every file under `static/` into a single short token and
+    expose it as `?v={{ static_ver }}` on each script/link tag — same URL
+    iff the assets haven't changed, fresh URL the moment any file does.
+    Computed once at process boot; deploy = restart = new token.
+    """
+    h = hashlib.sha1(usedforsecurity=False)
+    root = os.path.join(os.path.dirname(__file__), 'static')
+    if not os.path.isdir(root):
+        return '0'
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Sort to make the hash deterministic across filesystems.
+        dirnames.sort()
+        for name in sorted(filenames):
+            full = os.path.join(dirpath, name)
+            try:
+                with open(full, 'rb') as fp:
+                    while True:
+                        chunk = fp.read(65536)
+                        if not chunk:
+                            break
+                        h.update(chunk)
+            except OSError:  # missing/unreadable file → skip silently
+                continue
+    return h.hexdigest()[:10]
+
+
+STATIC_VER = _compute_static_ver()
+
+
 @app.context_processor
 def _inject_csrf():
-    return {'csrf_token': _get_csrf_token}
+    return {'csrf_token': _get_csrf_token, 'static_ver': STATIC_VER}
 
 
 @app.before_request
@@ -1212,14 +1248,18 @@ def handle_connect(auth=None):
         scpy_ctx.device_message_callback = _on_device_message
 
     try:
-        # Drain any leftover audio bytes from a previous session before the new
-        # encoder starts pushing — otherwise the browser might decode stale
-        # AAC frames as the first sound after reconnect.
-        try:
-            while True:
-                audio_message_queue.get_nowait()
-        except queue.Empty:
-            pass
+        # Drain any leftover bytes from the previous session before the new
+        # encoder starts pushing — otherwise the new VideoParser/AudioParser
+        # instances on the browser side would consume stale frames first
+        # (mid-NALU bytes parsed as the 64-byte device name + 12-byte size
+        # header → garbage `Screen <huge>x<negative>` and a permanently
+        # out-of-sync stream; stale AAC frames as the first audio).
+        for q in (message_queue, audio_message_queue):
+            try:
+                while True:
+                    q.get_nowait()
+            except queue.Empty:
+                pass
         scpy_ctx.scrcpy_start(
             send_video_data,
             video_bit_rate,
