@@ -360,16 +360,25 @@ class Scrcpy:
         display_id: int | str | None = None,
         max_size: int | str | None = None,
         new_display: str | None = None,
+        enable_audio: bool = False,
+        audio_codec: str = 'aac',
     ):
         self.video_socket = None
+        self.audio_socket = None
         self.control_socket = None
 
         self.android_thread = None
         self.video_thread = None
+        self.audio_thread = None
         self.control_thread = None
         self.android_process = None
 
         self.video_callback = None
+        # audio_callback(data: bytes) — invoked from the audio reader thread
+        # whenever the device pushes audio bytes. The data is the raw scrcpy
+        # audio socket stream (codec id + per-packet 12-byte header + payload),
+        # which the browser parses with AudioParser into AAC ADTS frames.
+        self.audio_callback = None
         # device_message_callback(msg_type: int, payload: dict) — invoked from
         # the control reader thread when scrcpy-server pushes a message back
         # to the client. Today we only forward TYPE_CLIPBOARD (= 0); the
@@ -397,6 +406,19 @@ class Scrcpy:
             if new_display is not None and str(new_display).strip()
             else None
         )
+        # enable_audio: when True, scrcpy server captures device audio and
+        # opens an *additional* socket to stream it. We default it off because
+        # the browser playback path (jmuxer audio mode → MSE) still needs
+        # device-side QA on each OEM. Codec choice is locked to 'aac' so the
+        # browser MSE pipeline can decode it — Opus would need a separate
+        # decoder we don't ship today.
+        self.enable_audio = bool(enable_audio)
+        self.audio_codec = (audio_codec or 'aac').strip().lower()
+        if self.audio_codec not in ('aac',):
+            # Be explicit so a typo'd codec doesn't silently fall through
+            # the scrcpy CLI and produce a stream the browser can't play.
+            log.warning('Unsupported audio_codec=%r; falling back to aac.', self.audio_codec)
+            self.audio_codec = 'aac'
         self.stop = True  # True until scrcpy_start flips it; avoids AttributeError
 
     # ---- device setup ----------------------------------------------------------
@@ -430,8 +452,12 @@ class Scrcpy:
     # ---- server lifecycle ------------------------------------------------------
     def start_server(self) -> None:
         log.info('Starting scrcpy server in background...')
-        # audio=false: audio was captured but never forwarded to the browser,
-        # so disable it at the source to save device CPU + tunnel bandwidth.
+        # audio: when False (default) the server skips capture entirely, saving
+        # device CPU + tunnel bandwidth. When True we additionally pin the
+        # codec to AAC so the browser MSE pipeline can decode it (Opus needs
+        # a separate decoder we don't ship). The audio socket is opened in
+        # *between* the video and control sockets, so scrcpy_start adds a
+        # third connect() in the right order when self.enable_audio is set.
         # display_id selects which display to mirror: 0 = main, 2 = typical
         # Samsung DeX, or any id reported by `adb shell dumpsys display`.
         # new_display takes precedence: scrcpy server rejects display_id when
@@ -442,11 +468,14 @@ class Scrcpy:
             display_arg = f'new_display={self.new_display} '
         else:
             display_arg = f'display_id={self.display_id} '
+        audio_arg = (
+            f'audio=true audio_codec={self.audio_codec} ' if self.enable_audio else 'audio=false '
+        )
         cmd = self._adb(
             'shell',
             (
                 f'CLASSPATH={DEVICE_SERVER_PATH} app_process / '
-                'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true audio=false '
+                f'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true {audio_arg}'
                 f'log_level=VERBOSE video_bit_rate={self.video_bit_rate} '
                 f'max_fps={self.max_fps} {display_arg}'
                 f'max_size={self.max_size}'
@@ -486,6 +515,28 @@ class Scrcpy:
         except OSError as e:
             log.info('Video socket closed: %s', e)
         log.info('Video data reception stopped')
+
+    def receive_audio_data(self) -> None:
+        # Mirror of receive_video_data for the audio socket. The scrcpy server
+        # streams: 1 dummy byte + 4-byte codec id + repeated [8-byte PTS,
+        # 4-byte size, payload]. We forward the entire stream untouched (just
+        # consume the dummy 1-byte handshake) and let AudioParser in the
+        # browser strip the headers and feed AAC ADTS frames to JMuxer.
+        log.info('Receiving audio data (codec=%s)...', self.audio_codec)
+        if self.audio_socket is None:
+            log.info('Audio socket not connected; skipping audio reader')
+            return
+        try:
+            self.audio_socket.recv(1)
+            while not self.stop:
+                data = self.audio_socket.recv(8192)
+                if not data:
+                    break
+                if self.audio_callback is not None:
+                    self.audio_callback(data)
+        except OSError as e:
+            log.info('Audio socket closed: %s', e)
+        log.info('Audio data reception stopped')
 
     def handle_control_conn(self) -> None:
         # The control socket is bidirectional: we send INJECT_KEYCODE,
@@ -557,11 +608,26 @@ class Scrcpy:
         log.info('Control connection stopped')
 
     # ---- public API ------------------------------------------------------------
-    def scrcpy_start(self, video_callback, video_bit_rate, max_fps=None) -> None:
+    def scrcpy_start(
+        self,
+        video_callback,
+        video_bit_rate,
+        max_fps=None,
+        audio_callback=None,
+    ) -> None:
         self.video_bit_rate = video_bit_rate
         if max_fps is not None:
             self.max_fps = str(max_fps)
         self.video_callback = video_callback
+        # Audio: only request the extra socket if the caller supplied a
+        # callback AND the instance was constructed with enable_audio=True.
+        # Either condition alone wouldn't make sense — no callback means
+        # nowhere for the bytes to go; no enable_audio means the server
+        # won't open the socket and connect() would dangle.
+        if audio_callback is not None and self.enable_audio:
+            self.audio_callback = audio_callback
+        else:
+            self.audio_callback = None
         self.stop = False
 
         result = subprocess.run(
@@ -598,6 +664,15 @@ class Scrcpy:
             self.video_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.video_socket.connect(('localhost', LOCAL_PORT))
             log.info('Video connection established')
+
+            # Audio socket is opened in between video and control to match
+            # scrcpy's connect-back order when audio=true is set on the server.
+            # If we leave it out the server's audio thread would hang on
+            # accept() and (in some versions) tear down the whole streamer.
+            if self.audio_callback is not None and self.enable_audio:
+                self.audio_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.audio_socket.connect(('localhost', LOCAL_PORT))
+                log.info('Audio connection established')
 
             self.control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.control_socket.connect(('localhost', LOCAL_PORT))
@@ -636,6 +711,9 @@ class Scrcpy:
         self.control_thread = Thread(target=self.handle_control_conn, daemon=True)
         self.video_thread.start()
         self.control_thread.start()
+        if self.audio_socket is not None and self.audio_callback is not None:
+            self.audio_thread = Thread(target=self.receive_audio_data, daemon=True)
+            self.audio_thread.start()
         log.info('Background tasks started')
 
     def _shutdown_socket(self, sock) -> None:
@@ -647,7 +725,7 @@ class Scrcpy:
             pass
 
     def _close_sockets(self) -> None:
-        for sock in (self.video_socket, self.control_socket):
+        for sock in (self.video_socket, self.audio_socket, self.control_socket):
             if sock is None:
                 continue
             try:
@@ -668,10 +746,12 @@ class Scrcpy:
         self.stop = True
 
         self._shutdown_socket(self.video_socket)
+        self._shutdown_socket(self.audio_socket)
         self._shutdown_socket(self.control_socket)
         self._close_sockets()
 
         self._join_thread(self.video_thread)
+        self._join_thread(self.audio_thread)
         self._join_thread(self.control_thread)
 
         if self.android_process is not None:
