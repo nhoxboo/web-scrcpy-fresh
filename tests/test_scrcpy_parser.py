@@ -162,6 +162,26 @@ def test_adb_pair_validates_inputs(real_scrcpy, monkeypatch):
     assert ok and 'paired' in out.lower()
 
 
+def test_bundled_jar_matches_declared_version(real_scrcpy):
+    """Bundled scrcpy-server.jar must have BuildConfig.VERSION_NAME ==
+    SCRCPY_SERVER_VERSION — the server rejects a mismatch at startup. This
+    test catches the easy mistake of upgrading one side and forgetting the
+    other.
+    """
+    import os
+    import zipfile
+
+    if not os.path.isfile(real_scrcpy.SCRCPY_SERVER_PATH):
+        pytest.skip('scrcpy-server jar not present in checkout')
+    with zipfile.ZipFile(real_scrcpy.SCRCPY_SERVER_PATH) as z:
+        dex = z.read('classes.dex')
+    needle = real_scrcpy.SCRCPY_SERVER_VERSION.encode()
+    assert needle in dex, (
+        f'Bundled jar does not contain {real_scrcpy.SCRCPY_SERVER_VERSION!r}; '
+        'either the jar was not upgraded or SCRCPY_SERVER_VERSION is wrong.'
+    )
+
+
 def test_adb_connect_detects_failure_text(real_scrcpy, monkeypatch):
     """`adb connect` exits 0 even on failure — must look at stdout text."""
     monkeypatch.setattr(
