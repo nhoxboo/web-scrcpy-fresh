@@ -331,9 +331,17 @@
 
   <!-- Hidden audio sink. JMuxer attaches a MediaSource to this element when
        the user opts in via the audio toolbar toggle; otherwise it stays
-       inert (no autoplay click prompt either). Browsers gate autoplay'd
-       audio behind a user gesture — the toolbar toggle counts as one. -->
+       inert. Browsers gate autoplay'd audio behind a user activation —
+       the toolbar toggle is one, but `location.reload()` immediately
+       afterwards drops the activation. The script below re-arms `play()`
+       on the next interaction and surfaces a clickable banner if needed. -->
   <audio id="audioPlayer" autoplay playsinline preload="auto" hidden></audio>
+  <!-- Surfaced only when the browser blocks autoplay so the user can
+       resume audio with a single click anywhere. -->
+  <div id="audioGate" class="audio-gate" hidden role="button" tabindex="0">
+    <i class="fa-solid fa-volume-high"></i>
+    <span>Click để bật âm thanh (browser block autoplay)</span>
+  </div>
 
   <!-- Quick Controls overlay -->
   <div class="qc-backdrop" id="qcBackdrop">
@@ -1788,6 +1796,56 @@
         setTimeout(()=>location.reload(), 250);
       });
     }
+    // ---- Autoplay-gated playback ----------------------------------------
+    // When `audioStream` toggles on we `location.reload()` so the server
+    // restarts scrcpy with audio=true. The reload drops the page's
+    // user-activation, so the <audio autoplay> attribute alone won't
+    // actually start playback in Chrome/Firefox/Safari. We therefore:
+    //   1. try `audioEl.play()` proactively each time JMuxer attaches a
+    //      MediaSource — works on sites with high MEI / sticky activation
+    //      / users who already clicked something on the new page;
+    //   2. on rejection, expose a centred "Click để bật âm thanh" banner
+    //      AND attach a capture-phase document-level listener so any
+    //      click/keydown/touchstart anywhere on the page satisfies the
+    //      gesture and resumes playback. The gate hides itself on success.
+    const audioGate = document.getElementById('audioGate');
+    let _audioGateArmed = false;
+    const _hideAudioGate = ()=>{ if (audioGate) audioGate.hidden = true; };
+    const _showAudioGate = ()=>{
+      if (!audioGate) return;
+      audioGate.hidden = false;
+      if (_audioGateArmed) return;
+      _audioGateArmed = true;
+      const onceAnyGesture = ()=>{
+        document.removeEventListener('click', onceAnyGesture, true);
+        document.removeEventListener('keydown', onceAnyGesture, true);
+        document.removeEventListener('touchstart', onceAnyGesture, true);
+        _audioGateArmed = false;
+        _tryAudioPlay();
+      };
+      document.addEventListener('click', onceAnyGesture, true);
+      document.addEventListener('keydown', onceAnyGesture, true);
+      document.addEventListener('touchstart', onceAnyGesture, true);
+    };
+    const _tryAudioPlay = ()=>{
+      if (!audioEl) return;
+      const p = audioEl.play();
+      if (p && typeof p.then === 'function'){
+        p.then(()=>{
+          _hideAudioGate();
+          st('Audio: đang phát.');
+        }).catch((err)=>{
+          // NotAllowedError = autoplay block. AbortError = src changed
+          // mid-play; we'll retry on the next call.
+          if (err && err.name === 'NotAllowedError'){
+            _showAudioGate();
+            st('Audio: chờ click để phát (browser block autoplay).');
+          } else {
+            st('Audio play() lỗi: '+(err?.name||err));
+          }
+        });
+      }
+    };
     const _ensureAudioMux = ()=>{
       if (audioMux || !audioOn) return audioMux;
       try{
@@ -1797,12 +1855,36 @@
           clearBuffer:true,
           onError:(err)=>st('Audio decoder error: '+(err?.message||JSON.stringify(err)))
         });
+        // JMuxer sets <audio>.src to a MediaSource blob URL. Wait for the
+        // MediaSource to open (which is when the element actually has a
+        // playable source) before calling play() — calling earlier races
+        // and frequently rejects with AbortError.
+        const armPlayWhenReady = ()=>{
+          // `audioEl.readyState >= 1` (HAVE_METADATA) is a loose check;
+          // attempting play() at HAVE_NOTHING is harmless but noisier.
+          // We just retry every 250ms for up to 3s, then call once anyway.
+          let tries = 0;
+          const id = setInterval(()=>{
+            tries++;
+            if (audioEl.readyState >= 2 || tries >= 12){
+              clearInterval(id);
+              _tryAudioPlay();
+            }
+          }, 250);
+        };
+        armPlayWhenReady();
       }catch(e){
         st('Không tạo được audio decoder: '+(e?.message||e));
         audioMux = null;
       }
       return audioMux;
     };
+    if (audioGate){
+      audioGate.addEventListener('click', ()=>{
+        _hideAudioGate();
+        _tryAudioPlay();
+      });
+    }
     if (audioOn){
       audioParserInstance = new AudioParser({
         onCodec: ({codec})=>{
