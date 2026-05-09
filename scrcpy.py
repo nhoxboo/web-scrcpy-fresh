@@ -40,6 +40,9 @@ def _resolve_adb_path() -> str:
 ADB_PATH = _resolve_adb_path()
 SCRCPY_SERVER_PATH = os.path.join(os.path.dirname(__file__), 'scrcpy-server')
 DEVICE_SERVER_PATH = '/data/local/tmp/scrcpy-server.jar'
+# Must match the BuildConfig.VERSION_NAME baked into the jar at SCRCPY_SERVER_PATH;
+# Server.main() rejects the connection on a string mismatch (see Options.parse).
+SCRCPY_SERVER_VERSION = '3.3.4'
 
 
 def list_adb_devices(adb_path: str | None = None, timeout: float = 5.0) -> list[dict]:
@@ -475,7 +478,7 @@ class Scrcpy:
             'shell',
             (
                 f'CLASSPATH={DEVICE_SERVER_PATH} app_process / '
-                f'com.genymobile.scrcpy.Server 3.1 tunnel_forward=true {audio_arg}'
+                f'com.genymobile.scrcpy.Server {SCRCPY_SERVER_VERSION} tunnel_forward=true {audio_arg}'
                 f'log_level=VERBOSE video_bit_rate={self.video_bit_rate} '
                 f'max_fps={self.max_fps} {display_arg}'
                 f'max_size={self.max_size}'
@@ -545,7 +548,7 @@ class Scrcpy:
         # UHID output). Parse them frame-by-frame and dispatch via
         # device_message_callback so app.py can forward to the browser.
         #
-        # Wire format (scrcpy v3.1, see DeviceMessageWriter.java):
+        # Wire format (scrcpy v3.3.4 DeviceMessageWriter.java; identical to 3.1):
         #   TYPE_CLIPBOARD     = 0  : u8=0  | u32 length | utf8 bytes
         #   TYPE_ACK_CLIPBOARD = 1  : u8=1  | u64 sequence
         #   TYPE_UHID_OUTPUT   = 2  : u8=2  | u16 id | u16 size | data
