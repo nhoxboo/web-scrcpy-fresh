@@ -26,8 +26,7 @@ def _run_node(snippet: str) -> dict:
         pytest.skip('node not available')
     abs_parser = os.path.abspath(_PARSER_JS)
     code = (
-        f'const AudioParser = require({json.dumps(abs_parser)});\n'
-        f'(function(){{\n{snippet}\n}})();'
+        f'const AudioParser = require({json.dumps(abs_parser)});\n(function(){{\n{snippet}\n}})();'
     )
     result = subprocess.run(
         ['node', '-e', code],
