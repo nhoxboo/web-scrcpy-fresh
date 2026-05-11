@@ -360,6 +360,34 @@
     <span>Click để bật âm thanh (browser block autoplay)</span>
   </div>
 
+  <!-- Audio diagnostics panel (toggle Ctrl+Shift+A). The script mutates
+       `_audioState` on every interesting event (codec parsed, ASC parsed,
+       frame fed to JMuxer, MediaSource state change, audioEl play() result,
+       errors). The panel is hidden by default — only the user opens it
+       when audio doesn't work, screenshots it, and shares so we can
+       pinpoint which step is breaking instead of guessing. -->
+  <div id="audioDiag" class="audio-diag" hidden>
+    <div class="ad-title">
+      <i class="fa-solid fa-stethoscope"></i> Audio diagnostics
+      <span class="ad-hint">Ctrl+Shift+A để ẩn</span>
+    </div>
+    <div class="ad-row"><span class="ad-k">enabled</span><span id="adEnabled">false</span></div>
+    <div class="ad-row"><span class="ad-k">stage</span><span id="adStage">init</span></div>
+    <div class="ad-row"><span class="ad-k">codec</span><span id="adCodec">—</span></div>
+    <div class="ad-row"><span class="ad-k">asc</span><span id="adAsc">—</span></div>
+    <div class="ad-row"><span class="ad-k">frames</span><span id="adFrames">cfg=0 data=0 fed=0</span></div>
+    <div class="ad-row"><span class="ad-k">jmuxer</span><span id="adMux">none</span></div>
+    <div class="ad-row"><span class="ad-k">mediaSource</span><span id="adMs">none</span></div>
+    <div class="ad-row"><span class="ad-k">&lt;audio&gt;</span><span id="adAudio">—</span></div>
+    <div class="ad-row"><span class="ad-k">play()</span><span id="adPlay">idle</span></div>
+    <div class="ad-row"><span class="ad-k">primed</span><span id="adPrimed">false</span></div>
+    <div class="ad-row"><span class="ad-k">last error</span><span id="adErr">—</span></div>
+    <div class="ad-actions">
+      <button id="adForcePlay" type="button"><i class="fa-solid fa-play"></i> Force play()</button>
+      <button id="adReset" type="button"><i class="fa-solid fa-rotate-left"></i> Reset audio</button>
+    </div>
+  </div>
+
   <!-- Quick Controls overlay -->
   <div class="qc-backdrop" id="qcBackdrop">
     <div class="qc-panel" role="dialog" aria-modal="true" aria-labelledby="qcTitle">
@@ -1922,10 +1950,77 @@
     // the <audio> element. We build it lazily — only when the user has
     // turned audio on AND the first audio packet arrives, so the
     // performance cost is exactly zero in the common (audio=off) case.
+    //
+    // History: turning audio on/off used to do `location.reload()` so the
+    // server could restart scrcpy with `audio=true`. That worked but
+    // reloaded the page in the same tick the user clicked the toolbar
+    // button — destroying the user-activation needed for `<audio>` to
+    // autoplay. Browsers (Chrome especially) would then silently block
+    // playback and the only way to recover was the gate banner.
+    //
+    // The new flow keeps the page alive: we soft-reconnect the socket
+    // with the new `?audio=1` query so server-side scrcpy restarts but
+    // the user gesture stays in scope. We *also* prime the audio
+    // element from inside the click handler (calling `audioEl.play()` /
+    // `AudioContext.resume()`) so the browser remembers this page has
+    // explicit audio consent — which carries over to the post-reconnect
+    // MediaSource attach.
     const audioEl = document.getElementById('audioPlayer');
     const audioBtn = document.getElementById('audioToggle');
     let audioMux = null;
     let audioParserInstance = null;
+    // Live, observable state for the diagnostics panel (Ctrl+Shift+A) and
+    // a window-level handle (`window.__scrcpyAudio`) for ad-hoc debugging
+    // from DevTools. Every meaningful audio event mutates this and refreshes
+    // the panel — that's how the user can prove which step is failing
+    // without us needing to ship a one-off debug build.
+    const _audioState = {
+      enabled: localStorage.getItem('audioStream') === '1',
+      primed: false,
+      codec: null,
+      asc: null,
+      framesConfig: 0,
+      framesData: 0,
+      framesFedToMux: 0,
+      bytesReceived: 0,
+      msState: 'none',
+      playState: 'idle',
+      lastError: null,
+      lastStage: 'init',
+    };
+    // The diagnostics panel renders `_audioState`. Defined now (before any
+    // function that calls `_audioLog`) so the TDZ for `const` doesn't
+    // ReferenceError on script-load `_setupAudioForCurrentSession()`.
+    const audioDiagEl = document.getElementById('audioDiag');
+    const _refreshAudioDiag = ()=>{
+      if (!audioDiagEl || audioDiagEl.hidden) return;
+      const set = (id, v)=>{
+        const el = audioDiagEl.querySelector('#'+id);
+        if (el) el.textContent = String(v);
+      };
+      set('adEnabled', _audioState.enabled);
+      set('adStage', _audioState.lastStage);
+      set('adCodec', _audioState.codec || '—');
+      set('adAsc', _audioState.asc
+        ? `profile=${_audioState.asc.profile} freqIdx=${_audioState.asc.freqIdx} channels=${_audioState.asc.channels}`
+        : '—');
+      set('adFrames',
+        `cfg=${_audioState.framesConfig} data=${_audioState.framesData} fed=${_audioState.framesFedToMux} (${(_audioState.bytesReceived/1024).toFixed(1)} KiB recv)`);
+      set('adMux', audioMux ? 'attached' : 'none');
+      set('adMs', _audioState.msState);
+      set('adAudio', audioEl
+        ? `readyState=${audioEl.readyState} paused=${audioEl.paused} muted=${audioEl.muted} vol=${audioEl.volume.toFixed(2)} err=${audioEl.error?audioEl.error.code:'no'}`
+        : 'no-element');
+      set('adPlay', _audioState.playState);
+      set('adErr', _audioState.lastError || '—');
+      set('adPrimed', _audioState.primed);
+    };
+    const _audioLog = (stage, detail)=>{
+      _audioState.lastStage = stage;
+      try { console.log('[audio]', stage, detail || ''); } catch (_e) {}
+      _refreshAudioDiag();
+    };
+    if (typeof window !== 'undefined') window.__scrcpyAudio = _audioState;
     const refreshAudioBtn = ()=>{
       if (!audioBtn) return;
       const on = localStorage.getItem('audioStream') === '1';
@@ -1937,20 +2032,62 @@
         ic.classList.add(on ? 'fa-volume-high' : 'fa-volume-xmark');
       }
       audioBtn.title = on
-        ? 'Audio thiết bị: ON — bấm để tắt (cần reconnect)'
-        : 'Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)';
+        ? 'Audio thiết bị: ON — bấm để tắt (soft reconnect)'
+        : 'Audio thiết bị: OFF — bấm để bật streaming audio (soft reconnect)';
     };
     refreshAudioBtn();
+    // Capture the user-gesture activation while it is still alive in this
+    // click handler. Browsers track activation per audio element: once
+    // play() is invoked synchronously from a gesture, subsequent calls
+    // (after we attach a MediaSource) are no longer subject to the
+    // autoplay policy on this element. We also resume the AudioContext
+    // (if any) because some platforms gate <audio> playback behind it.
+    const _primeAudioUserActivation = ()=>{
+      _audioState.primed = true;
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) {
+          if (!window._scrcpyAudioCtx) window._scrcpyAudioCtx = new Ctx();
+          if (window._scrcpyAudioCtx.state === 'suspended') {
+            window._scrcpyAudioCtx.resume().catch(()=>{});
+          }
+        }
+      } catch (_e) {}
+      try {
+        // No src yet → this rejects with `NotSupportedError`, but the
+        // gesture is *consumed* against the audio element. JMuxer's later
+        // setSrc() inherits that user-activation.
+        const p = audioEl && audioEl.play();
+        if (p && typeof p.catch === 'function') p.catch(()=>{});
+      } catch (_e) {}
+      _audioLog('user-activation-primed');
+    };
     if (audioBtn){
       audioBtn.addEventListener('click', ()=>{
         const cur = localStorage.getItem('audioStream') === '1';
-        localStorage.setItem('audioStream', cur ? '0' : '1');
+        const next = !cur;
+        localStorage.setItem('audioStream', next ? '1' : '0');
         refreshAudioBtn();
-        st(cur ? 'Tắt audio, đang reconnect...' : 'Bật audio, đang reconnect...');
-        // Audio is configured at scrcpy server start time; just toggling
-        // it client-side won't enable the device-side capture. Reload
-        // forces a fresh socket with ?audio=1 (or without it).
-        setTimeout(()=>location.reload(), 250);
+        _audioLog('toggle', { from: cur, to: next });
+        // CRITICAL: synchronously inside the click handler before any
+        // setTimeout or socket.disconnect() that would defer execution
+        // and risk losing the user-activation window.
+        _primeAudioUserActivation();
+        if (next) {
+          _socketQuery.audio = '1';
+          _audioState.enabled = true;
+          _setupAudioForCurrentSession();
+        } else {
+          delete _socketQuery.audio;
+          _audioState.enabled = false;
+          _teardownAudio();
+        }
+        // Soft reconnect — server will see new ?audio= on the next
+        // handle_connect and restart scrcpy with audio capture on/off.
+        socket.io.opts.query = { ..._socketQuery };
+        st(next ? 'Bật audio, đang reconnect...' : 'Tắt audio, đang reconnect...');
+        try { socket.disconnect(); } catch (_e) {}
+        setTimeout(()=>{ try { socket.connect(); } catch (_e) {} }, 250);
       });
     }
 
@@ -1994,17 +2131,12 @@
       });
     }
     // ---- Autoplay-gated playback ----------------------------------------
-    // When `audioStream` toggles on we `location.reload()` so the server
-    // restarts scrcpy with audio=true. The reload drops the page's
-    // user-activation, so the <audio autoplay> attribute alone won't
-    // actually start playback in Chrome/Firefox/Safari. We therefore:
-    //   1. try `audioEl.play()` proactively each time JMuxer attaches a
-    //      MediaSource — works on sites with high MEI / sticky activation
-    //      / users who already clicked something on the new page;
-    //   2. on rejection, expose a centred "Click để bật âm thanh" banner
-    //      AND attach a capture-phase document-level listener so any
-    //      click/keydown/touchstart anywhere on the page satisfies the
-    //      gesture and resumes playback. The gate hides itself on success.
+    // Even with soft reconnect (no page reload), Chrome can still block
+    // `<audio>` playback when the user's MEI is low. So we ALSO ship a
+    // gate banner that anchors a "click anywhere" listener on the page
+    // — any subsequent user gesture immediately calls play() again and
+    // hides the banner on success. We track the audio element + the
+    // MediaSource state so the diagnostics panel always reflects reality.
     const audioGate = document.getElementById('audioGate');
     let _audioGateArmed = false;
     const _hideAudioGate = ()=>{ if (audioGate) audioGate.hidden = true; };
@@ -2018,6 +2150,7 @@
         document.removeEventListener('keydown', onceAnyGesture, true);
         document.removeEventListener('touchstart', onceAnyGesture, true);
         _audioGateArmed = false;
+        _primeAudioUserActivation();
         _tryAudioPlay();
       };
       document.addEventListener('click', onceAnyGesture, true);
@@ -2027,11 +2160,17 @@
     const _tryAudioPlay = ()=>{
       if (!audioEl) return;
       const p = audioEl.play();
+      _audioState.playState = 'pending';
       if (p && typeof p.then === 'function'){
         p.then(()=>{
+          _audioState.playState = 'playing';
+          _audioLog('play-success');
           _hideAudioGate();
           st('Audio: đang phát.');
         }).catch((err)=>{
+          _audioState.playState = 'rejected:' + (err?.name || 'unknown');
+          _audioState.lastError = err?.message || String(err);
+          _audioLog('play-error', { name: err?.name, message: err?.message });
           // NotAllowedError = autoplay block. AbortError = src changed
           // mid-play; we'll retry on the next call.
           if (err && err.name === 'NotAllowedError'){
@@ -2044,14 +2183,20 @@
       }
     };
     const _ensureAudioMux = ()=>{
-      if (audioMux || !audioOn) return audioMux;
+      if (audioMux) return audioMux;
+      if (!_audioState.enabled) return null;
       try{
         // sampleRate 48k is scrcpy's default; channels=2 matches the AAC
         // encoder's output. flushingTime kept tight so latency stays low.
         audioMux = new JMuxer({ node:'audioPlayer', mode:'audio', flushingTime:0,
           clearBuffer:true,
-          onError:(err)=>st('Audio decoder error: '+(err?.message||JSON.stringify(err)))
+          onError:(err)=>{
+            _audioState.lastError = err?.message || JSON.stringify(err);
+            _audioLog('jmuxer-error', { err: _audioState.lastError });
+            st('Audio decoder error: '+(err?.message||JSON.stringify(err)));
+          }
         });
+        _audioLog('jmuxer-created');
         // JMuxer sets <audio>.src to a MediaSource blob URL. Wait for the
         // MediaSource to open (which is when the element actually has a
         // playable source) before calling play() — calling earlier races
@@ -2063,6 +2208,10 @@
           let tries = 0;
           const id = setInterval(()=>{
             tries++;
+            _audioState.msState = audioEl && audioEl.src
+              ? ('attached/readyState=' + audioEl.readyState)
+              : 'no-src';
+            _refreshAudioDiag();
             if (audioEl.readyState >= 2 || tries >= 12){
               clearInterval(id);
               _tryAudioPlay();
@@ -2071,6 +2220,8 @@
         };
         armPlayWhenReady();
       }catch(e){
+        _audioState.lastError = e?.message || String(e);
+        _audioLog('jmuxer-create-failed', { err: _audioState.lastError });
         st('Không tạo được audio decoder: '+(e?.message||e));
         audioMux = null;
       }
@@ -2079,12 +2230,20 @@
     if (audioGate){
       audioGate.addEventListener('click', ()=>{
         _hideAudioGate();
+        _primeAudioUserActivation();
         _tryAudioPlay();
       });
     }
-    if (audioOn){
+    // The audio_data socket handler is installed UNCONDITIONALLY (cheap
+    // — just registers a callback) so that toggling audio on later
+    // doesn't require re-registering after socket reconnect. The
+    // parser is only created when audio is enabled.
+    const _setupAudioForCurrentSession = ()=>{
+      if (audioParserInstance) return;
       audioParserInstance = new AudioParser({
         onCodec: ({codec})=>{
+          _audioState.codec = codec;
+          _audioLog('codec', { codec });
           // Server is asked for AAC explicitly (audio_codec=aac in scrcpy.py),
           // so anything else here is a real misconfiguration worth surfacing.
           if (codec !== 'aac'){
@@ -2097,15 +2256,88 @@
           // Config frames carry the AudioSpecificConfig — the parser already
           // captured it to build ADTS headers for following frames. The raw
           // ASC bytes themselves are not playable so we drop them.
-          if (isConfig) return;
+          if (isConfig){
+            _audioState.framesConfig++;
+            _audioState.asc = {
+              profile: audioParserInstance._aacProfile,
+              freqIdx: audioParserInstance._aacFreqIdx,
+              channels: audioParserInstance._aacChannels,
+            };
+            _audioLog('config-frame', _audioState.asc);
+            return;
+          }
+          _audioState.framesData++;
           const mux = _ensureAudioMux();
           if (!mux) return;
-          mux.feed({ audio: data });
+          try {
+            mux.feed({ audio: data });
+            _audioState.framesFedToMux++;
+            if (_audioState.framesFedToMux === 1) _audioLog('first-frame-fed', { len: data.length });
+            if ((_audioState.framesFedToMux % 50) === 0) _refreshAudioDiag();
+          } catch (e) {
+            _audioState.lastError = e?.message || String(e);
+            _audioLog('mux-feed-error', { err: _audioState.lastError });
+          }
         },
       });
-      socket.on('audio_data', (data)=>{
-        if (!audioParserInstance) return;
-        audioParserInstance.appendData(new Uint8Array(data));
+      _audioLog('parser-created');
+    };
+    const _teardownAudio = ()=>{
+      audioParserInstance = null;
+      if (audioMux){
+        try { audioMux.destroy && audioMux.destroy(); } catch (_e) {}
+        audioMux = null;
+      }
+      if (audioEl){
+        try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch (_e) {}
+      }
+      _audioState.framesConfig = 0;
+      _audioState.framesData = 0;
+      _audioState.framesFedToMux = 0;
+      _audioState.bytesReceived = 0;
+      _audioState.codec = null;
+      _audioState.asc = null;
+      _audioState.msState = 'none';
+      _audioState.playState = 'idle';
+      _audioLog('teardown');
+    };
+    socket.on('audio_data', (data)=>{
+      _audioState.bytesReceived += (data && data.byteLength) || 0;
+      if (!audioParserInstance) return;
+      audioParserInstance.appendData(new Uint8Array(data));
+    });
+    if (_audioState.enabled){
+      _setupAudioForCurrentSession();
+    }
+
+    // ---- Audio diagnostics panel wiring (Ctrl+Shift+A) ------------------
+    // Renders the live `_audioState` so the user can screenshot exactly
+    // what's failing without us shipping a debug build. The "Force play()"
+    // button manually retries audioEl.play(); "Reset audio" tears down
+    // everything so a stuck JMuxer / hung MediaSource can be recovered
+    // without reloading the page.
+    document.addEventListener('keydown', (e)=>{
+      // Ctrl+Shift+A or Cmd+Shift+A
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')){
+        if (!audioDiagEl) return;
+        audioDiagEl.hidden = !audioDiagEl.hidden;
+        if (!audioDiagEl.hidden) _refreshAudioDiag();
+        e.preventDefault();
+      }
+    });
+    const _adForce = document.getElementById('adForcePlay');
+    if (_adForce){
+      _adForce.addEventListener('click', ()=>{
+        _primeAudioUserActivation();
+        _tryAudioPlay();
+      });
+    }
+    const _adReset = document.getElementById('adReset');
+    if (_adReset){
+      _adReset.addEventListener('click', ()=>{
+        _teardownAudio();
+        if (_audioState.enabled) _setupAudioForCurrentSession();
+        st('Audio: đã reset trạng thái decoder.');
       });
     }
 
