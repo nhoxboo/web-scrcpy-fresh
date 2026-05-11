@@ -286,26 +286,105 @@ body::after {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: 80;
+    z-index: 9999;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 14px 22px;
-    background: rgba(5, 7, 16, 0.85);
+    padding: 16px 24px;
+    background: rgba(5, 7, 16, 0.92);
+    backdrop-filter: blur(14px) saturate(180%);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    border: 1px solid var(--brand, #5aa9ff);
+    border-radius: 12px;
+    color: var(--txt);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 4px rgba(90, 169, 255, 0.25);
+    user-select: none;
+    animation: audio-gate-pulse 1.6s ease-in-out infinite;
+}
+.audio-gate i {
+    font-size: 20px;
+    color: var(--brand, #5aa9ff);
+}
+.audio-gate:hover { background: rgba(15, 18, 32, 0.96); }
+.audio-gate[hidden] { display: none; }
+@keyframes audio-gate-pulse {
+    0%, 100% { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 4px rgba(90, 169, 255, 0.20); }
+    50% { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 10px rgba(90, 169, 255, 0.05); }
+}
+
+/* Audio diagnostics panel — opened with Ctrl+Shift+A. Sticks to the
+ * top-right and uses monospace so users can read state quickly. The
+ * `.ad-k` cells are right-aligned key labels; values fill the rest. */
+.audio-diag {
+    position: fixed;
+    top: 70px;
+    right: 12px;
+    z-index: 200;
+    min-width: 320px;
+    max-width: 420px;
+    padding: 12px 14px;
+    background: rgba(5, 7, 16, 0.92);
     backdrop-filter: blur(14px) saturate(180%);
     -webkit-backdrop-filter: blur(14px) saturate(180%);
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: 10px;
     color: var(--txt);
-    font-size: 14px;
-    font-weight: 500;
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+.audio-diag[hidden] { display: none; }
+.audio-diag .ad-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+}
+.audio-diag .ad-title i { color: var(--brand, #5aa9ff); }
+.audio-diag .ad-hint {
+    margin-left: auto;
+    font-weight: 400;
+    opacity: 0.6;
+    font-size: 11px;
+}
+.audio-diag .ad-row {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    margin: 2px 0;
+}
+.audio-diag .ad-k {
+    flex: 0 0 90px;
+    text-align: right;
+    opacity: 0.65;
+}
+.audio-diag .ad-row > span:nth-child(2) {
+    flex: 1;
+    word-break: break-word;
+}
+.audio-diag .ad-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+}
+.audio-diag .ad-actions button {
+    flex: 1;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--txt);
+    font-family: inherit;
+    font-size: 11px;
     cursor: pointer;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-    user-select: none;
 }
-.audio-gate i {
-    font-size: 18px;
-    color: var(--brand, #5aa9ff);
-}
-.audio-gate:hover { background: rgba(15, 18, 32, 0.92); }
-.audio-gate[hidden] { display: none; }
+.audio-diag .ad-actions button:hover { background: rgba(90, 169, 255, 0.12); border-color: var(--brand, #5aa9ff); }

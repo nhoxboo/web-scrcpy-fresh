@@ -1,15 +1,16 @@
 """Tests for the audio-autoplay gate on the panel page.
 
-When the audio toolbar toggle is flipped on we `location.reload()` so the
-server can restart scrcpy with `audio=true`. The reload drops the page's
-user-activation state, so the `<audio autoplay>` attribute alone is not
-enough to actually start playback in modern browsers (Chrome's autoplay
-policy in particular). The fix is twofold and these tests pin both halves:
+Even with the soft-reconnect refactor (see ``test_audio_soft_reconnect``)
+that keeps the user-gesture alive across an audio toggle, Chrome's
+autoplay policy can still block ``<audio>`` playback when the document
+has a low Media Engagement Index — e.g. fresh sessions on a brand-new
+domain. We therefore keep a centred gate banner that:
 
-1. A `<div id="audioGate">` exists in the panel, hidden by default, ready
-   to be shown only when `audioEl.play()` rejects with `NotAllowedError`.
-2. The inline script attempts `audioEl.play()` after JMuxer attaches and
-   wires a fallback document-level gesture listener to retry playback.
+1. Exists in the DOM (``<div id="audioGate">``), hidden by default, and
+   pops up only when ``audioEl.play()`` rejects with ``NotAllowedError``.
+2. Wires a capture-phase document-level click/keydown/touchstart
+   listener so any user gesture anywhere on the page satisfies the
+   autoplay activation requirement and retries playback.
 """
 
 from __future__ import annotations
