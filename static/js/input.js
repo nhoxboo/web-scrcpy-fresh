@@ -94,6 +94,79 @@ const HID_KEYBOARD_USAGE = {
     'IntlBackslash': 0x64, 'ContextMenu': 0x65,
 };
 
+// Generic Xbox-style HID gamepad descriptor. Recognised by Android's
+// generic HID input service as InputDevice.SOURCE_GAMEPAD, so any cloud
+// game / emulator that reads KeyEvent.KEYCODE_BUTTON_* + MotionEvent
+// SOURCE_GAMEPAD will pick it up. Report layout (13 bytes per report):
+//
+//   bytes 0..2  : 17 buttons (1 bit each) + 7 bits padding
+//                 bit  0: A (HID button 1) — W3C Standard Gamepad buttons[0]
+//                 bit  1: B (button 2)        — buttons[1]
+//                 bit  2: X (button 3)        — buttons[2]
+//                 bit  3: Y (button 4)        — buttons[3]
+//                 bit  4: L1 (button 5)       — buttons[4]
+//                 bit  5: R1 (button 6)       — buttons[5]
+//                 bit  6: L2 (button 7)       — buttons[6] (digital, also analog below)
+//                 bit  7: R2 (button 8)       — buttons[7]
+//                 bit  8: Select (button 9)   — buttons[8]
+//                 bit  9: Start (button 10)   — buttons[9]
+//                 bit 10: L3 (button 11)      — buttons[10]
+//                 bit 11: R3 (button 12)      — buttons[11]
+//                 bit 12: D-Pad Up (button 13)  — buttons[12]
+//                 bit 13: D-Pad Down (button 14)— buttons[13]
+//                 bit 14: D-Pad Left (button 15)— buttons[14]
+//                 bit 15: D-Pad Right (button 16)— buttons[15]
+//                 bit 16: Home (button 17)    — buttons[16]
+//                 bits 17..23: padding
+//   bytes 3..10 : 4 axes i16 LE (LX, LY, RX, RY), -32768..32767, +Y = down
+//                 (W3C Standard Gamepad: axes[0]=LX, axes[1]=LY,
+//                  axes[2]=RX, axes[3]=RY)
+//   bytes 11..12: 2 triggers u8 (L2, R2), 0..255. Many Android games look
+//                 at the digital button bits; some emulators want the
+//                 analog value, so we send both.
+const UHID_GAMEPAD_DESCRIPTOR = new Uint8Array([
+    0x05, 0x01,                     // Usage Page (Generic Desktop)
+    0x09, 0x05,                     // Usage (Game Pad)
+    0xA1, 0x01,                     // Collection (Application)
+    // 17 buttons
+    0x05, 0x09,                     //   Usage Page (Button)
+    0x19, 0x01,                     //   Usage Minimum (Button 1)
+    0x29, 0x11,                     //   Usage Maximum (Button 17)
+    0x15, 0x00, 0x25, 0x01,         //   Logical 0..1
+    0x75, 0x01, 0x95, 0x11,         //   1 bit × 17
+    0x81, 0x02,                     //   Input (Data,Var,Abs)
+    // 7 bits padding
+    0x75, 0x01, 0x95, 0x07,
+    0x81, 0x03,                     //   Input (Const,Var,Abs)
+    // 4 axes (i16)
+    0x05, 0x01,                     //   Usage Page (Generic Desktop)
+    0x09, 0x30, 0x09, 0x31,         //   Usage X, Usage Y
+    0x09, 0x33, 0x09, 0x34,         //   Usage Rx, Usage Ry
+    0x16, 0x00, 0x80,               //   Logical Min -32768
+    0x26, 0xFF, 0x7F,               //   Logical Max 32767
+    0x75, 0x10, 0x95, 0x04,         //   16 bits × 4
+    0x81, 0x02,                     //   Input (Data,Var,Abs)
+    // 2 triggers (u8, 0..255)
+    0x05, 0x01,
+    0x09, 0x32, 0x09, 0x35,         //   Usage Z, Usage Rz
+    0x15, 0x00, 0x26, 0xFF, 0x00,   //   Logical 0..255
+    0x75, 0x08, 0x95, 0x02,         //   8 bits × 2
+    0x81, 0x02,
+    0xC0,                           // End Collection
+]);
+
+// Cheap byte-array equality for the gamepad diff loop. Bigger than
+// `Array.prototype.every` would inline, but this is hot path (called every
+// animation frame, per gamepad) — staying allocation-free matters.
+function _byteArraysEqual(a, b) {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
 // Modifier keys map to bits in byte 0 of the boot keyboard report.
 const HID_MODIFIER_BITS = {
     'ControlLeft': 0x01, 'ShiftLeft': 0x02, 'AltLeft': 0x04, 'MetaLeft': 0x08,
@@ -122,6 +195,22 @@ class ScrcpyInput {
         this._uhidMods = 0;            // current modifier byte
         this._uhidKeysPressed = [];    // up to 6 HID usage codes
         this._uhidButtons = 0;         // current mouse button mask
+        // Gamepad UHID state. We reserve IDs 3..6 for up to 4 controllers so
+        // the keyboard (1) and mouse (2) IDs stay stable. The actual UHID
+        // device is only created when the corresponding browser-side Gamepad
+        // first reports input, and destroyed on `gamepaddisconnected`.
+        this._uhidGamepadBaseId = 3;
+        this._uhidGamepadIds = [3, 4, 5, 6];
+        this._uhidGamepadCreated = [false, false, false, false];
+        this._uhidGamepadLastReport = [null, null, null, null];
+        this._gamepadEnabled = false;
+        this._gamepadPollHandle = null;
+        this._gamepadConnHandler = null;
+        this._gamepadDiscHandler = null;
+        // Status callback (optional) — `(index, name, action)` where action
+        // is 'connected' | 'disconnected' | 'ignored'. The UI uses this to
+        // surface a toast / status-bar update.
+        this._gamepadStatusCallback = options.gamepadStatusCallback || null;
         this._pointerLockOwner = null; // element that holds pointer lock
         // Mouse sensitivity (multiplier on browser movementX/Y deltas before
         // they are sent as UHID mouse reports). 1.0 = passthrough; <1 slows
@@ -209,7 +298,7 @@ class ScrcpyInput {
                     mouseX = (local_x / (rect.right - rect.left)) * this.width;
                     mouseY = (local_y / (rect.bottom - rect.top)) * this.height;
                 }
-    
+
                 let data = this.createTouchProtocolData(1, mouseX, mouseY, this.width, this.height, 0, 0, 0);
                 this.callback(data);
 
@@ -556,6 +645,190 @@ class ScrcpyInput {
                 document.exitPointerLock();
             }
         } catch (e) { /* ignore */ }
+    }
+
+    // ---- UHID gamepad public API ----------------------------------------------
+
+    /**
+     * Start listening for browser Gamepad events and poll their state every
+     * animation frame. The poll loop diffs state vs. the last sent report
+     * and only sends a UHID_INPUT when something changed (button toggled,
+     * stick moved beyond deadzone, trigger moved). Per-frame poll is the
+     * official way to read Gamepad state on the web — there is no event
+     * for button/axis changes, just the connect/disconnect ones.
+     *
+     * Idempotent: calling twice in a row only attaches one set of listeners.
+     */
+    enableGamepadInput() {
+        if (this._gamepadEnabled) return;
+        if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') {
+            // Browser without Gamepad API (or HTTPS-restricted context that
+            // disabled it). Surface to the caller so the UI can warn.
+            if (this._gamepadStatusCallback) {
+                try { this._gamepadStatusCallback(-1, '', 'unsupported'); } catch (e) { /* ignore */ }
+            }
+            return;
+        }
+        this._gamepadEnabled = true;
+        const onConnect = (e) => {
+            const gp = e.gamepad;
+            if (!gp || gp.index < 0 || gp.index >= this._uhidGamepadIds.length) {
+                if (this._gamepadStatusCallback) {
+                    try { this._gamepadStatusCallback(gp ? gp.index : -1, gp ? gp.id : '', 'ignored'); } catch (err) { /* ignore */ }
+                }
+                return;
+            }
+            this._uhidEnsureGamepad(gp.index, gp.id || 'web-scrcpy gamepad');
+            if (this._gamepadStatusCallback) {
+                try { this._gamepadStatusCallback(gp.index, gp.id || '', 'connected'); } catch (err) { /* ignore */ }
+            }
+        };
+        const onDisconnect = (e) => {
+            const gp = e.gamepad;
+            if (!gp || gp.index < 0 || gp.index >= this._uhidGamepadIds.length) return;
+            this._uhidDestroyGamepad(gp.index);
+            if (this._gamepadStatusCallback) {
+                try { this._gamepadStatusCallback(gp.index, gp.id || '', 'disconnected'); } catch (err) { /* ignore */ }
+            }
+        };
+        this._gamepadConnHandler = onConnect;
+        this._gamepadDiscHandler = onDisconnect;
+        window.addEventListener('gamepadconnected', onConnect);
+        window.addEventListener('gamepaddisconnected', onDisconnect);
+        // Some browsers (Chromium) only fire `gamepadconnected` after the
+        // first input arrives, so we also do an immediate sweep — any
+        // gamepad already plugged in is created now.
+        try {
+            const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (let i = 0; i < pads.length && i < this._uhidGamepadIds.length; i++) {
+                const gp = pads[i];
+                if (gp && gp.connected) {
+                    this._uhidEnsureGamepad(gp.index, gp.id || 'web-scrcpy gamepad');
+                    if (this._gamepadStatusCallback) {
+                        try { this._gamepadStatusCallback(gp.index, gp.id || '', 'connected'); } catch (err) { /* ignore */ }
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+        const poll = () => {
+            if (!this._gamepadEnabled) return;
+            this._uhidPollGamepads();
+            this._gamepadPollHandle = (typeof requestAnimationFrame === 'function')
+                ? requestAnimationFrame(poll)
+                : setTimeout(poll, 16);
+        };
+        poll();
+    }
+
+    /** Tear down the gamepad poll loop and any created UHID gamepad devices. */
+    disableGamepadInput() {
+        if (!this._gamepadEnabled) return;
+        this._gamepadEnabled = false;
+        if (this._gamepadPollHandle != null) {
+            if (typeof cancelAnimationFrame === 'function') {
+                try { cancelAnimationFrame(this._gamepadPollHandle); } catch (e) { /* ignore */ }
+            }
+            try { clearTimeout(this._gamepadPollHandle); } catch (e) { /* ignore */ }
+            this._gamepadPollHandle = null;
+        }
+        if (this._gamepadConnHandler) {
+            try { window.removeEventListener('gamepadconnected', this._gamepadConnHandler); } catch (e) { /* ignore */ }
+            this._gamepadConnHandler = null;
+        }
+        if (this._gamepadDiscHandler) {
+            try { window.removeEventListener('gamepaddisconnected', this._gamepadDiscHandler); } catch (e) { /* ignore */ }
+            this._gamepadDiscHandler = null;
+        }
+        for (let i = 0; i < this._uhidGamepadIds.length; i++) {
+            if (this._uhidGamepadCreated[i]) this._uhidDestroyGamepad(i);
+        }
+    }
+
+    _uhidEnsureGamepad(index, displayName) {
+        if (index < 0 || index >= this._uhidGamepadIds.length) return;
+        if (this._uhidGamepadCreated[index]) return;
+        const id = this._uhidGamepadIds[index];
+        // VID 0x18d1 (Google) + PID 0x9400+index keeps each slot distinct so
+        // the Android InputManager treats reconnects of a different physical
+        // controller as a fresh device. The name is just for diagnostics.
+        const safeName = String(displayName || 'web-scrcpy gamepad').slice(0, 64);
+        this.sendUhidCreate(id, 0x18d1, 0x9400 + index, safeName, UHID_GAMEPAD_DESCRIPTOR);
+        this._uhidGamepadCreated[index] = true;
+        this._uhidGamepadLastReport[index] = null;
+    }
+
+    _uhidDestroyGamepad(index) {
+        if (index < 0 || index >= this._uhidGamepadIds.length) return;
+        if (!this._uhidGamepadCreated[index]) return;
+        try { this.sendUhidDestroy(this._uhidGamepadIds[index]); } catch (e) { /* ignore */ }
+        this._uhidGamepadCreated[index] = false;
+        this._uhidGamepadLastReport[index] = null;
+    }
+
+    _uhidPollGamepads() {
+        if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return;
+        let pads;
+        try {
+            pads = navigator.getGamepads();
+        } catch (e) {
+            return;
+        }
+        if (!pads) return;
+        for (let i = 0; i < pads.length && i < this._uhidGamepadIds.length; i++) {
+            const gp = pads[i];
+            if (!gp || !gp.connected) continue;
+            if (!this._uhidGamepadCreated[i]) {
+                this._uhidEnsureGamepad(i, gp.id || 'web-scrcpy gamepad');
+            }
+            const report = this._buildGamepadReport(gp);
+            const prev = this._uhidGamepadLastReport[i];
+            if (!prev || !_byteArraysEqual(prev, report)) {
+                this.sendUhidInput(this._uhidGamepadIds[i], report);
+                this._uhidGamepadLastReport[i] = report;
+            }
+        }
+    }
+
+    /**
+     * Build a 13-byte HID gamepad report from a browser Gamepad. The W3C
+     * Standard Gamepad button/axis layout is mapped one-to-one into the
+     * report bits described above the descriptor. Non-standard mappings
+     * fall back to the same indices, which is good enough for most pads.
+     */
+    _buildGamepadReport(gp) {
+        const report = new Uint8Array(13);
+        let buttons = 0;
+        const btns = gp.buttons || [];
+        for (let i = 0; i < 17 && i < btns.length; i++) {
+            const b = btns[i];
+            const pressed = (typeof b === 'object') ? !!b.pressed : !!b;
+            if (pressed) buttons |= (1 << i);
+        }
+        report[0] = buttons & 0xff;
+        report[1] = (buttons >>> 8) & 0xff;
+        report[2] = (buttons >>> 16) & 0xff;
+        const axes = gp.axes || [];
+        const dv = new DataView(report.buffer);
+        const axisToI16 = (v) => {
+            const n = Number(v);
+            if (!Number.isFinite(n)) return 0;
+            const clamped = Math.max(-1, Math.min(1, n));
+            const scaled = Math.round(clamped * 32767);
+            return Math.max(-32768, Math.min(32767, scaled));
+        };
+        dv.setInt16(3, axisToI16(axes[0]), true);  // LX
+        dv.setInt16(5, axisToI16(axes[1]), true);  // LY
+        dv.setInt16(7, axisToI16(axes[2]), true);  // RX
+        dv.setInt16(9, axisToI16(axes[3]), true);  // RY
+        const triggerToU8 = (b) => {
+            if (!b) return 0;
+            const v = (typeof b === 'object') ? Number(b.value) : Number(b);
+            if (!Number.isFinite(v)) return 0;
+            return Math.max(0, Math.min(255, Math.round(v * 255)));
+        };
+        report[11] = triggerToU8(btns[6]); // L2 analog
+        report[12] = triggerToU8(btns[7]); // R2 analog
+        return report;
     }
 
     sendUhidCreate(id, vendorId, productId, name, descriptor) {

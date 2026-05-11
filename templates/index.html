@@ -172,6 +172,22 @@
       background:rgba(255,255,255,.03);color:#cbd5ff;cursor:pointer;font:inherit;font-size:.74rem;
     }
     .wm-preset:hover{background:rgba(106,166,255,.15);border-style:solid}
+    /* Stream-quality row: each label hugs a range slider + a numeric input
+       so the user can scrub roughly or type an exact value. Preset chips
+       reuse .wm-preset styles via the .sq-preset class. */
+    .sq-row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:8px}
+    .sq-row label{display:inline-flex;align-items:center;gap:8px;color:#cfd6ed;font-size:.82rem}
+    .sq-row input[type=range]{accent-color:var(--brand,#6aa6ff);width:160px}
+    .sq-row input[type=number]{
+      width:60px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;
+      background:rgba(0,0,0,.25);color:#e5e7eb;font:inherit;font-size:.85rem;text-align:right;
+    }
+    .sq-row input[type=number]:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.35)}
+    .sq-preset{
+      padding:5px 10px;border:1px dashed var(--line-strong);border-radius:999px;
+      background:rgba(255,255,255,.03);color:#cbd5ff;cursor:pointer;font:inherit;font-size:.74rem;
+    }
+    .sq-preset:hover{background:rgba(106,166,255,.15);border-style:solid}
     .wm-info{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.74rem;color:var(--muted);margin-top:4px;word-break:break-all}
     .wm-hint{margin:6px 0 0;font-size:.72rem;color:var(--muted);line-height:1.35}
     /* Free-form ADB shell exec — small terminal-style block. textarea grows
@@ -281,6 +297,7 @@
     <button class="tool" id="macroClear" title="Xóa macro"><i class="fa-solid fa-trash"></i></button>
     <button class="tool" id="hotkeyConfig" title="Gán phím"><i class="fa-solid fa-keyboard"></i></button>
     <button class="tool" id="gameMode" title="Game mode: OFF"><i class="fa-solid fa-gamepad"></i></button>
+    <button class="tool" id="gamepadInput" title="Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối."><i class="fa-solid fa-chess-knight"></i></button>
     <button class="tool" id="hudToggle" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
     <button class="tool" id="audioToggle" title="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)"><i class="fa-solid fa-volume-xmark"></i></button>
   </div>
@@ -405,6 +422,36 @@
       </div>
       <div class="wm-info" id="wmInfo">Bấm "Lấy hiện tại" để đọc size/DPI từ thiết bị.</div>
       <p class="wm-hint">Sau khi áp dụng, bấm <i class="fa-solid fa-plug-circle-bolt"></i> Reconnect để scrcpy bắt lại độ phân giải mới. Một số OEM có thể chặn lệnh này (Permission Denial). Khi reset hoặc đóng phiên, dùng "Reset all" nếu thiết bị giữ override sau khi rút cáp.</p>
+
+      <!-- Stream quality: video bit rate (Mbps) and max FPS. These are per
+           session: bumping the slider here and bấm "Áp dụng" tears down the
+           current socket and reopens it with the new query params, so the
+           scrcpy server is restarted with the new encoder settings. We do NOT
+           reload the page (that would also drop other state like UHID toggle
+           and the audio gate user activation). -->
+      <div class="qc-section-title"><i class="fa-solid fa-tachograph-digital" aria-hidden="true"></i> Stream quality (Mbps &amp; FPS)</div>
+      <div class="sq-row">
+        <label>Mbps:
+          <input id="sqBitrate" type="range" min="1" max="100" step="1" value="8">
+          <input id="sqBitrateNum" type="number" min="1" max="100" step="1" value="8" aria-label="Mbps">
+        </label>
+        <label>FPS:
+          <input id="sqFps" type="range" min="15" max="120" step="1" value="60">
+          <input id="sqFpsNum" type="number" min="15" max="120" step="1" value="60" aria-label="FPS">
+        </label>
+      </div>
+      <div class="wm-actions">
+        <button class="wm-act primary" id="sqApply" type="button"><i class="fa-solid fa-check"></i>Áp dụng &amp; reconnect</button>
+        <button class="wm-act" id="sqReset" type="button"><i class="fa-solid fa-rotate-left"></i>Mặc định (8 Mbps / 60 FPS)</button>
+      </div>
+      <div class="wm-presets" id="sqPresets">
+        <button class="sq-preset" data-mbps="4" data-fps="30" type="button">Nhẹ (4 Mbps / 30)</button>
+        <button class="sq-preset" data-mbps="8" data-fps="60" type="button">Mặc định (8 / 60)</button>
+        <button class="sq-preset" data-mbps="20" data-fps="60" type="button">HD (20 / 60)</button>
+        <button class="sq-preset" data-mbps="30" data-fps="90" type="button">Game (30 / 90)</button>
+        <button class="sq-preset" data-mbps="50" data-fps="120" type="button">Max (50 / 120)</button>
+      </div>
+      <p class="wm-hint">FPS cao &gt; 60 cần encoder hardware hỗ trợ và panel 120Hz (Fold 3 hỗ trợ 120Hz inner). Bitrate &gt; 30 Mbps có thể nghẽn Wi-Fi yếu — giảm xuống nếu thấy giật.</p>
 
       <!-- Free-form ADB shell exec. The string is forwarded as-is to the
            device's shell (so pipes, &&, redirects all work) but never
@@ -570,10 +617,31 @@
     // audio socket when this query param is set, so the bandwidth/CPU
     // cost is exactly zero unless the user asks for it.
     const audioOn = localStorage.getItem('audioStream') === '1';
+    // Gamepad UHID: opt-in via the toolbar toggle, persisted as
+    // localStorage 'gamepadInput' = '1'. Default OFF — having the rAF
+    // poll loop running for every page would waste CPU on users who
+    // don't have a controller. Picked up at attachInput time (no need to
+    // reconnect the socket to flip — the UHID device is created from the
+    // browser side over the existing control channel).
+    const gamepadOn = localStorage.getItem('gamepadInput') === '1';
+    // Stream quality: per-session Mbps + FPS, persisted in localStorage.
+    // The Quick Controls panel writes these and triggers a soft reconnect
+    // so the new values are picked up by the scrcpy server on restart.
+    // Server-side ranges are 500_000..200_000_000 bps and 1..240 fps; the
+    // UI clamps to user-friendly 1..100 Mbps and 15..120 fps before that.
+    const STREAM_BITRATE_KEY = 'streamBitrateMbps';
+    const STREAM_FPS_KEY = 'streamMaxFps';
+    const _clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const _initMbps = _clamp(parseInt(localStorage.getItem(STREAM_BITRATE_KEY) || '8', 10) || 8, 1, 100);
+    const _initFps = _clamp(parseInt(localStorage.getItem(STREAM_FPS_KEY) || '60', 10) || 60, 15, 120);
     const _socketQuery = dexOn
       ? { display_id: String(dexId) }
       : (vdesktopOn ? { new_display: vdesktopSpec } : {});
     if (audioOn) _socketQuery.audio = '1';
+    // Only send non-default values so the server log stays clean and we
+    // don't accidentally pin a value the user never explicitly chose.
+    if (_initMbps !== 8) _socketQuery.video_bit_rate = String(_initMbps * 1_000_000);
+    if (_initFps !== 60) _socketQuery.max_fps = String(_initFps);
     const socket = io({
       reconnection:true,
       autoConnect:true,
@@ -639,8 +707,30 @@
         useUhid: uhidOn,
         uhidMouseSpeed: initUhidSpeed,
         uhidMouseAccel: initUhidAccel,
+        // Surfaced via the toolbar status: connect/disconnect of a physical
+        // gamepad, or 'unsupported' on browsers without the Gamepad API.
+        gamepadStatusCallback: (idx, name, action) => {
+          if (action === 'unsupported') {
+            st('Trình duyệt không hỗ trợ Gamepad API. Hãy dùng Chrome/Edge/Firefox mới nhất.');
+            return;
+          }
+          if (action === 'connected') {
+            st('Gamepad #' + (idx + 1) + ' đã kết nối: ' + (name || 'unknown'));
+          } else if (action === 'disconnected') {
+            st('Gamepad #' + (idx + 1) + ' đã ngắt kết nối.');
+          } else if (action === 'ignored') {
+            st('Gamepad slot ' + idx + ' bị bỏ qua (tối đa 4 tay cầm).');
+          }
+        },
       });
       if (uhidOn) input.enableUhid();
+      // Gamepad UHID: opt-in via toolbar. Default OFF. If on, also requires
+      // UHID enabled — the gamepad device is created through the same
+      // UHID_CREATE control message channel, which needs the control socket
+      // to be live (true by the time attachInput is called).
+      if (gamepadOn) {
+        try { input.enableGamepadInput(); } catch (e) { /* surfaced via callback */ }
+      }
       if (dexOn) {
         // DeX-specific cosmetics: drop the phone-shell decoration (notch,
         // camera dot, rounded portrait border) and hide the Rotate button
@@ -972,6 +1062,73 @@
           wmW.value = p.dataset.w || '';
           wmH.value = p.dataset.h || '';
           wmD.value = p.dataset.d || '';
+        });
+      });
+
+      // ---- Stream quality (Mbps / FPS) ------------------------------------
+      // Keep the slider and the numeric input in sync (two-way binding),
+      // persist to localStorage on change, and apply by tearing down the
+      // socket + reopening with the new query params. Soft reconnect — no
+      // page reload — so the audio gate user-activation and any other
+      // page state survives.
+      const sqBitrate = document.getElementById('sqBitrate');
+      const sqBitrateNum = document.getElementById('sqBitrateNum');
+      const sqFps = document.getElementById('sqFps');
+      const sqFpsNum = document.getElementById('sqFpsNum');
+      const sqApply = document.getElementById('sqApply');
+      const sqReset = document.getElementById('sqReset');
+      const _sqInit = () => {
+        sqBitrate.value = String(_clamp(parseInt(localStorage.getItem(STREAM_BITRATE_KEY) || '8', 10) || 8, 1, 100));
+        sqBitrateNum.value = sqBitrate.value;
+        sqFps.value = String(_clamp(parseInt(localStorage.getItem(STREAM_FPS_KEY) || '60', 10) || 60, 15, 120));
+        sqFpsNum.value = sqFps.value;
+      };
+      _sqInit();
+      const _sqSync = (src, dst, lo, hi) => {
+        let v = parseInt(src.value, 10);
+        if (!Number.isFinite(v)) v = parseInt(dst.value, 10) || lo;
+        v = _clamp(v, lo, hi);
+        src.value = String(v);
+        dst.value = String(v);
+      };
+      sqBitrate.addEventListener('input', () => _sqSync(sqBitrate, sqBitrateNum, 1, 100));
+      sqBitrateNum.addEventListener('input', () => _sqSync(sqBitrateNum, sqBitrate, 1, 100));
+      sqFps.addEventListener('input', () => _sqSync(sqFps, sqFpsNum, 15, 120));
+      sqFpsNum.addEventListener('input', () => _sqSync(sqFpsNum, sqFps, 15, 120));
+      const _sqApply = () => {
+        const mbps = _clamp(parseInt(sqBitrate.value, 10) || 8, 1, 100);
+        const fps = _clamp(parseInt(sqFps.value, 10) || 60, 15, 120);
+        localStorage.setItem(STREAM_BITRATE_KEY, String(mbps));
+        localStorage.setItem(STREAM_FPS_KEY, String(fps));
+        // Update the live socket query so the auto-reconnect path picks up
+        // the new values too, then disconnect and let socket.io reopen.
+        socket.io.opts.query = {
+          ..._socketQuery,
+          ...(mbps !== 8 ? { video_bit_rate: String(mbps * 1_000_000) } : {}),
+          ...(fps !== 60 ? { max_fps: String(fps) } : {}),
+        };
+        // Remove the defaults so they don't pin if the user re-sets to default.
+        if (mbps === 8) delete socket.io.opts.query.video_bit_rate;
+        if (fps === 60) delete socket.io.opts.query.max_fps;
+        qcOut.textContent = `→ Áp dụng ${mbps} Mbps / ${fps} FPS, đang reconnect...`;
+        try { socket.disconnect(); } catch (_e) {}
+        setTimeout(() => { try { socket.connect(); } catch (_e) {} }, 300);
+      };
+      sqApply.addEventListener('click', _sqApply);
+      sqReset.addEventListener('click', () => {
+        localStorage.removeItem(STREAM_BITRATE_KEY);
+        localStorage.removeItem(STREAM_FPS_KEY);
+        _sqInit();
+        _sqApply();
+      });
+      qcBackdrop.querySelectorAll('.sq-preset').forEach(p => {
+        p.addEventListener('click', () => {
+          const m = parseInt(p.dataset.mbps, 10) || 8;
+          const f = parseInt(p.dataset.fps, 10) || 60;
+          sqBitrate.value = String(_clamp(m, 1, 100));
+          sqBitrateNum.value = sqBitrate.value;
+          sqFps.value = String(_clamp(f, 15, 120));
+          sqFpsNum.value = sqFps.value;
         });
       });
       // Auto-fetch current size/DPI the first time the user opens Quick Controls,
@@ -1794,6 +1951,46 @@
         // it client-side won't enable the device-side capture. Reload
         // forces a fresh socket with ?audio=1 (or without it).
         setTimeout(()=>location.reload(), 250);
+      });
+    }
+
+    // ---- Gamepad UHID toggle ---------------------------------------------
+    // Toolbar button toggles the localStorage flag and calls the input's
+    // enable/disable. No reload needed — UHID_CREATE/DESTROY are sent over
+    // the existing control socket. If `input` hasn't attached yet (waiting
+    // on screen_size from the server) we just flip the flag; attachInput
+    // re-reads `gamepadOn` from localStorage when it runs.
+    const gamepadBtn = document.getElementById('gamepadInput');
+    const refreshGamepadBtn = ()=>{
+      if (!gamepadBtn) return;
+      const on = localStorage.getItem('gamepadInput') === '1';
+      gamepadBtn.classList.toggle('active', on);
+      gamepadBtn.title = on
+        ? 'Gamepad UHID: ON — bấm để tắt. Cắm tay cầm vào PC rồi bấm 1 nút bất kỳ để Android nhận.'
+        : 'Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối.';
+    };
+    refreshGamepadBtn();
+    if (gamepadBtn){
+      gamepadBtn.addEventListener('click', ()=>{
+        const cur = localStorage.getItem('gamepadInput') === '1';
+        const next = cur ? '0' : '1';
+        localStorage.setItem('gamepadInput', next);
+        refreshGamepadBtn();
+        if (!input){
+          st(cur ? 'Gamepad UHID: OFF (sẽ áp dụng khi kết nối)' : 'Gamepad UHID: ON (sẽ áp dụng khi kết nối)');
+          return;
+        }
+        try {
+          if (next === '1') {
+            input.enableGamepadInput();
+            st('Gamepad UHID: ON. Cắm tay cầm vào PC rồi bấm 1 nút bất kỳ để Android nhận.');
+          } else {
+            input.disableGamepadInput();
+            st('Gamepad UHID: OFF.');
+          }
+        } catch (e) {
+          st('Lỗi gamepad: ' + ((e && e.message) || e));
+        }
       });
     }
     // ---- Autoplay-gated playback ----------------------------------------

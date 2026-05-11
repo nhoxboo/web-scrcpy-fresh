@@ -1220,6 +1220,34 @@ def handle_connect(auth=None):
         # localStorage flag that drives this query param.
         req_audio = request.args.get('audio') if request.args else None
         chosen_audio = req_audio == '1' or (req_audio or '').lower() == 'true'
+        # Per-session video bit rate (`?video_bit_rate=N` bits/sec) and
+        # max FPS (`?max_fps=N`). Validated against a generous range —
+        # below the lower bound is unusable; above the upper bound risks
+        # the device-side encoder rejecting it or dropping frames. We
+        # clamp instead of rejecting so an out-of-range slider value
+        # still gives the user *something* to watch.
+        chosen_bit_rate = video_bit_rate
+        req_br = request.args.get('video_bit_rate') if request.args else None
+        if req_br is not None and req_br != '':
+            try:
+                br = int(req_br)
+                if 500_000 <= br <= 200_000_000:
+                    chosen_bit_rate = str(br)
+                else:
+                    log.warning('Out-of-range video_bit_rate from client: %r', req_br)
+            except (TypeError, ValueError):
+                log.warning('Invalid video_bit_rate from client: %r', req_br)
+        chosen_max_fps = max_fps
+        req_fps = request.args.get('max_fps') if request.args else None
+        if req_fps is not None and req_fps != '':
+            try:
+                fps = int(req_fps)
+                if 1 <= fps <= 240:
+                    chosen_max_fps = str(fps)
+                else:
+                    log.warning('Out-of-range max_fps from client: %r', req_fps)
+            except (TypeError, ValueError):
+                log.warning('Invalid max_fps from client: %r', req_fps)
         # Per-session pick (set via /devices) wins over env/CLI default.
         chosen_serial = _selected_serial()
         scpy_ctx = Scrcpy(
@@ -1262,8 +1290,8 @@ def handle_connect(auth=None):
                 pass
         scpy_ctx.scrcpy_start(
             send_video_data,
-            video_bit_rate,
-            max_fps=max_fps,
+            chosen_bit_rate,
+            max_fps=chosen_max_fps,
             audio_callback=send_audio_data if chosen_audio else None,
         )
     except RuntimeError as e:
