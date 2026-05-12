@@ -405,6 +405,9 @@
         <button class="qc-btn" data-act="vol_up" type="button"><i class="fa-solid fa-volume-high"></i><span>Vol +</span></button>
         <button class="qc-btn" data-act="vol_down" type="button"><i class="fa-solid fa-volume-low"></i><span>Vol −</span></button>
         <button class="qc-btn" data-act="mute" type="button"><i class="fa-solid fa-volume-xmark"></i><span>Mute</span></button>
+        <button class="qc-btn" data-sendevent="vol_up" title="Hardware Vol+ (sendevent, cần root) — dùng cho Magisk module install prompt" type="button"><i class="fa-solid fa-circle-chevron-up"></i><span>Vol+ (hw)</span></button>
+        <button class="qc-btn" data-sendevent="vol_down" title="Hardware Vol− (sendevent, cần root) — dùng cho Magisk module install prompt" type="button"><i class="fa-solid fa-circle-chevron-down"></i><span>Vol− (hw)</span></button>
+        <button class="qc-btn" data-sendevent="power" title="Hardware Power (sendevent, cần root)" type="button"><i class="fa-solid fa-plug-circle-bolt"></i><span>Power (hw)</span></button>
         <button class="qc-btn" data-act="wifi_on" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi ON</span></button>
         <button class="qc-btn" data-act="wifi_off" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi OFF</span></button>
         <button class="qc-btn" data-act="bt_on" type="button"><i class="fa-brands fa-bluetooth-b"></i><span>BT ON</span></button>
@@ -972,15 +975,25 @@
       qcBackdrop.querySelectorAll('.qc-btn').forEach(btn => {
         btn.addEventListener('click', async ()=>{
           const act = btn.getAttribute('data-act');
+          const sendevent = btn.getAttribute('data-sendevent');
           const confirmMsg = btn.getAttribute('data-confirm');
           if (confirmMsg && !confirm(confirmMsg)) return;
+          if (!act && !sendevent) return;
           btn.setAttribute('disabled', 'true');
-          qcOut.textContent = `→ ${act}...`;
+          const label = act || `hw:${sendevent}`;
+          qcOut.textContent = `→ ${label}...`;
           try {
             const fd = new FormData();
-            fd.append('action', act);
             fd.append('csrf_token', _qcCsrf);
-            const r = await fetch('/api/quick', { method:'POST', body: fd, credentials:'same-origin' });
+            let url;
+            if (sendevent) {
+              fd.append('op', sendevent);
+              url = '/api/adb/sendevent';
+            } else {
+              fd.append('action', act);
+              url = '/api/quick';
+            }
+            const r = await fetch(url, { method:'POST', body: fd, credentials:'same-origin' });
             const j = await r.json().catch(()=>({}));
             qcOut.textContent = (j.ok ? '✔ ' : '✖ ') + (j.output || j.error || JSON.stringify(j));
           } catch (e) {
