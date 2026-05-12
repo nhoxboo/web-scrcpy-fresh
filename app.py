@@ -834,6 +834,115 @@ def api_quick():
     return jsonify(ok=False, error=output or 'adb command failed'), 500
 
 
+# ---- Raw hardware key injection via sendevent --------------------------------
+#
+# Magisk module install scripts (customize.sh) use `getevent` to read
+# physical volume-key presses from /dev/input/event*. The standard
+# `input keyevent` goes through InputManagerService and never touches
+# the kernel input layer — getevent can't see it, so the Magisk prompt
+# ignores it. `sendevent` writes directly to the input device file at
+# the kernel level, which *is* visible to getevent.
+#
+# Requires root (`su -c ...`) because /dev/input/event* is owned by
+# system:input and the shell user can't write to it. User confirmed
+# they have Magisk root on their Fold 3.
+#
+# Linux input event codes (include/uapi/linux/input-event-codes.h):
+#   KEY_VOLUMEDOWN = 114
+#   KEY_VOLUMEUP   = 115
+#   KEY_POWER      = 116
+#   EV_KEY = 1, EV_SYN = 0
+SENDEVENT_OPS: dict[str, int] = {
+    'vol_up': 115,
+    'vol_down': 114,
+    'power': 116,
+}
+
+# Cache: serial → {keycode → event_device_path}
+_sendevent_dev_cache: dict[str, dict[int, str]] = {}
+
+
+def _find_event_device(keycode: int, serial: str | None = None) -> str | None:
+    """Probe `getevent -lp` for the input device that handles *keycode*.
+
+    Returns e.g. ``'/dev/input/event2'`` or ``None``.  Result is cached
+    per serial so repeated presses don't re-probe.
+    """
+    cache_key = serial or '__local__'
+    cached = _sendevent_dev_cache.get(cache_key, {})
+    if keycode in cached:
+        return cached[keycode]
+    ok, output = adb_shell(['getevent', '-lp'], serial=serial, timeout=5.0)
+    if not ok or not output:
+        return None
+    # getevent -lp output looks like:
+    #   add device 1: /dev/input/event2
+    #     name:     "gpio-keys"
+    #     ...
+    #     KEY (0001): KEY_VOLUMEDOWN         KEY_VOLUMEUP
+    #   add device 2: /dev/input/event3
+    #     ...
+    keycode_names = {114: 'KEY_VOLUMEDOWN', 115: 'KEY_VOLUMEUP', 116: 'KEY_POWER'}
+    target_name = keycode_names.get(keycode, f'KEY_{keycode:04x}')
+    current_device: str | None = None
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('add device'):
+            # "add device N: /dev/input/eventX"
+            parts = stripped.split(':')
+            if len(parts) >= 2:
+                current_device = parts[-1].strip()
+        elif 'KEY' in stripped and target_name in stripped and current_device:
+            _sendevent_dev_cache.setdefault(cache_key, {})[keycode] = current_device
+            return current_device
+    return None
+
+
+@app.route('/api/adb/sendevent', methods=['POST'])
+@login_required
+def api_adb_sendevent():
+    """Inject a raw hardware key press via ``sendevent`` (requires root).
+
+    Body: form field ``op`` ∈ {vol_up, vol_down, power}.
+    Probes ``getevent -lp`` for the correct ``/dev/input/event*`` device,
+    then injects EV_KEY down + EV_SYN + EV_KEY up + EV_SYN via
+    ``su -c "sendevent ..."``.
+    """
+    op = (request.form.get('op') or '').strip()
+    keycode = SENDEVENT_OPS.get(op)
+    if keycode is None:
+        return jsonify(ok=False, error=f'Op không hợp lệ: {op!r}'), 400
+    serial = _selected_serial()
+    dev = _find_event_device(keycode, serial=serial)
+    if not dev:
+        return (
+            jsonify(
+                ok=False,
+                error=(
+                    f'Không tìm được input device cho phím {op} '
+                    '(getevent -lp không trả kết quả). '
+                    'Kiểm tra kết nối adb và quyền root.'
+                ),
+            ),
+            500,
+        )
+    # Build the full sendevent sequence: key-down, sync, key-up, sync.
+    # All four sendevent calls must run in a single su shell invocation
+    # to avoid 4× su latency. The values are all ints derived from
+    # SENDEVENT_OPS — no user strings are spliced.
+    inner = (
+        f'sendevent {dev} 1 {keycode} 1;'
+        f'sendevent {dev} 0 0 0;'
+        f'sendevent {dev} 1 {keycode} 0;'
+        f'sendevent {dev} 0 0 0'
+    )
+    ok, output = adb_shell(['su', '-c', inner], serial=serial, timeout=10.0)
+    _audit('sendevent', op=op, keycode=keycode, dev=dev, ok=ok)
+    if ok:
+        return jsonify(ok=True, output=output or f'{op} injected via {dev}')
+    return jsonify(ok=False, error=output or 'sendevent failed (root?)'), 500
+
+
 # ---- Wireless ADB pair / connect / disconnect -------------------------------
 @app.route('/api/adb/pair', methods=['POST'])
 @login_required
