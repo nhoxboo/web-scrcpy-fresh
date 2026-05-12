@@ -102,6 +102,98 @@
     /* When pointer lock is engaged for UHID mouse, give the user a clear
        hint that their mouse is captured (and how to release it). */
     .phone-shell.dex.locked{outline:2px solid #38bdf8}
+    /* Phone mockup wrapper: vertical stack containing phone-shell + nav bar.
+       Lives inside .video-wrap; centering still inherited from .video-wrap's
+       flex layout. Width hugs the phone-shell so the side-keys can protrude
+       to the right without forcing the column wider than the video. */
+    .phone-mockup{
+      position:relative;display:flex;flex-direction:column;align-items:center;
+      gap:10px;max-width:100%;max-height:100%;
+    }
+    /* Physical side keys — power + volume up/down on the right edge.
+       Absolutely positioned against .phone-shell so they stick out a few
+       pixels past the bezel, mimicking a real Galaxy Z Fold side rail.
+       The .side-key-gap div separates power (top) from volume cluster. */
+    .phone-side-keys{
+      position:absolute;right:-9px;top:16%;
+      display:flex;flex-direction:column;gap:6px;z-index:6;pointer-events:auto;
+    }
+    .side-key-gap{height:22px;flex:0 0 auto}
+    .side-key{
+      appearance:none;-webkit-appearance:none;
+      width:15px;padding:0;
+      border:1px solid rgba(255,255,255,.16);
+      border-radius:3px 7px 7px 3px;
+      background:linear-gradient(90deg,rgba(72,80,108,.95) 0%,rgba(40,46,68,.95) 55%,rgba(26,30,50,.95) 100%);
+      box-shadow:2px 2px 6px rgba(0,0,0,.55),inset 1px 0 0 rgba(255,255,255,.18),inset -1px 0 0 rgba(0,0,0,.4);
+      color:rgba(255,255,255,.78);cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+      transition:transform .08s ease,box-shadow .12s ease,background .12s ease,color .12s ease;
+      position:relative;font-size:.58rem;
+    }
+    .side-key i{pointer-events:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
+    .side-key-power{height:36px}
+    .side-key-volup{height:42px}
+    .side-key-voldown{height:42px}
+    .side-key:hover{color:#fff;box-shadow:3px 2px 8px rgba(96,165,250,.45),inset 1px 0 0 rgba(255,255,255,.28),inset -1px 0 0 rgba(0,0,0,.4)}
+    .side-key:active{transform:translateX(2px);box-shadow:1px 1px 3px rgba(0,0,0,.55),inset 1px 0 0 rgba(255,255,255,.08)}
+    .side-key:focus-visible{outline:2px solid rgba(96,165,250,.7);outline-offset:2px}
+    .side-key[disabled]{opacity:.45;cursor:not-allowed}
+    /* Briefly flash when a sendevent succeeds/fails so the user gets visual
+       feedback even when the QC output bar isn't visible. */
+    .side-key.flash-ok{background:linear-gradient(90deg,rgba(34,197,94,.95),rgba(22,163,74,.95));color:#fff}
+    .side-key.flash-err{background:linear-gradient(90deg,rgba(239,68,68,.95),rgba(185,28,28,.95));color:#fff}
+    /* Android-style soft nav bar — Back / Home / Recent.  Lives below the
+       phone-shell inside .phone-mockup. Uses Pixel-launcher-ish glyphs:
+       ◁ ○ □ via Font Awesome icons (rotated play, circle, square). */
+    .phone-nav-bar{
+      display:flex;align-items:center;justify-content:center;gap:42px;
+      padding:8px 22px;border-radius:18px;
+      background:linear-gradient(180deg,rgba(30,34,52,.85),rgba(15,18,30,.9));
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow:0 6px 18px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);
+      backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    }
+    .nav-key{
+      appearance:none;-webkit-appearance:none;
+      width:38px;height:38px;padding:0;border-radius:10px;
+      background:transparent;border:1px solid transparent;
+      color:rgba(230,235,250,.85);cursor:pointer;
+      display:flex;align-items:center;justify-content:center;font-size:.92rem;
+      transition:transform .08s ease,background .12s ease,color .12s ease,border-color .12s ease;
+    }
+    .nav-key i{pointer-events:none}
+    /* Pure-CSS Android nav glyphs: triangle (back), circle (home), square
+       (recent). Avoid Font Awesome's `fa-regular` variant — only the solid
+       webfont is bundled, so outlined icons render as missing glyphs. */
+    .nav-glyph{display:inline-block;pointer-events:none}
+    .nav-back .nav-glyph{
+      width:0;height:0;
+      border-top:7px solid transparent;border-bottom:7px solid transparent;
+      border-right:11px solid currentColor;
+    }
+    .nav-home .nav-glyph{
+      width:13px;height:13px;border-radius:50%;
+      border:2px solid currentColor;
+    }
+    .nav-recent .nav-glyph{
+      width:13px;height:13px;border-radius:3px;
+      border:2px solid currentColor;
+    }
+    .nav-key:hover{background:rgba(96,165,250,.16);color:#fff;border-color:rgba(96,165,250,.30)}
+    .nav-key:active{transform:scale(.92)}
+    .nav-key:focus-visible{outline:2px solid rgba(96,165,250,.7);outline-offset:2px}
+    .nav-key[disabled]{opacity:.45;cursor:not-allowed}
+    .nav-key.flash-ok{background:rgba(34,197,94,.30);color:#fff;border-color:rgba(34,197,94,.55)}
+    .nav-key.flash-err{background:rgba(239,68,68,.30);color:#fff;border-color:rgba(239,68,68,.55)}
+    /* Hide both control rows in fullscreen / DeX mode — they don't belong
+       on a desktop-like canvas, and they'd float weirdly outside the video. */
+    .phone-shell.dex .phone-side-keys,.phone-shell:fullscreen .phone-side-keys,
+    .phone-shell:-webkit-full-screen .phone-side-keys{display:none}
+    .phone-shell.dex ~ .phone-nav-bar{display:none}
+    /* In fullscreen the .phone-mockup wrapper still surrounds phone-shell;
+       hide the nav bar so it doesn't overlay the fullscreen video. */
+    .phone-mockup:fullscreen .phone-nav-bar,.phone-mockup:-webkit-full-screen .phone-nav-bar{display:none}
     /* Inline UHID sensitivity slider on the toolbar. Hidden until UHID is
        actually active so the toolbar isn't cluttered for users who don't
        care about it. */
@@ -303,9 +395,41 @@
   </div>
 
   <div class="video-wrap" id="videoWrap">
-    <div class="phone-shell" id="phoneShell">
-      <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
-      <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
+    <div class="phone-mockup" id="phoneMockup">
+      <div class="phone-shell" id="phoneShell">
+        <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
+        <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
+        <!-- Physical side keys (right edge of the phone frame). All three call
+             /api/adb/sendevent → raw kernel input, so they work for both
+             normal Android volume AND Magisk customize.sh `getevent` prompts.
+             Requires root (`su`). Hidden in fullscreen / DeX. -->
+        <div class="phone-side-keys" id="phoneSideKeys" aria-label="Phím cứng">
+          <button class="side-key side-key-power" data-sendevent="power" title="Power (hw, sendevent)" type="button" aria-label="Power">
+            <i class="fa-solid fa-power-off"></i>
+          </button>
+          <div class="side-key-gap" aria-hidden="true"></div>
+          <button class="side-key side-key-volup" data-sendevent="vol_up" title="Vol+ (hw, sendevent) — dùng cho Magisk customize.sh" type="button" aria-label="Volume up">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+          <button class="side-key side-key-voldown" data-sendevent="vol_down" title="Vol− (hw, sendevent) — dùng cho Magisk customize.sh" type="button" aria-label="Volume down">
+            <i class="fa-solid fa-minus"></i>
+          </button>
+        </div>
+      </div>
+      <!-- Bottom Android-style nav bar. Soft Back / Home / Recent via
+           /api/quick → KEYCODE_BACK / KEYCODE_HOME / KEYCODE_APP_SWITCH.
+           Hidden in fullscreen / DeX. -->
+      <div class="phone-nav-bar" id="phoneNavBar" aria-label="Nav bar">
+        <button class="nav-key nav-back" data-act="back" title="Back" type="button" aria-label="Back">
+          <span class="nav-glyph" aria-hidden="true"></span>
+        </button>
+        <button class="nav-key nav-home" data-act="home" title="Home" type="button" aria-label="Home">
+          <span class="nav-glyph" aria-hidden="true"></span>
+        </button>
+        <button class="nav-key nav-recent" data-act="recent" title="Recent apps" type="button" aria-label="Recent apps">
+          <span class="nav-glyph" aria-hidden="true"></span>
+        </button>
+      </div>
     </div>
     <!--
       Off-screen capture surface for keyboard typing. Focusing this textarea
@@ -397,17 +521,11 @@
       </div>
       <p class="lead">Lệnh chạy qua <code>adb shell</code> trên thiết bị đang chọn. Một số lệnh (Wi-Fi/BT) có thể bị chặn ở chính sách hệ thống của OEM (MIUI/HyperOS) và sẽ trả về lỗi.</p>
       <div class="qc-grid">
-        <button class="qc-btn" data-act="home" type="button"><i class="fa-solid fa-house"></i><span>Home</span></button>
-        <button class="qc-btn" data-act="back" type="button"><i class="fa-solid fa-arrow-left"></i><span>Back</span></button>
-        <button class="qc-btn" data-act="recent" type="button"><i class="fa-solid fa-layer-group"></i><span>Recent</span></button>
+        <!-- Home / Back / Recent / Vol+ / Vol- / Mute / Power(hw) đã chuyển
+             sang khung mockup điện thoại (nav bar dưới + side keys phải) — em
+             đã bỏ ra khỏi panel này để Quick Controls đỡ rối. -->
         <button class="qc-btn" data-act="lock" type="button"><i class="fa-solid fa-lock"></i><span>Lock</span></button>
         <button class="qc-btn" data-act="wake" type="button"><i class="fa-solid fa-sun"></i><span>Wake</span></button>
-        <button class="qc-btn" data-act="vol_up" type="button"><i class="fa-solid fa-volume-high"></i><span>Vol +</span></button>
-        <button class="qc-btn" data-act="vol_down" type="button"><i class="fa-solid fa-volume-low"></i><span>Vol −</span></button>
-        <button class="qc-btn" data-act="mute" type="button"><i class="fa-solid fa-volume-xmark"></i><span>Mute</span></button>
-        <button class="qc-btn" data-sendevent="vol_up" title="Hardware Vol+ (sendevent, cần root) — dùng cho Magisk module install prompt" type="button"><i class="fa-solid fa-circle-chevron-up"></i><span>Vol+ (hw)</span></button>
-        <button class="qc-btn" data-sendevent="vol_down" title="Hardware Vol− (sendevent, cần root) — dùng cho Magisk module install prompt" type="button"><i class="fa-solid fa-circle-chevron-down"></i><span>Vol− (hw)</span></button>
-        <button class="qc-btn" data-sendevent="power" title="Hardware Power (sendevent, cần root)" type="button"><i class="fa-solid fa-plug-circle-bolt"></i><span>Power (hw)</span></button>
         <button class="qc-btn" data-act="wifi_on" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi ON</span></button>
         <button class="qc-btn" data-act="wifi_off" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi OFF</span></button>
         <button class="qc-btn" data-act="bt_on" type="button"><i class="fa-brands fa-bluetooth-b"></i><span>BT ON</span></button>
@@ -536,8 +654,16 @@
       // In fullscreen the CSS rule takes over (width/height 100vw/100vh). Don't
       // fight it with inline styles or the video will stay small.
       if (document.fullscreenElement || document.webkitFullscreenElement) return;
-      const cw = videoWrap.clientWidth - 24;
-      const ch = videoWrap.clientHeight - 24;
+      // Reserve space for the soft nav bar that sits below .phone-shell.
+      // Its actual rendered height varies slightly with viewport zoom, so
+      // we measure rather than hard-code.  When the bar is hidden (DeX
+      // mode, virtual display), reserve = 0.
+      const navBar = document.getElementById('phoneNavBar');
+      const navBarReserve = (navBar && navBar.offsetParent !== null)
+        ? (navBar.offsetHeight + 14) : 0;
+      const sideKeysReserve = 6; // matches `.phone-side-keys{right:-9px}` overhang
+      const cw = videoWrap.clientWidth - 24 - sideKeysReserve;
+      const ch = videoWrap.clientHeight - 24 - navBarReserve;
       if (!cw || !ch) return;
 
       const baseRatio = Math.min(cw / deviceW, ch / deviceH);
@@ -972,36 +1098,76 @@
         if (e.key === 'Escape' && qcBackdrop.classList.contains('show')) showQc(false);
       });
       const _qcCsrf = document.querySelector('meta[name="csrf-token"]').content;
-      qcBackdrop.querySelectorAll('.qc-btn').forEach(btn => {
-        btn.addEventListener('click', async ()=>{
-          const act = btn.getAttribute('data-act');
-          const sendevent = btn.getAttribute('data-sendevent');
-          const confirmMsg = btn.getAttribute('data-confirm');
-          if (confirmMsg && !confirm(confirmMsg)) return;
-          if (!act && !sendevent) return;
-          btn.setAttribute('disabled', 'true');
-          const label = act || `hw:${sendevent}`;
-          qcOut.textContent = `→ ${label}...`;
-          try {
-            const fd = new FormData();
-            fd.append('csrf_token', _qcCsrf);
-            let url;
-            if (sendevent) {
-              fd.append('op', sendevent);
-              url = '/api/adb/sendevent';
-            } else {
-              fd.append('action', act);
-              url = '/api/quick';
-            }
-            const r = await fetch(url, { method:'POST', body: fd, credentials:'same-origin' });
-            const j = await r.json().catch(()=>({}));
-            qcOut.textContent = (j.ok ? '✔ ' : '✖ ') + (j.output || j.error || JSON.stringify(j));
-          } catch (e) {
-            qcOut.textContent = '✖ ' + (e && e.message || String(e));
-          } finally {
-            btn.removeAttribute('disabled');
+      // Shared dispatcher: any button with `data-act` POSTs /api/quick,
+      // any with `data-sendevent` POSTs /api/adb/sendevent.  `onOutput` is
+      // called with (`status`, `text`) so each call site can route the
+      // result to its own surface — qcOut for the panel, a brief flash
+      // for the mockup side/nav keys (which don't have a permanent
+      // output slot).
+      async function runControlBtn(btn, onOutput){
+        const act = btn.getAttribute('data-act');
+        const sendevent = btn.getAttribute('data-sendevent');
+        const confirmMsg = btn.getAttribute('data-confirm');
+        if (confirmMsg && !confirm(confirmMsg)) return;
+        if (!act && !sendevent) return;
+        btn.setAttribute('disabled', 'true');
+        const label = act || `hw:${sendevent}`;
+        if (onOutput) onOutput('pending', `→ ${label}...`);
+        try {
+          const fd = new FormData();
+          fd.append('csrf_token', _qcCsrf);
+          let url;
+          if (sendevent) {
+            fd.append('op', sendevent);
+            url = '/api/adb/sendevent';
+          } else {
+            fd.append('action', act);
+            url = '/api/quick';
           }
-        });
+          const r = await fetch(url, { method:'POST', body: fd, credentials:'same-origin' });
+          const j = await r.json().catch(()=>({}));
+          if (onOutput){
+            const text = (j.ok ? '✔ ' : '✖ ') + (j.output || j.error || JSON.stringify(j));
+            onOutput(j.ok ? 'ok' : 'err', text);
+          }
+        } catch (e) {
+          if (onOutput) onOutput('err', '✖ ' + (e && e.message || String(e)));
+        } finally {
+          btn.removeAttribute('disabled');
+        }
+      }
+      qcBackdrop.querySelectorAll('.qc-btn').forEach(btn => {
+        btn.addEventListener('click', ()=> runControlBtn(btn, (_s, text)=>{ qcOut.textContent = text; }));
+      });
+
+      // Mockup side keys + bottom nav bar.  Same dispatcher, but the
+      // visual feedback is a brief class flash on the button itself
+      // (we don't show a status line on the video stage to avoid
+      // clutter).  Status bar text doubles as a debug surface.
+      const _stageStatus = document.getElementById('status');
+      const _flashKey = (btn, kind) => {
+        const cls = kind === 'ok' ? 'flash-ok' : 'flash-err';
+        btn.classList.add(cls);
+        setTimeout(()=> btn.classList.remove(cls), 600);
+      };
+      const _mockupOut = (btn) => (status, text) => {
+        if (status === 'pending') return;
+        _flashKey(btn, status);
+        if (_stageStatus && text){
+          // Keep the existing status text intact unless the call
+          // failed — in which case surface the error so the user
+          // knows something went wrong.
+          if (status === 'err'){
+            const prev = _stageStatus.textContent;
+            _stageStatus.textContent = text;
+            setTimeout(()=>{
+              if (_stageStatus.textContent === text) _stageStatus.textContent = prev;
+            }, 4000);
+          }
+        }
+      };
+      document.querySelectorAll('.side-key, .nav-key').forEach(btn => {
+        btn.addEventListener('click', ()=> runControlBtn(btn, _mockupOut(btn)));
       });
 
       // wm size / wm density controls. Each button POSTs /api/adb/wm with a
