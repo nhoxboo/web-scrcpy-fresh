@@ -8,6 +8,7 @@ import logging.handlers
 import os
 import queue
 import secrets
+import shlex
 import signal
 import threading
 import time
@@ -872,9 +873,18 @@ def _find_event_device(keycode: int, serial: str | None = None) -> str | None:
     cached = _sendevent_dev_cache.get(cache_key, {})
     if keycode in cached:
         return cached[keycode]
+    # Try the non-root probe first (cheap, no su prompt). Some OEMs lock
+    # /sys/class/input for the shell user, so fall back to `su -c` if the
+    # plain call returns nothing useful.
     ok, output = adb_shell(['getevent', '-lp'], serial=serial, timeout=5.0)
-    if not ok or not output:
-        return None
+    if not ok or not output or 'add device' not in output:
+        ok, output = adb_shell(
+            ['su', '-c', shlex.quote('getevent -lp')],
+            serial=serial,
+            timeout=8.0,
+        )
+        if not ok or not output:
+            return None
     # getevent -lp output looks like:
     #   add device 1: /dev/input/event2
     #     name:     "gpio-keys"
@@ -936,7 +946,14 @@ def api_adb_sendevent():
         f'sendevent {dev} 1 {keycode} 0;'
         f'sendevent {dev} 0 0 0'
     )
-    ok, output = adb_shell(['su', '-c', inner], serial=serial, timeout=10.0)
+    # `adb shell` flattens argv into a single command line WITHOUT quoting,
+    # so passing ['su', '-c', inner] sends `su -c sendevent /dev/input/... ;
+    # sendevent ...` to the remote /system/bin/sh — only the first token
+    # actually reaches root, every subsequent `sendevent` runs as shell
+    # (uid 2000) and bombs with `Permission denied`. Pre-quote the inner
+    # so the join produces `su -c 'sendevent ...;sendevent ...'` and the
+    # full multi-statement payload reaches root in one go.
+    ok, output = adb_shell(['su', '-c', shlex.quote(inner)], serial=serial, timeout=10.0)
     _audit('sendevent', op=op, keycode=keycode, dev=dev, ok=ok)
     if ok:
         return jsonify(ok=True, output=output or f'{op} injected via {dev}')
