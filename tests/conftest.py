@@ -27,6 +27,7 @@ def _install_fake_scrcpy():
             new_display=None,
             enable_audio=False,
             audio_codec='aac',
+            turn_screen_off=False,
         ):
             self.started = False
             self.stopped = False
@@ -36,6 +37,7 @@ def _install_fake_scrcpy():
             self.new_display = new_display
             self.enable_audio = bool(enable_audio)
             self.audio_codec = audio_codec
+            self.turn_screen_off = bool(turn_screen_off)
             self.audio_callback = None
 
         def scrcpy_start(

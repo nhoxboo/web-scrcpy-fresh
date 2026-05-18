@@ -354,6 +354,11 @@ DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')
 DEFAULT_MAX_SIZE = os.environ.get('SCRCPY_MAX_SIZE', '0').strip() or '0'
 DEFAULT_ADB_SERIAL = os.environ.get('ADB_SERIAL', '').strip() or None
 DEFAULT_DISPLAY_ID = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
+# Mirror of scrcpy v3.3.x ControlMessage.TYPE_SET_DISPLAY_POWER. Sent over the
+# control socket to ask the device to turn its physical screen on/off without
+# affecting the mirrored stream — same trick the upstream CLI uses for
+# `--turn-screen-off` / `-S`. Payload is a single byte: 0 = off, 1 = on.
+CONTROL_MSG_TYPE_SET_DISPLAY_POWER = 10
 
 
 class Scrcpy:
@@ -365,6 +370,7 @@ class Scrcpy:
         new_display: str | None = None,
         enable_audio: bool = False,
         audio_codec: str = 'aac',
+        turn_screen_off: bool = False,
     ):
         self.video_socket = None
         self.audio_socket = None
@@ -422,6 +428,13 @@ class Scrcpy:
             # the scrcpy CLI and produce a stream the browser can't play.
             log.warning('Unsupported audio_codec=%r; falling back to aac.', self.audio_codec)
             self.audio_codec = 'aac'
+        # turn_screen_off: mirrors scrcpy's `--turn-screen-off` / `-S` flag.
+        # When True we send a SET_DISPLAY_POWER(off) control message right
+        # after the control socket connects, so the device's physical screen
+        # turns black while the browser keeps receiving the mirrored video
+        # over the existing stream. Useful for headless control where the
+        # phone is in a drawer and you don't want to drain the OLED.
+        self.turn_screen_off = bool(turn_screen_off)
         self.stop = True  # True until scrcpy_start flips it; avoids AttributeError
 
     # ---- device setup ----------------------------------------------------------
@@ -725,6 +738,17 @@ class Scrcpy:
         if self.audio_socket is not None and self.audio_callback is not None:
             self.audio_thread = Thread(target=self.receive_audio_data, daemon=True)
             self.audio_thread.start()
+        # scrcpy CLI's `--turn-screen-off` is implemented entirely on the client
+        # side: the server has no startup flag for it, so we send a
+        # SET_DISPLAY_POWER(off) control message ourselves right after the
+        # control socket is up. Best-effort — scrcpy_send_control already
+        # swallows OSError, so a torn-down socket during shutdown can't crash
+        # us.
+        if self.turn_screen_off:
+            log.info('Sending SET_DISPLAY_POWER(off) — --turn-screen-off')
+            self.scrcpy_send_control(
+                bytes([CONTROL_MSG_TYPE_SET_DISPLAY_POWER, 0]),
+            )
         log.info('Background tasks started')
 
     def _shutdown_socket(self, sock) -> None:
