@@ -125,6 +125,17 @@ max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
 max_size = os.environ.get('SCRCPY_MAX_SIZE', '0').strip() or '0'
 adb_serial = os.environ.get('ADB_SERIAL', '').strip() or None
 display_id = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
+# Mirrors scrcpy's `--turn-screen-off` / `-S`: when truthy we ask the device
+# to blank its physical screen as soon as the control socket is up, so the
+# user can keep mirroring/controlling without lighting up the OLED. Off by
+# default — the toolbar toggle (and per-session `?turn_screen_off=1`) wins
+# over this env-wide default.
+turn_screen_off_default = os.environ.get('SCRCPY_TURN_SCREEN_OFF', '').strip().lower() in (
+    '1',
+    'true',
+    'yes',
+    'on',
+)
 
 
 def _shutdown_scrcpy() -> None:
@@ -1346,6 +1357,20 @@ def handle_connect(auth=None):
         # localStorage flag that drives this query param.
         req_audio = request.args.get('audio') if request.args else None
         chosen_audio = req_audio == '1' or (req_audio or '').lower() == 'true'
+        # Turn-screen-off: ?turn_screen_off=1 mirrors scrcpy's `--turn-screen-off`
+        # / `-S`. When set, we send SET_DISPLAY_POWER(off) right after the
+        # control socket connects so the physical OLED goes black while we
+        # keep streaming the mirrored display. Falls back to the env-wide
+        # SCRCPY_TURN_SCREEN_OFF default when the query param is absent.
+        req_tso = request.args.get('turn_screen_off') if request.args else None
+        if req_tso is None or req_tso == '':
+            chosen_turn_screen_off = turn_screen_off_default
+        else:
+            chosen_turn_screen_off = req_tso == '1' or (req_tso or '').lower() in (
+                'true',
+                'yes',
+                'on',
+            )
         # Per-session video bit rate (`?video_bit_rate=N` bits/sec) and
         # max FPS (`?max_fps=N`). Validated against a generous range —
         # below the lower bound is unusable; above the upper bound risks
@@ -1382,6 +1407,7 @@ def handle_connect(auth=None):
             max_size=max_size,
             new_display=chosen_new_display,
             enable_audio=chosen_audio,
+            turn_screen_off=chosen_turn_screen_off,
         )
         # Forward device → browser clipboard updates. scrcpy server pushes a
         # CLIPBOARD message whenever the device clipboard changes (including
@@ -1513,6 +1539,17 @@ if __name__ == '__main__':
         default=display_id,
         help='Display id to mirror; 0=main, 2=typical Samsung DeX (default: SCRCPY_DISPLAY_ID env or 0)',
     )
+    parser.add_argument(
+        '--turn_screen_off',
+        '-S',
+        action='store_true',
+        default=turn_screen_off_default,
+        help=(
+            "Mirrors scrcpy's --turn-screen-off / -S: blank the device's "
+            'physical screen after connecting. Default off; override env-wide '
+            'with SCRCPY_TURN_SCREEN_OFF=1.'
+        ),
+    )
     parser.add_argument('--port', default=8000, type=int, help='listen port')
     parser.add_argument(
         '--host', default=os.environ.get('BIND_HOST', '0.0.0.0'), help='bind host (default 0.0.0.0)'
@@ -1523,8 +1560,10 @@ if __name__ == '__main__':
     max_size = str(args.max_size or '0')
     adb_serial = args.serial or None
     display_id = str(args.display_id or '0')
+    turn_screen_off_default = bool(args.turn_screen_off)
     log.info(
-        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s, max_size=%s, serial=%s, display_id=%s)',
+        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s, max_size=%s, '
+        'serial=%s, display_id=%s, turn_screen_off=%s)',
         args.host,
         args.port,
         video_bit_rate,
@@ -1532,5 +1571,6 @@ if __name__ == '__main__':
         max_size,
         adb_serial or '*',
         display_id,
+        turn_screen_off_default,
     )
     socketio.run(app, host=args.host, port=args.port, allow_unsafe_werkzeug=True)

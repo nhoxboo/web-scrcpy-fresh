@@ -392,6 +392,7 @@
     <button class="tool" id="gamepadInput" title="Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối."><i class="fa-solid fa-chess-knight"></i></button>
     <button class="tool" id="hudToggle" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
     <button class="tool" id="audioToggle" title="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)"><i class="fa-solid fa-volume-xmark"></i></button>
+    <button class="tool" id="screenOffToggle" title="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)"><i class="fa-solid fa-lightbulb"></i></button>
   </div>
 
   <div class="video-wrap" id="videoWrap">
@@ -774,6 +775,12 @@
     // audio socket when this query param is set, so the bandwidth/CPU
     // cost is exactly zero unless the user asks for it.
     const audioOn = localStorage.getItem('audioStream') === '1';
+    // Turn-screen-off: mirrors scrcpy's `--turn-screen-off` / `-S`. When ON
+    // we ask the server to blank the device's physical OLED right after the
+    // control socket is up — handy when the phone is in a drawer and you
+    // don't want it lighting up while you mirror. Persists across sessions
+    // via localStorage 'turnScreenOff' = '1'. Default OFF.
+    const turnScreenOffOn = localStorage.getItem('turnScreenOff') === '1';
     // Gamepad UHID: opt-in via the toolbar toggle, persisted as
     // localStorage 'gamepadInput' = '1'. Default OFF — having the rAF
     // poll loop running for every page would waste CPU on users who
@@ -795,6 +802,7 @@
       ? { display_id: String(dexId) }
       : (vdesktopOn ? { new_display: vdesktopSpec } : {});
     if (audioOn) _socketQuery.audio = '1';
+    if (turnScreenOffOn) _socketQuery.turn_screen_off = '1';
     // Only send non-default values so the server log stays clean and we
     // don't accidentally pin a value the user never explicitly chose.
     if (_initMbps !== 8) _socketQuery.video_bit_rate = String(_initMbps * 1_000_000);
@@ -2265,6 +2273,42 @@
         // handle_connect and restart scrcpy with audio capture on/off.
         socket.io.opts.query = { ..._socketQuery };
         st(next ? 'Bật audio, đang reconnect...' : 'Tắt audio, đang reconnect...');
+        try { socket.disconnect(); } catch (_e) {}
+        setTimeout(()=>{ try { socket.connect(); } catch (_e) {} }, 250);
+      });
+    }
+
+    // ---- Turn-screen-off toggle ------------------------------------------
+    // Mirrors scrcpy's `--turn-screen-off` / `-S`. Persists in localStorage
+    // as 'turnScreenOff' = '1' so the choice survives reloads. Toggling
+    // updates the socket.io query and does a soft reconnect — same pattern
+    // as the audio toggle — so the server gets a fresh handle_connect with
+    // the new `?turn_screen_off=` value and re-emits the SET_DISPLAY_POWER
+    // control message (or doesn't) accordingly. No page reload, no loss of
+    // macro/clipboard state.
+    const screenOffBtn = document.getElementById('screenOffToggle');
+    const refreshScreenOffBtn = ()=>{
+      if (!screenOffBtn) return;
+      const on = localStorage.getItem('turnScreenOff') === '1';
+      screenOffBtn.classList.toggle('active', on);
+      screenOffBtn.title = on
+        ? 'Tắt màn hình thiết bị: ON — bấm để bật lại màn hình (cần reconnect). Tay vẫn điều khiển bình thường qua web.'
+        : 'Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)';
+    };
+    refreshScreenOffBtn();
+    if (screenOffBtn){
+      screenOffBtn.addEventListener('click', ()=>{
+        const cur = localStorage.getItem('turnScreenOff') === '1';
+        const next = !cur;
+        localStorage.setItem('turnScreenOff', next ? '1' : '0');
+        refreshScreenOffBtn();
+        if (next) {
+          _socketQuery.turn_screen_off = '1';
+        } else {
+          delete _socketQuery.turn_screen_off;
+        }
+        socket.io.opts.query = { ..._socketQuery };
+        st(next ? 'Tắt màn hình thiết bị, đang reconnect...' : 'Bật lại màn hình thiết bị, đang reconnect...');
         try { socket.disconnect(); } catch (_e) {}
         setTimeout(()=>{ try { socket.connect(); } catch (_e) {} }, 250);
       });
