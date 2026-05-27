@@ -93,15 +93,14 @@
        landscape orientation rather than a wide video stuffed into a portrait. */
     .phone-shell.landscape{padding:8px;border-radius:22px}
     .phone-shell.landscape::before,.phone-shell.landscape::after{display:none}
-    /* DeX mode: drop the phone shell entirely. DeX is a desktop-style UI,
-       and the rounded "phone" frame around it makes no sense. We also
-       hide the notch/camera dot so the desktop fills the available area
-       like a laptop would. */
-    .phone-shell.dex{padding:0;border-radius:8px;border-color:#4b5563}
-    .phone-shell.dex::before,.phone-shell.dex::after{display:none}
+    /* Virtual Desktop / external display: drop the phone shell entirely.
+       Desktop-style UIs render landscape and the rounded "phone" frame
+       around them makes no sense. */
+    .phone-shell.desktop-mode{padding:0;border-radius:8px;border-color:#4b5563}
+    .phone-shell.desktop-mode::before,.phone-shell.desktop-mode::after{display:none}
     /* When pointer lock is engaged for UHID mouse, give the user a clear
        hint that their mouse is captured (and how to release it). */
-    .phone-shell.dex.locked{outline:2px solid #38bdf8}
+    .phone-shell.desktop-mode.locked{outline:2px solid #38bdf8}
     /* Phone mockup wrapper: vertical stack containing phone-shell + nav bar.
        Lives inside .video-wrap; centering still inherited from .video-wrap's
        flex layout. Width hugs the phone-shell so the side-keys can protrude
@@ -186,11 +185,11 @@
     .nav-key[disabled]{opacity:.45;cursor:not-allowed}
     .nav-key.flash-ok{background:rgba(34,197,94,.30);color:#fff;border-color:rgba(34,197,94,.55)}
     .nav-key.flash-err{background:rgba(239,68,68,.30);color:#fff;border-color:rgba(239,68,68,.55)}
-    /* Hide both control rows in fullscreen / DeX mode — they don't belong
+    /* Hide both control rows in fullscreen / desktop mode — they don't belong
        on a desktop-like canvas, and they'd float weirdly outside the video. */
-    .phone-shell.dex .phone-side-keys,.phone-shell:fullscreen .phone-side-keys,
+    .phone-shell.desktop-mode .phone-side-keys,.phone-shell:fullscreen .phone-side-keys,
     .phone-shell:-webkit-full-screen .phone-side-keys{display:none}
-    .phone-shell.dex ~ .phone-nav-bar{display:none}
+    .phone-shell.desktop-mode ~ .phone-nav-bar{display:none}
     /* In fullscreen the .phone-mockup wrapper still surrounds phone-shell;
        hide the nav bar so it doesn't overlay the fullscreen video. */
     .phone-mockup:fullscreen .phone-nav-bar,.phone-mockup:-webkit-full-screen .phone-nav-bar{display:none}
@@ -369,8 +368,7 @@
     <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
     <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
     <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
-    <button class="tool" id="dexMode" title="DeX Mode: OFF"><i class="fa-solid fa-display"></i></button>
-    <button class="tool" id="vdesktopMode" title="Virtual Desktop: OFF — DeX-style cho mọi Android (cần Android 11+). Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
+    <button class="tool" id="vdesktopMode" title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
     <button class="tool" id="quickCtl" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
     <button class="tool" id="uhidInput" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
     <div class="uhid-speed" id="uhidSpeedBox" title="Tốc độ chuột UHID — kéo để chỉnh, không cần reload">
@@ -730,7 +728,14 @@
       // until fitVideoToViewport runs again with the new deviceW/deviceH.
       videoElement.style.width = '';
       videoElement.style.height = '';
-      jmuxer = new JMuxer({ node:'player', mode:'video', flushingTime:0, fps:60, clearBuffer:true,
+      // Stream pipeline tuning:
+      //   flushingTime:50 — batch ~3 NALUs per MSE append (instead of one
+      //     append per NALU at flushingTime:0). Fewer JS round-trips,
+      //     smoother decoder feed, ~negligible added latency at 60fps.
+      //   clearBuffer:false — let MSE manage its own buffer. Manual wipes
+      //     create momentary stutter on weak networks; the browser's
+      //     built-in buffer eviction is gentler.
+      jmuxer = new JMuxer({ node:'player', mode:'video', flushingTime:50, fps:60, clearBuffer:false,
         onError:(err)=>st('Decoder error: '+(err?.message||JSON.stringify(err)))
       });
     }
@@ -742,23 +747,17 @@
     videoElement.addEventListener('resize', scheduleRefit);
     videoElement.addEventListener('loadedmetadata', scheduleRefit);
 
-    // DeX mode: send display_id=2 (typical Samsung DeX) to the server when on.
-    // The server validates the value; can be overridden per-device by setting
-    // localStorage.dexDisplayId to the right id from `adb shell dumpsys display`.
-    const dexOn = localStorage.getItem('dexMode') === '1';
-    const dexId = parseInt(localStorage.getItem('dexDisplayId') || '2', 10) || 2;
-    // Virtual Desktop: server-side `--new-display=WxH/dpi`. Mutually
-    // exclusive with DeX (scrcpy refuses both). When DeX is ON we ignore
-    // vdesktop so the user's explicit DeX choice wins; otherwise we
-    // request a virtual display the size of a typical landscape desktop.
-    const vdesktopOn = !dexOn && localStorage.getItem('vdesktopMode') === '1';
+    // Virtual Desktop: server-side `--new-display=WxH/dpi` creates a fresh
+    // virtual display on the device that we mirror instead of the main one.
+    // Works on any Android 11+ (no vendor-specific Desktop Mode required).
+    const vdesktopOn = localStorage.getItem('vdesktopMode') === '1';
     const vdesktopSpec = (localStorage.getItem('vdesktopSpec') || '1920x1080/160').trim();
-    // UHID input is independent of DeX. When ON the browser registers a
-    // virtual HID mouse + keyboard on the device, giving a real cursor and
-    // proper modifier keys regardless of whether DeX is active. Default is
-    // ON because the experience is closer to a desktop remote-control tool;
-    // user can flip it OFF via the toolbar to fall back to touch input
-    // (useful for typing Vietnamese via the Android IME, which UHID
+    // UHID input: when ON the browser registers a virtual HID mouse +
+    // keyboard on the device, giving a real cursor and proper modifier
+    // keys (works on the main display and on Virtual Desktop alike).
+    // Default is ON because it feels closer to a desktop remote-control
+    // tool; user can flip it OFF via the toolbar to fall back to touch
+    // input (useful for typing Vietnamese via the Android IME, which UHID
     // bypasses).
     const uhidOn = (localStorage.getItem('uhidInput') ?? '1') === '1';
     // Mouse sensitivity for UHID. Stored as a string of the multiplier,
@@ -798,9 +797,7 @@
     const _clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
     const _initMbps = _clamp(parseInt(localStorage.getItem(STREAM_BITRATE_KEY) || '8', 10) || 8, 1, 100);
     const _initFps = _clamp(parseInt(localStorage.getItem(STREAM_FPS_KEY) || '60', 10) || 60, 15, 120);
-    const _socketQuery = dexOn
-      ? { display_id: String(dexId) }
-      : (vdesktopOn ? { new_display: vdesktopSpec } : {});
+    const _socketQuery = vdesktopOn ? { new_display: vdesktopSpec } : {};
     if (audioOn) _socketQuery.audio = '1';
     if (turnScreenOffOn) _socketQuery.turn_screen_off = '1';
     // Only send non-default values so the server log stays clean and we
@@ -816,21 +813,9 @@
     socket.on('disconnect', (reason)=> st('Mất kết nối: '+reason));
     socket.on('connect_error', (err)=>{
       const msg = (err && (err.message || err.data)) || 'Không thể kết nối tới server.';
-      // If DeX is on and the server says the display is unavailable, auto
-      // turn DeX off so the user isn't stuck reload-looping. The server
-      // returns Vietnamese "không khả dụng" when display_id != 0 fails.
-      const dexCurrentlyOn = localStorage.getItem('dexMode') === '1';
-      const looksLikeDexFail = /display.*không khả dụng|display.*not found|no display|invalid display/i.test(msg);
-      if (dexCurrentlyOn && looksLikeDexFail) {
-        localStorage.setItem('dexMode', '0');
-        st('Máy này không hỗ trợ DeX. Đã tự tắt DeX, đang tải lại...');
-        socket.disconnect();
-        setTimeout(()=>location.reload(), 800);
-        return;
-      }
-      // Same auto-fallback for Virtual Desktop on devices that don't
-      // support new_display (Android < 11, or OEMs that block virtual
-      // displays). Reset the flag and reload to mirror the main display.
+      // Auto-fallback for Virtual Desktop on devices that don't support
+      // new_display (Android < 11, or OEMs that block virtual displays).
+      // Reset the flag and reload to mirror the main display.
       const vdesktopCurrentlyOn = localStorage.getItem('vdesktopMode') === '1';
       const looksLikeVdesktopFail = /virtual desktop.*không khả dụng/i.test(msg);
       if (vdesktopCurrentlyOn && looksLikeVdesktopFail) {
@@ -896,18 +881,16 @@
       if (gamepadOn) {
         try { input.enableGamepadInput(); } catch (e) { /* surfaced via callback */ }
       }
-      if (dexOn) {
-        // DeX-specific cosmetics: drop the phone-shell decoration (notch,
-        // camera dot, rounded portrait border) and hide the Rotate button
-        // because DeX desktop doesn't rotate.
-        phoneShell.classList.add('dex');
+      if (vdesktopOn) {
+        // Virtual Desktop cosmetics: drop the phone-shell decoration
+        // (notch, camera dot, rounded portrait border) and hide the
+        // Rotate button — virtual displays don't rotate.
+        phoneShell.classList.add('desktop-mode');
         const rotBtn = document.getElementById('rotate');
         if (rotBtn) rotBtn.style.display = 'none';
       }
-      if (uhidOn || dexOn) {
-        st(uhidOn
-          ? 'Real mouse/keyboard (UHID). Click màn hình để khoá chuột, ESC để thoát.'
-          : 'DeX mode');
+      if (uhidOn) {
+        st('Real mouse/keyboard (UHID). Click màn hình để khoá chuột, ESC để thoát.');
       }
     }
 
@@ -1015,39 +998,9 @@
         st('Đã gửi lệnh xoay màn hình');
       };
 
-      // DeX mode toggle: stores preference and reloads so the socket reconnects
-      // with the new display_id query param. Requires DeX to already be active
-      // on the Samsung device (cable, dock, or wireless DeX).
-      const dexBtn = document.getElementById('dexMode');
-      const refreshDexBtn = ()=>{
-        const on = localStorage.getItem('dexMode') === '1';
-        dexBtn.classList.toggle('active', on);
-        const idShown = parseInt(localStorage.getItem('dexDisplayId') || '2', 10) || 2;
-        dexBtn.title = on ? `DeX Mode: ON (display_id=${idShown})` : 'DeX Mode: OFF';
-      };
-      refreshDexBtn();
-      dexBtn.onclick = (e)=>{
-        const cur = localStorage.getItem('dexMode') === '1';
-        if (e.shiftKey) {
-          const ans = prompt('Nhập display_id cho DeX (mặc định 2):', localStorage.getItem('dexDisplayId') || '2');
-          if (ans === null) return;
-          const n = parseInt(ans, 10);
-          if (Number.isFinite(n) && n >= 0 && n < 100) {
-            localStorage.setItem('dexDisplayId', String(n));
-          }
-        }
-        localStorage.setItem('dexMode', cur ? '0' : '1');
-        // DeX wins over Virtual Desktop — they're mutually exclusive at the
-        // scrcpy layer, so when the user enables DeX we must clear the
-        // vdesktop flag, otherwise it would silently come back next reload.
-        if (!cur) localStorage.setItem('vdesktopMode', '0');
-        st(cur ? 'Tắt DeX, đang tải lại...' : 'Bật DeX, đang tải lại...');
-        setTimeout(()=>location.reload(), 250);
-      };
-
-      // Virtual Desktop (scrcpy --new-display): a DeX-style virtual display
-      // on any Android 11+. Mutually exclusive with DeX. Shift-click to
-      // override the WxH/dpi spec (default 1920x1080/160).
+      // Virtual Desktop (scrcpy --new-display): a desktop-style virtual
+      // display on any Android 11+. Shift-click to override the WxH/dpi
+      // spec (default 1920x1080/160).
       const vdBtn = document.getElementById('vdesktopMode');
       const refreshVdBtn = ()=>{
         const on = localStorage.getItem('vdesktopMode') === '1';
@@ -1055,7 +1008,7 @@
         vdBtn.classList.toggle('active', on);
         vdBtn.title = on
           ? `Virtual Desktop: ON (${spec}) — Shift-click để chỉnh kích thước`
-          : 'Virtual Desktop: OFF — DeX-style cho mọi Android 11+. Shift-click để chỉnh.';
+          : 'Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh.';
       };
       refreshVdBtn();
       vdBtn.onclick = (e)=>{
@@ -1085,7 +1038,6 @@
         }
         const cur = localStorage.getItem('vdesktopMode') === '1';
         localStorage.setItem('vdesktopMode', cur ? '0' : '1');
-        if (!cur) localStorage.setItem('dexMode', '0'); // mutually exclusive
         st(cur ? 'Tắt Virtual Desktop, đang tải lại...' : 'Bật Virtual Desktop, đang tải lại...');
         setTimeout(()=>location.reload(), 250);
       };
@@ -1420,7 +1372,7 @@
         }
       });
 
-      // UHID toggle: independent of DeX. Reload so UHID_CREATE / control
+      // UHID toggle: independent of Virtual Desktop. Reload so UHID_CREATE / control
       // listeners are wired (or unwired) cleanly — the alternative is to
       // hot-swap event listeners at runtime, which is fragile.
       const uhidBtn = document.getElementById('uhidInput');
@@ -2001,7 +1953,7 @@
         st(`Kết nối OK | Screen ${deviceW}x${deviceH}`);
       } else if (type === 'size_change') {
         const newW = data['width'], newH = data['height'];
-        // Resolution actually changed (rotation, DeX switch, fold/unfold) →
+        // Resolution actually changed (rotation, display switch, fold/unfold) →
         // throw away the old MSE decoder; the upcoming 'init' event will feed
         // fresh SPS/PPS into the new instance.
         const aspectFlipped =

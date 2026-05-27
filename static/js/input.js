@@ -182,8 +182,9 @@ class ScrcpyInput {
         // useUhid: when true, mouse and keyboard are routed through UHID
         // (HID-over-AOA via scrcpy UHID_CREATE / UHID_INPUT control messages)
         // instead of inject_keycode + touch events. This gives a real cursor
-        // + real keyboard on Samsung DeX (and any Android virtual display),
-        // and is what makes desktop-style UI usable.
+        // + real keyboard on the device (works on the main display and on
+        // Virtual Desktop / external displays alike), which is what makes
+        // desktop-style UI usable.
         this.useUhid = !!options.useUhid;
         this.videoElement = videoElement;
         // Will be initialized after the video metadata arrives (we need a
@@ -521,7 +522,7 @@ class ScrcpyInput {
         // browser cursor disappears, mouse motion is captured). This matches
         // how every remote-desktop client (Parsec, Moonlight, NoMachine) does
         // mouse capture, and it lets the device-side cursor — driven by the
-        // emulated USB HID mouse — move freely on the DeX desktop.
+        // emulated USB HID mouse — move freely on the desktop UI.
         const uhidMouseDown = (event) => {
             if (!isUhid()) return;
             if (!videoElement.contains(event.target)) return;
@@ -631,7 +632,7 @@ class ScrcpyInput {
         this._uhidMouseAccel = !!on;
     }
 
-    /** Tear down the HID devices (called when DeX session ends or socket dies). */
+    /** Tear down the HID devices (called when socket dies). */
     disableUhid() {
         if (!this._uhidReady) return;
         try { this.sendUhidDestroy(this._uhidKeyboardId); } catch (e) { /* ignore */ }
@@ -952,8 +953,8 @@ class ScrcpyInput {
         // notch). Compress to HID's ±127 range with sign preserved.
         const sign = (v) => (v > 0 ? 1 : v < 0 ? -1 : 0);
         // HID wheel "vertical" is positive = up (away from user), but
-        // browser deltaY positive = scroll down. Invert so DeX scrolls in
-        // the natural direction.
+        // browser deltaY positive = scroll down. Invert so the device
+        // scrolls in the natural direction.
         const wv = -sign(deltaY) * Math.min(127, Math.ceil(Math.abs(deltaY) / 40) || 1);
         const wh = sign(deltaX) * Math.min(127, Math.ceil(Math.abs(deltaX) / 40) || 1);
         this._uhidSendMouse(0, 0, wv, wh);

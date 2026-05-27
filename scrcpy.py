@@ -345,13 +345,16 @@ def is_valid_new_display(spec: str) -> bool:
 
 
 LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
-DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '8000000')
+# Defaults tuned for fast LAN / Wi-Fi 5+ on a modern phone:
+#   * 10 Mbps gives clean 1080p without saturating typical home Wi-Fi.
+#   * 60 fps matches the panel refresh rate of all current Samsung flagships.
+#   * max_size=1920 caps the longest edge so 4K-class phones (e.g. Galaxy
+#     Fold/Ultra) don't drown the browser MSE decoder; the result is
+#     sharper-looking than uncapped native because more bits hit each pixel
+#     at the same bitrate. Set SCRCPY_MAX_SIZE=0 to opt back into native res.
+DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '10000000')
 DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')
-# 0 = mirror at the device's native resolution. Setting e.g. 1920 caps the
-# longest edge so very-high-DPI phones don't drown the browser decoder, which
-# usually looks SHARPER (more bits per pixel) than uncapped 4K at the same
-# bitrate. Most modern phones look great at 1920.
-DEFAULT_MAX_SIZE = os.environ.get('SCRCPY_MAX_SIZE', '0').strip() or '0'
+DEFAULT_MAX_SIZE = os.environ.get('SCRCPY_MAX_SIZE', '1920').strip() or '1920'
 DEFAULT_ADB_SERIAL = os.environ.get('ADB_SERIAL', '').strip() or None
 DEFAULT_DISPLAY_ID = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
 # Mirror of scrcpy v3.3.x ControlMessage.TYPE_SET_DISPLAY_POWER. Sent over the

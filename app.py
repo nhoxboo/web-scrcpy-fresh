@@ -120,9 +120,9 @@ message_queue = queue.Queue()
 # Separate queue + emit task for audio so a slow audio consumer can't stall
 # the video pipeline (the browser handles them through different MSE buffers).
 audio_message_queue = queue.Queue()
-video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '8000000')
+video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '10000000')
 max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
-max_size = os.environ.get('SCRCPY_MAX_SIZE', '0').strip() or '0'
+max_size = os.environ.get('SCRCPY_MAX_SIZE', '1920').strip() or '1920'
 adb_serial = os.environ.get('ADB_SERIAL', '').strip() or None
 display_id = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
 # Mirrors scrcpy's `--turn-screen-off` / `-S`: when truthy we ask the device
@@ -1573,4 +1573,27 @@ if __name__ == '__main__':
         display_id,
         turn_screen_off_default,
     )
+    # Loud warning: the Werkzeug dev server is single-threaded and will
+    # stutter video noticeably under any real load. The Procfile / wsgi.py
+    # ship the production-grade gunicorn+eventlet path; users running
+    # `python app.py` for production deserve to know they're leaving
+    # performance on the table. Set DISABLE_DEV_BANNER=1 to silence.
+    if os.environ.get('DISABLE_DEV_BANNER') != '1':
+        bar = '!' * 72
+        bind = f'0.0.0.0:{args.port}'
+        log.warning(
+            '\n%s\n'
+            '! Đang chạy Werkzeug development server (single-threaded).\n'
+            '! Stream video sẽ KHÔNG mượt cho production. Chạy gunicorn:\n'
+            '!\n'
+            '!   pip install -r requirements-prod.txt\n'
+            '!   gunicorn --worker-class eventlet -w 1 --bind %s wsgi:app\n'
+            '!\n'
+            '! Hoặc dùng `honcho start` (đọc Procfile có sẵn).\n'
+            '! Đặt DISABLE_DEV_BANNER=1 để ẩn cảnh báo này.\n'
+            '%s',
+            bar,
+            bind,
+            bar,
+        )
     socketio.run(app, host=args.host, port=args.port, allow_unsafe_werkzeug=True)
