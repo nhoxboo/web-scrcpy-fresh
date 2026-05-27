@@ -459,15 +459,15 @@ def _save_wifi_devices(devices: dict) -> bool:
         log.warning('Failed to save WiFi devices: %s', e)
         return False
 
-def _add_saved_wifi_device(host: str, port: int | str, name: str = '') -> dict:
+def _add_saved_wifi_device(host: str, port: int, name: str = '') -> dict:
     """Add a new saved WiFi device, return the device dict."""
     devices = _load_saved_wifi_devices()
-    device_id = str(uuid.uuid4())[:8]
-    target = f'{host}:{int(port)}'
+    device_id = str(uuid.uuid4()).replace('-', '')[:16]  # Use 16 hex chars for better entropy
+    target = f'{host}:{port}'
     device = {
         'id': device_id,
         'host': host,
-        'port': int(port),
+        'port': port,
         'target': target,
         'name': name or target,
         'created_at': datetime.now().isoformat(),
@@ -1059,7 +1059,7 @@ def api_adb_pair():
     if ok:
         saved_device = None
         if save_device:
-            saved_device = _add_saved_wifi_device(host, port, device_name)
+            saved_device = _add_saved_wifi_device(host, int(port), device_name)
         return jsonify(ok=True, output=output, saved_device=saved_device)
     return jsonify(ok=False, error=output or 'adb pair failed'), 500
 
@@ -1084,7 +1084,7 @@ def api_adb_connect():
             _update_last_used(device_id)
         # Save device if requested
         if save_device:
-            saved_device = _add_saved_wifi_device(host, port, device_name)
+            saved_device = _add_saved_wifi_device(host, int(port), device_name)
         return jsonify(ok=True, output=output, saved_device=saved_device)
     return jsonify(ok=False, error=output or 'adb connect failed'), 500
 
