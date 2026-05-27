@@ -235,13 +235,13 @@
           connectBtn.className = 'glass-btn';
           connectBtn.style.cssText = 'padding:4px 8px;font-size:.8rem';
           connectBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Kết nối';
-          connectBtn.onclick = (e) => { e.preventDefault(); connectSaved(d.id, d.host, d.port); };
+          connectBtn.addEventListener('click', (e) => { e.preventDefault(); connectSaved(d.id, d.host, d.port); });
           
           const deleteBtn = document.createElement('button');
           deleteBtn.className = 'glass-btn danger';
           deleteBtn.style.cssText = 'padding:4px 8px;font-size:.8rem';
           deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
-          deleteBtn.onclick = (e) => { e.preventDefault(); deleteSaved(d.id); };
+          deleteBtn.addEventListener('click', (e) => { e.preventDefault(); deleteSaved(d.id); });
           
           actions.appendChild(connectBtn);
           actions.appendChild(deleteBtn);

@@ -462,7 +462,7 @@ def _save_wifi_devices(devices: dict) -> bool:
 def _add_saved_wifi_device(host: str, port: int, name: str = '') -> dict:
     """Add a new saved WiFi device, return the device dict."""
     devices = _load_saved_wifi_devices()
-    device_id = str(uuid.uuid4()).replace('-', '')[:16]  # Use 16 hex chars for better entropy
+    device_id = str(uuid.uuid4()).replace('-', '')  # Full UUID without dashes (32 hex chars)
     target = f'{host}:{port}'
     device = {
         'id': device_id,
@@ -479,9 +479,10 @@ def _add_saved_wifi_device(host: str, port: int, name: str = '') -> dict:
     return device
 
 def _get_saved_wifi_devices() -> list[dict]:
-    """Get list of all saved WiFi devices."""
+    """Get list of all saved WiFi devices, sorted by creation date (newest first)."""
     devices = _load_saved_wifi_devices()
-    return sorted(devices.values(), key=lambda d: d.get('created_at', ''), reverse=True)
+    # Use a reasonable default for missing timestamps to ensure consistent ordering
+    return sorted(devices.values(), key=lambda d: d.get('created_at', '0000-01-01T00:00:00'), reverse=True)
 
 def _delete_saved_wifi_device(device_id: str) -> bool:
     """Delete a saved WiFi device."""
@@ -1125,7 +1126,7 @@ def api_save_wifi_device():
     if not is_valid_host(host) or not is_valid_port(port):
         return jsonify(ok=False, error='Host hoặc port không hợp lệ.'), 400
     
-    device = _add_saved_wifi_device(host, port, name)
+    device = _add_saved_wifi_device(host, int(port), name)
     return jsonify(ok=True, device=device)
 
 
