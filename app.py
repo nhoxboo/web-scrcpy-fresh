@@ -450,6 +450,7 @@ def _load_saved_wifi_devices() -> dict:
         log.warning('Failed to load saved WiFi devices: %s', e)
     return {}
 
+
 def _save_wifi_devices(devices: dict) -> bool:
     """Save WiFi devices to JSON file."""
     try:
@@ -459,6 +460,7 @@ def _save_wifi_devices(devices: dict) -> bool:
     except OSError as e:
         log.warning('Failed to save WiFi devices: %s', e)
         return False
+
 
 def _add_saved_wifi_device(host: str, port: int, name: str = '') -> dict:
     """Add a new saved WiFi device, return the device dict."""
@@ -479,11 +481,15 @@ def _add_saved_wifi_device(host: str, port: int, name: str = '') -> dict:
     _audit('saved_wifi_device_added', host=host, port=port, id=device_id)
     return device
 
+
 def _get_saved_wifi_devices() -> list[dict]:
     """Get list of all saved WiFi devices, sorted by creation date (newest first)."""
     devices = _load_saved_wifi_devices()
     # Use a reasonable default for missing timestamps to ensure consistent ordering
-    return sorted(devices.values(), key=lambda d: d.get('created_at', '0000-01-01T00:00:00'), reverse=True)
+    return sorted(
+        devices.values(), key=lambda d: d.get('created_at', '0000-01-01T00:00:00'), reverse=True
+    )
+
 
 def _delete_saved_wifi_device(device_id: str) -> bool:
     """Delete a saved WiFi device."""
@@ -494,6 +500,7 @@ def _delete_saved_wifi_device(device_id: str) -> bool:
         _audit('saved_wifi_device_deleted', id=device_id)
         return True
     return False
+
 
 def _update_last_used(device_id: str) -> None:
     """Update the last_used timestamp for a device."""
