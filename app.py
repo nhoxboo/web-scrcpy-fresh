@@ -12,8 +12,9 @@ import shlex
 import signal
 import threading
 import time
+import uuid
 from collections import deque
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import (
@@ -435,15 +436,15 @@ def _security_headers(response):
 
 # --- routes ----------------------------------------------------------------------
 
+
 # --- saved WiFi devices management -----------------------------------------------
-import uuid
-from datetime import datetime
+
 
 def _load_saved_wifi_devices() -> dict:
     """Load saved WiFi devices from JSON file."""
     try:
         if os.path.exists(SAVED_WIFI_DEVICES_FILE):
-            with open(SAVED_WIFI_DEVICES_FILE, 'r') as f:
+            with open(SAVED_WIFI_DEVICES_FILE) as f:
                 return json.load(f) or {}
     except (OSError, json.JSONDecodeError) as e:
         log.warning('Failed to load saved WiFi devices: %s', e)
@@ -1050,7 +1051,7 @@ def api_adb_pair():
     code = (request.form.get('code') or '').strip()
     save_device = request.form.get('save_device') in ('true', '1', 'on', True)
     device_name = (request.form.get('device_name') or '').strip()
-    
+
     if not is_valid_host(host) or not is_valid_port(port):
         return jsonify(ok=False, error='Host hoặc port không hợp lệ.'), 400
     if not code.isdigit() or not (4 <= len(code) <= 8):
@@ -1073,7 +1074,7 @@ def api_adb_connect():
     device_id = (request.form.get('device_id') or '').strip()
     save_device = request.form.get('save_device') in ('true', '1', 'on', True)
     device_name = (request.form.get('device_name') or '').strip()
-    
+
     if not is_valid_host(host) or not is_valid_port(port):
         return jsonify(ok=False, error='Host hoặc port không hợp lệ.'), 400
     ok, output = adb_connect(host, port)
@@ -1122,10 +1123,10 @@ def api_save_wifi_device():
     host = (request.form.get('host') or '').strip()
     port = (request.form.get('port') or '').strip()
     name = (request.form.get('name') or '').strip()
-    
+
     if not is_valid_host(host) or not is_valid_port(port):
         return jsonify(ok=False, error='Host hoặc port không hợp lệ.'), 400
-    
+
     device = _add_saved_wifi_device(host, int(port), name)
     return jsonify(ok=True, device=device)
 
