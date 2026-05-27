@@ -1,5 +1,6 @@
 import argparse
 import atexit
+import hashlib
 import hmac
 import json
 import logging
@@ -7,6 +8,7 @@ import logging.handlers
 import os
 import queue
 import secrets
+import shlex
 import signal
 import threading
 import time
@@ -115,11 +117,25 @@ _state_lock = threading.Lock()
 scpy_ctx = None
 client_sid = None
 message_queue = queue.Queue()
+# Separate queue + emit task for audio so a slow audio consumer can't stall
+# the video pipeline (the browser handles them through different MSE buffers).
+audio_message_queue = queue.Queue()
 video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '10000000')
 max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
 max_size = os.environ.get('SCRCPY_MAX_SIZE', '1920').strip() or '1920'
 adb_serial = os.environ.get('ADB_SERIAL', '').strip() or None
 display_id = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
+# Mirrors scrcpy's `--turn-screen-off` / `-S`: when truthy we ask the device
+# to blank its physical screen as soon as the control socket is up, so the
+# user can keep mirroring/controlling without lighting up the OLED. Off by
+# default — the toolbar toggle (and per-session `?turn_screen_off=1`) wins
+# over this env-wide default.
+turn_screen_off_default = os.environ.get('SCRCPY_TURN_SCREEN_OFF', '').strip().lower() in (
+    '1',
+    'true',
+    'yes',
+    'on',
+)
 
 
 def _shutdown_scrcpy() -> None:
@@ -349,9 +365,44 @@ if os.environ.get('TRUST_PROXY') == '1':
 socketio = SocketIO(app, async_mode=None)
 
 
+def _compute_static_ver() -> str:
+    """Hash the contents of `static/` so deploys invalidate browser caches.
+
+    Without this every <script src="/static/js/foo.js"> is served by the
+    browser from disk cache after the first hit, so anyone who logged in
+    before a JS bug-fix deploy keeps running the broken file. We mix the
+    SHA-1 hash of every file under `static/` into a single short token and
+    expose it as `?v={{ static_ver }}` on each script/link tag — same URL
+    iff the assets haven't changed, fresh URL the moment any file does.
+    Computed once at process boot; deploy = restart = new token.
+    """
+    h = hashlib.sha1(usedforsecurity=False)
+    root = os.path.join(os.path.dirname(__file__), 'static')
+    if not os.path.isdir(root):
+        return '0'
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Sort to make the hash deterministic across filesystems.
+        dirnames.sort()
+        for name in sorted(filenames):
+            full = os.path.join(dirpath, name)
+            try:
+                with open(full, 'rb') as fp:
+                    while True:
+                        chunk = fp.read(65536)
+                        if not chunk:
+                            break
+                        h.update(chunk)
+            except OSError:  # missing/unreadable file → skip silently
+                continue
+    return h.hexdigest()[:10]
+
+
+STATIC_VER = _compute_static_ver()
+
+
 @app.context_processor
 def _inject_csrf():
-    return {'csrf_token': _get_csrf_token}
+    return {'csrf_token': _get_csrf_token, 'static_ver': STATIC_VER}
 
 
 @app.before_request
@@ -795,6 +846,131 @@ def api_quick():
     return jsonify(ok=False, error=output or 'adb command failed'), 500
 
 
+# ---- Raw hardware key injection via sendevent --------------------------------
+#
+# Magisk module install scripts (customize.sh) use `getevent` to read
+# physical volume-key presses from /dev/input/event*. The standard
+# `input keyevent` goes through InputManagerService and never touches
+# the kernel input layer — getevent can't see it, so the Magisk prompt
+# ignores it. `sendevent` writes directly to the input device file at
+# the kernel level, which *is* visible to getevent.
+#
+# Requires root (`su -c ...`) because /dev/input/event* is owned by
+# system:input and the shell user can't write to it. User confirmed
+# they have Magisk root on their Fold 3.
+#
+# Linux input event codes (include/uapi/linux/input-event-codes.h):
+#   KEY_VOLUMEDOWN = 114
+#   KEY_VOLUMEUP   = 115
+#   KEY_POWER      = 116
+#   EV_KEY = 1, EV_SYN = 0
+SENDEVENT_OPS: dict[str, int] = {
+    'vol_up': 115,
+    'vol_down': 114,
+    'power': 116,
+}
+
+# Cache: serial → {keycode → event_device_path}
+_sendevent_dev_cache: dict[str, dict[int, str]] = {}
+
+
+def _find_event_device(keycode: int, serial: str | None = None) -> str | None:
+    """Probe `getevent -lp` for the input device that handles *keycode*.
+
+    Returns e.g. ``'/dev/input/event2'`` or ``None``.  Result is cached
+    per serial so repeated presses don't re-probe.
+    """
+    cache_key = serial or '__local__'
+    cached = _sendevent_dev_cache.get(cache_key, {})
+    if keycode in cached:
+        return cached[keycode]
+    # Try the non-root probe first (cheap, no su prompt). Some OEMs lock
+    # /sys/class/input for the shell user, so fall back to `su -c` if the
+    # plain call returns nothing useful.
+    ok, output = adb_shell(['getevent', '-lp'], serial=serial, timeout=5.0)
+    if not ok or not output or 'add device' not in output:
+        ok, output = adb_shell(
+            ['su', '-c', shlex.quote('getevent -lp')],
+            serial=serial,
+            timeout=8.0,
+        )
+        if not ok or not output:
+            return None
+    # getevent -lp output looks like:
+    #   add device 1: /dev/input/event2
+    #     name:     "gpio-keys"
+    #     ...
+    #     KEY (0001): KEY_VOLUMEDOWN         KEY_VOLUMEUP
+    #   add device 2: /dev/input/event3
+    #     ...
+    keycode_names = {114: 'KEY_VOLUMEDOWN', 115: 'KEY_VOLUMEUP', 116: 'KEY_POWER'}
+    target_name = keycode_names.get(keycode, f'KEY_{keycode:04x}')
+    current_device: str | None = None
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('add device'):
+            # "add device N: /dev/input/eventX"
+            parts = stripped.split(':')
+            if len(parts) >= 2:
+                current_device = parts[-1].strip()
+        elif 'KEY' in stripped and target_name in stripped and current_device:
+            _sendevent_dev_cache.setdefault(cache_key, {})[keycode] = current_device
+            return current_device
+    return None
+
+
+@app.route('/api/adb/sendevent', methods=['POST'])
+@login_required
+def api_adb_sendevent():
+    """Inject a raw hardware key press via ``sendevent`` (requires root).
+
+    Body: form field ``op`` ∈ {vol_up, vol_down, power}.
+    Probes ``getevent -lp`` for the correct ``/dev/input/event*`` device,
+    then injects EV_KEY down + EV_SYN + EV_KEY up + EV_SYN via
+    ``su -c "sendevent ..."``.
+    """
+    op = (request.form.get('op') or '').strip()
+    keycode = SENDEVENT_OPS.get(op)
+    if keycode is None:
+        return jsonify(ok=False, error=f'Op không hợp lệ: {op!r}'), 400
+    serial = _selected_serial()
+    dev = _find_event_device(keycode, serial=serial)
+    if not dev:
+        return (
+            jsonify(
+                ok=False,
+                error=(
+                    f'Không tìm được input device cho phím {op} '
+                    '(getevent -lp không trả kết quả). '
+                    'Kiểm tra kết nối adb và quyền root.'
+                ),
+            ),
+            500,
+        )
+    # Build the full sendevent sequence: key-down, sync, key-up, sync.
+    # All four sendevent calls must run in a single su shell invocation
+    # to avoid 4× su latency. The values are all ints derived from
+    # SENDEVENT_OPS — no user strings are spliced.
+    inner = (
+        f'sendevent {dev} 1 {keycode} 1;'
+        f'sendevent {dev} 0 0 0;'
+        f'sendevent {dev} 1 {keycode} 0;'
+        f'sendevent {dev} 0 0 0'
+    )
+    # `adb shell` flattens argv into a single command line WITHOUT quoting,
+    # so passing ['su', '-c', inner] sends `su -c sendevent /dev/input/... ;
+    # sendevent ...` to the remote /system/bin/sh — only the first token
+    # actually reaches root, every subsequent `sendevent` runs as shell
+    # (uid 2000) and bombs with `Permission denied`. Pre-quote the inner
+    # so the join produces `su -c 'sendevent ...;sendevent ...'` and the
+    # full multi-statement payload reaches root in one go.
+    ok, output = adb_shell(['su', '-c', shlex.quote(inner)], serial=serial, timeout=10.0)
+    _audit('sendevent', op=op, keycode=keycode, dev=dev, ok=ok)
+    if ok:
+        return jsonify(ok=True, output=output or f'{op} injected via {dev}')
+    return jsonify(ok=False, error=output or 'sendevent failed (root?)'), 500
+
+
 # ---- Wireless ADB pair / connect / disconnect -------------------------------
 @app.route('/api/adb/pair', methods=['POST'])
 @login_required
@@ -841,6 +1017,198 @@ def api_adb_disconnect():
     if ok:
         return jsonify(ok=True, output=output)
     return jsonify(ok=False, error=output or 'adb disconnect failed'), 500
+
+
+# ---- wm size / wm density (resolution & DPI override) ----------------------
+#
+# Useful for foldables (Galaxy Z Fold series) whose native inner-display
+# aspect ratio is awkward when streamed to a 16:9 monitor — overriding to
+# 1080x2400 / 420dpi (or rotating to 2208x1768) makes scrcpy behave like
+# a normal phone. Inputs are int-cast and range-checked before being
+# spliced into the argv, so no shell injection is possible.
+WM_DIM_MIN, WM_DIM_MAX = 100, 7680  # px on either edge (matches is_valid_new_display)
+WM_DPI_MIN, WM_DPI_MAX = 80, 1000  # density (DPI) sane range
+
+
+def _parse_int(value: str, low: int, high: int) -> int | None:
+    """Return int(value) when within [low, high], else None."""
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if n < low or n > high:
+        return None
+    return n
+
+
+@app.route('/api/adb/wm', methods=['POST'])
+@login_required
+def api_adb_wm():
+    """Override / read the device's display size and density via `wm`.
+
+    Body (form fields):
+      op = get | set_size | set_density | reset_size | reset_density | reset_all
+      width, height = ints (only for set_size; both required)
+      density       = int (only for set_density)
+
+    Returns JSON {ok, output} or {ok:false, error}. For op=get, also returns
+    `size` and `density` dicts parsed out of `wm size` / `wm density` output.
+    """
+    op = (request.form.get('op') or '').strip()
+    serial = _selected_serial()
+
+    if op == 'get':
+        ok_s, out_s = adb_shell(['wm', 'size'], serial=serial)
+        ok_d, out_d = adb_shell(['wm', 'density'], serial=serial)
+        _audit('adb_wm', op=op, ok=ok_s and ok_d)
+        return jsonify(
+            ok=ok_s and ok_d,
+            size=_parse_wm_size(out_s) if ok_s else None,
+            density=_parse_wm_density(out_d) if ok_d else None,
+            output=(out_s + ('\n' + out_d if out_d else '')).strip(),
+            error=None if (ok_s and ok_d) else (out_s + '\n' + out_d).strip(),
+        )
+
+    if op == 'set_size':
+        w = _parse_int(request.form.get('width', ''), WM_DIM_MIN, WM_DIM_MAX)
+        h = _parse_int(request.form.get('height', ''), WM_DIM_MIN, WM_DIM_MAX)
+        if w is None or h is None:
+            return jsonify(
+                ok=False,
+                error=f'width/height phải là số nguyên trong [{WM_DIM_MIN}, {WM_DIM_MAX}].',
+            ), 400
+        ok, output = adb_shell(['wm', 'size', f'{w}x{h}'], serial=serial)
+        _audit('adb_wm', op=op, width=w, height=h, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output or f'wm size = {w}x{h}')
+        return jsonify(ok=False, error=output or 'wm size failed'), 500
+
+    if op == 'set_density':
+        d = _parse_int(request.form.get('density', ''), WM_DPI_MIN, WM_DPI_MAX)
+        if d is None:
+            return jsonify(
+                ok=False,
+                error=f'density phải là số nguyên trong [{WM_DPI_MIN}, {WM_DPI_MAX}].',
+            ), 400
+        ok, output = adb_shell(['wm', 'density', str(d)], serial=serial)
+        _audit('adb_wm', op=op, density=d, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output or f'wm density = {d}')
+        return jsonify(ok=False, error=output or 'wm density failed'), 500
+
+    if op == 'reset_size':
+        ok, output = adb_shell(['wm', 'size', 'reset'], serial=serial)
+        _audit('adb_wm', op=op, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output or 'wm size reset')
+        return jsonify(ok=False, error=output or 'wm size reset failed'), 500
+
+    if op == 'reset_density':
+        ok, output = adb_shell(['wm', 'density', 'reset'], serial=serial)
+        _audit('adb_wm', op=op, ok=ok)
+        if ok:
+            return jsonify(ok=True, output=output or 'wm density reset')
+        return jsonify(ok=False, error=output or 'wm density reset failed'), 500
+
+    if op == 'reset_all':
+        ok_s, out_s = adb_shell(['wm', 'size', 'reset'], serial=serial)
+        ok_d, out_d = adb_shell(['wm', 'density', 'reset'], serial=serial)
+        ok = ok_s and ok_d
+        _audit('adb_wm', op=op, ok=ok)
+        out = ((out_s or '') + ('\n' + out_d if out_d else '')).strip()
+        if ok:
+            return jsonify(ok=True, output=out or 'reset size + density')
+        return jsonify(ok=False, error=out or 'wm reset_all failed'), 500
+
+    return jsonify(ok=False, error=f'op không hợp lệ: {op!r}'), 400
+
+
+def _parse_wm_size(out: str) -> dict:
+    """Parse `wm size` output.
+
+    Example outputs:
+        Physical size: 1768x2208
+        Physical size: 1768x2208\nOverride size: 1080x2400
+    """
+    result: dict[str, str] = {}
+    for line in (out or '').splitlines():
+        line = line.strip()
+        if line.lower().startswith('physical size:'):
+            result['physical'] = line.split(':', 1)[1].strip()
+        elif line.lower().startswith('override size:'):
+            result['override'] = line.split(':', 1)[1].strip()
+    return result
+
+
+def _parse_wm_density(out: str) -> dict:
+    """Parse `wm density` output.
+
+    Example outputs:
+        Physical density: 380
+        Physical density: 380\nOverride density: 420
+    """
+    result: dict[str, str] = {}
+    for line in (out or '').splitlines():
+        line = line.strip()
+        if line.lower().startswith('physical density:'):
+            result['physical'] = line.split(':', 1)[1].strip()
+        elif line.lower().startswith('override density:'):
+            result['override'] = line.split(':', 1)[1].strip()
+    return result
+
+
+# ---- Free-form `adb shell` exec --------------------------------------------
+#
+# The authenticated owner of the deployment already has direct ADB access to
+# their own device, so denying them an in-browser shell adds friction without
+# adding security. The host side is still injection-proof (we never use
+# shell=True on this side and pass argv as a list); the user-supplied string
+# is handed to the *device's* shell where it expands pipes/quotes/etc.
+ADB_EXEC_MAX_CMD_LEN = 2000  # one full screenful is plenty for any reasonable command
+ADB_EXEC_MAX_OUTPUT_BYTES = 100_000  # cap the JSON response so a runaway dumpsys can't OOM
+ADB_EXEC_TIMEOUT = 30.0  # seconds; longer than wm-style ops so `pm list packages` etc fit
+
+
+@app.route('/api/adb/exec', methods=['POST'])
+@login_required
+def api_adb_exec():
+    """Run a user-supplied `adb shell <cmd>` on the selected device.
+
+    Body: form field `cmd` — the full string passed to the device shell.
+    Returns JSON {ok, output, truncated}.
+    """
+    cmd = (request.form.get('cmd') or '').strip()
+    if not cmd:
+        return jsonify(ok=False, error='Lệnh ADB rỗng.'), 400
+    if len(cmd) > ADB_EXEC_MAX_CMD_LEN:
+        return jsonify(
+            ok=False,
+            error=f'Lệnh quá dài (>{ADB_EXEC_MAX_CMD_LEN} ký tự).',
+        ), 400
+    # Disallow embedded NULs — they're not legal in argv on POSIX/Windows and
+    # will trip subprocess.run's validation anyway, but rejecting up-front
+    # gives a friendlier error message.
+    if '\x00' in cmd:
+        return jsonify(ok=False, error='Lệnh chứa ký tự NUL không hợp lệ.'), 400
+
+    serial = _selected_serial()
+    # Pass `cmd` as a *single* argv token so adb forwards it verbatim to the
+    # device shell — the device interprets pipes, &&, redirects, quoting etc.
+    # The host-side subprocess.run does NOT shell-evaluate (no shell=True), so
+    # nothing typed here can run code on the server.
+    ok, output = adb_shell([cmd], serial=serial, timeout=ADB_EXEC_TIMEOUT)
+    truncated = False
+    if output and len(output) > ADB_EXEC_MAX_OUTPUT_BYTES:
+        output = output[:ADB_EXEC_MAX_OUTPUT_BYTES] + '\n... (output truncated)'
+        truncated = True
+    # Audit log: keep the command (truncated) so the operator has a record of
+    # what was run. This is *more* sensitive than the wm endpoint so it gets
+    # logged regardless of success.
+    audit_cmd = cmd if len(cmd) <= 200 else cmd[:200] + '...'
+    _audit('adb_exec', cmd=audit_cmd, ok=ok, truncated=truncated)
+    if ok:
+        return jsonify(ok=True, output=output or '(không có output)', truncated=truncated)
+    return jsonify(ok=False, error=output or 'adb shell failed', truncated=truncated), 500
 
 
 # ---- Session management -----------------------------------------------------
@@ -922,8 +1290,30 @@ def video_send_task():
     log.info('video_send_task stopped')
 
 
+def audio_send_task():
+    global client_sid
+    while True:
+        with _state_lock:
+            active = client_sid
+        if active is None:
+            break
+        try:
+            message = audio_message_queue.get(timeout=0.05)
+            socketio.emit('audio_data', message, to=active)
+        except queue.Empty:
+            pass
+        except Exception as e:  # noqa: BLE001 - background task shouldn't crash
+            log.error('Error sending audio data: %s', e)
+        socketio.sleep(0)
+    log.info('audio_send_task stopped')
+
+
 def send_video_data(data):
     message_queue.put(data)
+
+
+def send_audio_data(data):
+    audio_message_queue.put(data)
 
 
 @socketio.on('connect')
@@ -961,6 +1351,54 @@ def handle_connect(auth=None):
                 chosen_new_display = req_newdisp
             else:
                 log.warning('Invalid new_display from client: %r', req_newdisp)
+        # Audio: ?audio=1 enables device-side audio capture + an extra socket
+        # for AAC frames. Default OFF so existing users (and bandwidth-tight
+        # links) aren't impacted. The browser's audio toolbar toggle sets the
+        # localStorage flag that drives this query param.
+        req_audio = request.args.get('audio') if request.args else None
+        chosen_audio = req_audio == '1' or (req_audio or '').lower() == 'true'
+        # Turn-screen-off: ?turn_screen_off=1 mirrors scrcpy's `--turn-screen-off`
+        # / `-S`. When set, we send SET_DISPLAY_POWER(off) right after the
+        # control socket connects so the physical OLED goes black while we
+        # keep streaming the mirrored display. Falls back to the env-wide
+        # SCRCPY_TURN_SCREEN_OFF default when the query param is absent.
+        req_tso = request.args.get('turn_screen_off') if request.args else None
+        if req_tso is None or req_tso == '':
+            chosen_turn_screen_off = turn_screen_off_default
+        else:
+            chosen_turn_screen_off = req_tso == '1' or (req_tso or '').lower() in (
+                'true',
+                'yes',
+                'on',
+            )
+        # Per-session video bit rate (`?video_bit_rate=N` bits/sec) and
+        # max FPS (`?max_fps=N`). Validated against a generous range —
+        # below the lower bound is unusable; above the upper bound risks
+        # the device-side encoder rejecting it or dropping frames. We
+        # clamp instead of rejecting so an out-of-range slider value
+        # still gives the user *something* to watch.
+        chosen_bit_rate = video_bit_rate
+        req_br = request.args.get('video_bit_rate') if request.args else None
+        if req_br is not None and req_br != '':
+            try:
+                br = int(req_br)
+                if 500_000 <= br <= 200_000_000:
+                    chosen_bit_rate = str(br)
+                else:
+                    log.warning('Out-of-range video_bit_rate from client: %r', req_br)
+            except (TypeError, ValueError):
+                log.warning('Invalid video_bit_rate from client: %r', req_br)
+        chosen_max_fps = max_fps
+        req_fps = request.args.get('max_fps') if request.args else None
+        if req_fps is not None and req_fps != '':
+            try:
+                fps = int(req_fps)
+                if 1 <= fps <= 240:
+                    chosen_max_fps = str(fps)
+                else:
+                    log.warning('Out-of-range max_fps from client: %r', req_fps)
+            except (TypeError, ValueError):
+                log.warning('Invalid max_fps from client: %r', req_fps)
         # Per-session pick (set via /devices) wins over env/CLI default.
         chosen_serial = _selected_serial()
         scpy_ctx = Scrcpy(
@@ -968,6 +1406,8 @@ def handle_connect(auth=None):
             display_id=chosen_disp,
             max_size=max_size,
             new_display=chosen_new_display,
+            enable_audio=chosen_audio,
+            turn_screen_off=chosen_turn_screen_off,
         )
         # Forward device → browser clipboard updates. scrcpy server pushes a
         # CLIPBOARD message whenever the device clipboard changes (including
@@ -988,7 +1428,24 @@ def handle_connect(auth=None):
         scpy_ctx.device_message_callback = _on_device_message
 
     try:
-        scpy_ctx.scrcpy_start(send_video_data, video_bit_rate, max_fps=max_fps)
+        # Drain any leftover bytes from the previous session before the new
+        # encoder starts pushing — otherwise the new VideoParser/AudioParser
+        # instances on the browser side would consume stale frames first
+        # (mid-NALU bytes parsed as the 64-byte device name + 12-byte size
+        # header → garbage `Screen <huge>x<negative>` and a permanently
+        # out-of-sync stream; stale AAC frames as the first audio).
+        for q in (message_queue, audio_message_queue):
+            try:
+                while True:
+                    q.get_nowait()
+            except queue.Empty:
+                pass
+        scpy_ctx.scrcpy_start(
+            send_video_data,
+            chosen_bit_rate,
+            max_fps=chosen_max_fps,
+            audio_callback=send_audio_data if chosen_audio else None,
+        )
     except RuntimeError as e:
         log.warning('scrcpy_start refused: %s', e)
         with _state_lock:
@@ -1007,7 +1464,9 @@ def handle_connect(auth=None):
         ) from e
 
     socketio.start_background_task(video_send_task)
-    log.info('Socket connected sid=%s', request.sid)
+    if chosen_audio:
+        socketio.start_background_task(audio_send_task)
+    log.info('Socket connected sid=%s audio=%s', request.sid, chosen_audio)
     return True
 
 
@@ -1037,6 +1496,22 @@ def handle_control_data(data):
             log.warning('scrcpy_send_control failed: %s', e)
 
 
+@socketio.on('client_ping')
+def handle_client_ping(data):
+    """Echo a client-supplied timestamp back so the browser can measure RTT.
+
+    The HUD computes ping as (now - data['t']) on the client side after we
+    bounce the same payload. We don't trust or interpret `t` server-side —
+    it's just an opaque token. Ack via `server_pong` only to the requesting
+    socket so multi-tab pings don't cross-talk.
+    """
+    try:
+        token = data.get('t') if isinstance(data, dict) else None
+    except Exception:  # noqa: BLE001 - defensive against odd payloads
+        token = None
+    socketio.emit('server_pong', {'t': token}, to=request.sid)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Web server for scrcpy')
     parser.add_argument(
@@ -1064,6 +1539,17 @@ if __name__ == '__main__':
         default=display_id,
         help='Display id to mirror; 0=main, 2=typical Samsung DeX (default: SCRCPY_DISPLAY_ID env or 0)',
     )
+    parser.add_argument(
+        '--turn_screen_off',
+        '-S',
+        action='store_true',
+        default=turn_screen_off_default,
+        help=(
+            "Mirrors scrcpy's --turn-screen-off / -S: blank the device's "
+            'physical screen after connecting. Default off; override env-wide '
+            'with SCRCPY_TURN_SCREEN_OFF=1.'
+        ),
+    )
     parser.add_argument('--port', default=8000, type=int, help='listen port')
     parser.add_argument(
         '--host', default=os.environ.get('BIND_HOST', '0.0.0.0'), help='bind host (default 0.0.0.0)'
@@ -1074,8 +1560,10 @@ if __name__ == '__main__':
     max_size = str(args.max_size or '0')
     adb_serial = args.serial or None
     display_id = str(args.display_id or '0')
+    turn_screen_off_default = bool(args.turn_screen_off)
     log.info(
-        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s, max_size=%s, serial=%s, display_id=%s)',
+        'Starting web-scrcpy on %s:%d (bit_rate=%s, max_fps=%s, max_size=%s, '
+        'serial=%s, display_id=%s, turn_screen_off=%s)',
         args.host,
         args.port,
         video_bit_rate,
@@ -1083,6 +1571,7 @@ if __name__ == '__main__':
         max_size,
         adb_serial or '*',
         display_id,
+        turn_screen_off_default,
     )
     # Loud warning: the Werkzeug dev server is single-threaded and will
     # stutter video noticeably under any real load. The Procfile / wsgi.py

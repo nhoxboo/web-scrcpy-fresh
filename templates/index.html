@@ -4,14 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <link href="/static/css/font-awesome.min.css" rel="stylesheet">
-  <link href="/static/css/glass.css" rel="stylesheet">
+  <link href="/static/css/font-awesome.min.css?v={{ static_ver }}" rel="stylesheet">
+  <link href="/static/css/glass.css?v={{ static_ver }}" rel="stylesheet">
   <title>Remote Android nhoxboo — Panel</title>
-  <script src="/static/js/socket.io.js"></script>
-  <script src="/static/js/input.js"></script>
-  <script src="/static/js/exp-golomb.js"></script>
-  <script src="/static/js/h264-sps-parser.js"></script>
-  <script src="/static/js/video_parser.js"></script>
+  <script src="/static/js/socket.io.js?v={{ static_ver }}"></script>
+  <script src="/static/js/input.js?v={{ static_ver }}"></script>
+  <script src="/static/js/exp-golomb.js?v={{ static_ver }}"></script>
+  <script src="/static/js/h264-sps-parser.js?v={{ static_ver }}"></script>
+  <script src="/static/js/video_parser.js?v={{ static_ver }}"></script>
+  <script src="/static/js/audio_parser.js?v={{ static_ver }}"></script>
   <style>
     /* Liquid Glass overrides for the main panel. The shared design tokens
      * (bg gradient, --glass-*, brand-grad, glass-btn, etc.) live in
@@ -100,6 +101,98 @@
     /* When pointer lock is engaged for UHID mouse, give the user a clear
        hint that their mouse is captured (and how to release it). */
     .phone-shell.desktop-mode.locked{outline:2px solid #38bdf8}
+    /* Phone mockup wrapper: vertical stack containing phone-shell + nav bar.
+       Lives inside .video-wrap; centering still inherited from .video-wrap's
+       flex layout. Width hugs the phone-shell so the side-keys can protrude
+       to the right without forcing the column wider than the video. */
+    .phone-mockup{
+      position:relative;display:flex;flex-direction:column;align-items:center;
+      gap:10px;max-width:100%;max-height:100%;
+    }
+    /* Physical side keys — power + volume up/down on the right edge.
+       Absolutely positioned against .phone-shell so they stick out a few
+       pixels past the bezel, mimicking a real Galaxy Z Fold side rail.
+       The .side-key-gap div separates power (top) from volume cluster. */
+    .phone-side-keys{
+      position:absolute;right:-9px;top:16%;
+      display:flex;flex-direction:column;gap:6px;z-index:6;pointer-events:auto;
+    }
+    .side-key-gap{height:22px;flex:0 0 auto}
+    .side-key{
+      appearance:none;-webkit-appearance:none;
+      width:15px;padding:0;
+      border:1px solid rgba(255,255,255,.16);
+      border-radius:3px 7px 7px 3px;
+      background:linear-gradient(90deg,rgba(72,80,108,.95) 0%,rgba(40,46,68,.95) 55%,rgba(26,30,50,.95) 100%);
+      box-shadow:2px 2px 6px rgba(0,0,0,.55),inset 1px 0 0 rgba(255,255,255,.18),inset -1px 0 0 rgba(0,0,0,.4);
+      color:rgba(255,255,255,.78);cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+      transition:transform .08s ease,box-shadow .12s ease,background .12s ease,color .12s ease;
+      position:relative;font-size:.58rem;
+    }
+    .side-key i{pointer-events:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
+    .side-key-power{height:36px}
+    .side-key-volup{height:42px}
+    .side-key-voldown{height:42px}
+    .side-key:hover{color:#fff;box-shadow:3px 2px 8px rgba(96,165,250,.45),inset 1px 0 0 rgba(255,255,255,.28),inset -1px 0 0 rgba(0,0,0,.4)}
+    .side-key:active{transform:translateX(2px);box-shadow:1px 1px 3px rgba(0,0,0,.55),inset 1px 0 0 rgba(255,255,255,.08)}
+    .side-key:focus-visible{outline:2px solid rgba(96,165,250,.7);outline-offset:2px}
+    .side-key[disabled]{opacity:.45;cursor:not-allowed}
+    /* Briefly flash when a sendevent succeeds/fails so the user gets visual
+       feedback even when the QC output bar isn't visible. */
+    .side-key.flash-ok{background:linear-gradient(90deg,rgba(34,197,94,.95),rgba(22,163,74,.95));color:#fff}
+    .side-key.flash-err{background:linear-gradient(90deg,rgba(239,68,68,.95),rgba(185,28,28,.95));color:#fff}
+    /* Android-style soft nav bar — Back / Home / Recent.  Lives below the
+       phone-shell inside .phone-mockup. Uses Pixel-launcher-ish glyphs:
+       ◁ ○ □ via Font Awesome icons (rotated play, circle, square). */
+    .phone-nav-bar{
+      display:flex;align-items:center;justify-content:center;gap:42px;
+      padding:8px 22px;border-radius:18px;
+      background:linear-gradient(180deg,rgba(30,34,52,.85),rgba(15,18,30,.9));
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow:0 6px 18px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);
+      backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    }
+    .nav-key{
+      appearance:none;-webkit-appearance:none;
+      width:38px;height:38px;padding:0;border-radius:10px;
+      background:transparent;border:1px solid transparent;
+      color:rgba(230,235,250,.85);cursor:pointer;
+      display:flex;align-items:center;justify-content:center;font-size:.92rem;
+      transition:transform .08s ease,background .12s ease,color .12s ease,border-color .12s ease;
+    }
+    .nav-key i{pointer-events:none}
+    /* Pure-CSS Android nav glyphs: triangle (back), circle (home), square
+       (recent). Avoid Font Awesome's `fa-regular` variant — only the solid
+       webfont is bundled, so outlined icons render as missing glyphs. */
+    .nav-glyph{display:inline-block;pointer-events:none}
+    .nav-back .nav-glyph{
+      width:0;height:0;
+      border-top:7px solid transparent;border-bottom:7px solid transparent;
+      border-right:11px solid currentColor;
+    }
+    .nav-home .nav-glyph{
+      width:13px;height:13px;border-radius:50%;
+      border:2px solid currentColor;
+    }
+    .nav-recent .nav-glyph{
+      width:13px;height:13px;border-radius:3px;
+      border:2px solid currentColor;
+    }
+    .nav-key:hover{background:rgba(96,165,250,.16);color:#fff;border-color:rgba(96,165,250,.30)}
+    .nav-key:active{transform:scale(.92)}
+    .nav-key:focus-visible{outline:2px solid rgba(96,165,250,.7);outline-offset:2px}
+    .nav-key[disabled]{opacity:.45;cursor:not-allowed}
+    .nav-key.flash-ok{background:rgba(34,197,94,.30);color:#fff;border-color:rgba(34,197,94,.55)}
+    .nav-key.flash-err{background:rgba(239,68,68,.30);color:#fff;border-color:rgba(239,68,68,.55)}
+    /* Hide both control rows in fullscreen / desktop mode — they don't belong
+       on a desktop-like canvas, and they'd float weirdly outside the video. */
+    .phone-shell.desktop-mode .phone-side-keys,.phone-shell:fullscreen .phone-side-keys,
+    .phone-shell:-webkit-full-screen .phone-side-keys{display:none}
+    .phone-shell.desktop-mode ~ .phone-nav-bar{display:none}
+    /* In fullscreen the .phone-mockup wrapper still surrounds phone-shell;
+       hide the nav bar so it doesn't overlay the fullscreen video. */
+    .phone-mockup:fullscreen .phone-nav-bar,.phone-mockup:-webkit-full-screen .phone-nav-bar{display:none}
     /* Inline UHID sensitivity slider on the toolbar. Hidden until UHID is
        actually active so the toolbar isn't cluttered for users who don't
        care about it. */
@@ -140,6 +233,73 @@
     .qc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
     .qc-row button{padding:6px 12px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#e5e7eb;border-radius:10px;cursor:pointer}
     .qc-out{margin-top:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;color:var(--muted);min-height:1.2em;word-break:break-all}
+    /* Resolution / DPI section inside Quick Controls. Inputs + presets +
+       action buttons. Designed to be compact so the whole panel still fits
+       within max-height:80vh on a phone. */
+    .qc-section-title{margin:14px 0 6px;font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+    .wm-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+    .wm-row label{display:inline-flex;align-items:center;gap:6px;color:#cfd6ed;font-size:.82rem}
+    .wm-row input[type=number]{
+      width:78px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;
+      background:rgba(0,0,0,.25);color:#e5e7eb;font:inherit;font-size:.85rem;
+      font-variant-numeric:tabular-nums;text-align:right;
+    }
+    .wm-row input[type=number]:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.35)}
+    .wm-row .x{color:var(--muted)}
+    .wm-actions{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+    .wm-actions .wm-act{
+      padding:6px 10px;border:1px solid var(--line);background:rgba(255,255,255,.05);
+      color:#e5e7eb;border-radius:10px;cursor:pointer;font:inherit;font-size:.78rem;
+      display:inline-flex;align-items:center;gap:5px;
+    }
+    .wm-actions .wm-act:hover{border-color:var(--line-strong);background:rgba(255,255,255,.1)}
+    .wm-actions .wm-act.primary{border-color:rgba(106,166,255,.45);color:#dbe7ff;background:rgba(106,166,255,.12)}
+    .wm-actions .wm-act.primary:hover{background:rgba(106,166,255,.22)}
+    .wm-actions .wm-act.warn{border-color:rgba(252,211,77,.45);color:#fde68a;background:rgba(252,211,77,.08)}
+    .wm-actions .wm-act[disabled]{opacity:.5;cursor:wait}
+    .wm-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+    .wm-preset{
+      padding:5px 10px;border:1px dashed var(--line-strong);border-radius:999px;
+      background:rgba(255,255,255,.03);color:#cbd5ff;cursor:pointer;font:inherit;font-size:.74rem;
+    }
+    .wm-preset:hover{background:rgba(106,166,255,.15);border-style:solid}
+    /* Stream-quality row: each label hugs a range slider + a numeric input
+       so the user can scrub roughly or type an exact value. Preset chips
+       reuse .wm-preset styles via the .sq-preset class. */
+    .sq-row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:8px}
+    .sq-row label{display:inline-flex;align-items:center;gap:8px;color:#cfd6ed;font-size:.82rem}
+    .sq-row input[type=range]{accent-color:var(--brand,#6aa6ff);width:160px}
+    .sq-row input[type=number]{
+      width:60px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;
+      background:rgba(0,0,0,.25);color:#e5e7eb;font:inherit;font-size:.85rem;text-align:right;
+    }
+    .sq-row input[type=number]:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.35)}
+    .sq-preset{
+      padding:5px 10px;border:1px dashed var(--line-strong);border-radius:999px;
+      background:rgba(255,255,255,.03);color:#cbd5ff;cursor:pointer;font:inherit;font-size:.74rem;
+    }
+    .sq-preset:hover{background:rgba(106,166,255,.15);border-style:solid}
+    .wm-info{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.74rem;color:var(--muted);margin-top:4px;word-break:break-all}
+    .wm-hint{margin:6px 0 0;font-size:.72rem;color:var(--muted);line-height:1.35}
+    /* Free-form ADB shell exec — small terminal-style block. textarea grows
+       slightly, monospace output panel shows up to ~12 lines and scrolls. */
+    .adb-exec-row{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+    .adb-exec-row textarea{
+      width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);
+      border-radius:8px;background:rgba(0,0,0,.32);color:#e5e7eb;
+      font:inherit;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;
+      resize:vertical;min-height:54px;
+    }
+    .adb-exec-row textarea:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.42)}
+    .adb-exec-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+    .adb-exec-out{
+      margin-top:4px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+      background:rgba(0,0,0,.35);color:#e5e7eb;font-family:ui-monospace,Menlo,Consolas,monospace;
+      font-size:.74rem;line-height:1.35;white-space:pre-wrap;word-break:break-all;
+      max-height:200px;overflow:auto;
+    }
+    .adb-exec-out.err{color:#fecaca;border-color:rgba(252,165,165,.35);background:rgba(80,20,20,.35)}
+    .adb-exec-warn{color:#fde68a;font-size:.72rem;line-height:1.35;margin:4px 0 0}
     .resize-handle{
       position:absolute;right:10px;bottom:10px;width:20px;height:20px;border-radius:7px;
       background:rgba(15,17,30,.65);border:1px solid var(--line-strong);
@@ -206,6 +366,8 @@
     <button class="tool" id="recent" title="Recent"><i class="fa-solid fa-layer-group"></i></button>
     <button class="tool" id="rotate" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
     <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
+    <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
+    <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
     <button class="tool" id="vdesktopMode" title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
     <button class="tool" id="quickCtl" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
     <button class="tool" id="uhidInput" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
@@ -225,12 +387,48 @@
     <button class="tool" id="macroClear" title="Xóa macro"><i class="fa-solid fa-trash"></i></button>
     <button class="tool" id="hotkeyConfig" title="Gán phím"><i class="fa-solid fa-keyboard"></i></button>
     <button class="tool" id="gameMode" title="Game mode: OFF"><i class="fa-solid fa-gamepad"></i></button>
+    <button class="tool" id="gamepadInput" title="Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối."><i class="fa-solid fa-chess-knight"></i></button>
+    <button class="tool" id="hudToggle" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
+    <button class="tool" id="audioToggle" title="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)"><i class="fa-solid fa-volume-xmark"></i></button>
+    <button class="tool" id="screenOffToggle" title="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)"><i class="fa-solid fa-lightbulb"></i></button>
   </div>
 
   <div class="video-wrap" id="videoWrap">
-    <div class="phone-shell" id="phoneShell">
-      <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
-      <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
+    <div class="phone-mockup" id="phoneMockup">
+      <div class="phone-shell" id="phoneShell">
+        <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
+        <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
+        <!-- Physical side keys (right edge of the phone frame). All three call
+             /api/adb/sendevent → raw kernel input, so they work for both
+             normal Android volume AND Magisk customize.sh `getevent` prompts.
+             Requires root (`su`). Hidden in fullscreen / DeX. -->
+        <div class="phone-side-keys" id="phoneSideKeys" aria-label="Phím cứng">
+          <button class="side-key side-key-power" data-sendevent="power" title="Power (hw, sendevent)" type="button" aria-label="Power">
+            <i class="fa-solid fa-power-off"></i>
+          </button>
+          <div class="side-key-gap" aria-hidden="true"></div>
+          <button class="side-key side-key-volup" data-sendevent="vol_up" title="Vol+ (hw, sendevent) — dùng cho Magisk customize.sh" type="button" aria-label="Volume up">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+          <button class="side-key side-key-voldown" data-sendevent="vol_down" title="Vol− (hw, sendevent) — dùng cho Magisk customize.sh" type="button" aria-label="Volume down">
+            <i class="fa-solid fa-minus"></i>
+          </button>
+        </div>
+      </div>
+      <!-- Bottom Android-style nav bar. Soft Back / Home / Recent via
+           /api/quick → KEYCODE_BACK / KEYCODE_HOME / KEYCODE_APP_SWITCH.
+           Hidden in fullscreen / DeX. -->
+      <div class="phone-nav-bar" id="phoneNavBar" aria-label="Nav bar">
+        <button class="nav-key nav-back" data-act="back" title="Back" type="button" aria-label="Back">
+          <span class="nav-glyph" aria-hidden="true"></span>
+        </button>
+        <button class="nav-key nav-home" data-act="home" title="Home" type="button" aria-label="Home">
+          <span class="nav-glyph" aria-hidden="true"></span>
+        </button>
+        <button class="nav-key nav-recent" data-act="recent" title="Recent apps" type="button" aria-label="Recent apps">
+          <span class="nav-glyph" aria-hidden="true"></span>
+        </button>
+      </div>
     </div>
     <!--
       Off-screen capture surface for keyboard typing. Focusing this textarea
@@ -267,7 +465,50 @@
   <div id="streamHud" class="stream-hud" hidden>
     <div><span class="hud-k">FPS</span> <span id="hudFps">0</span></div>
     <div><span class="hud-k">Mbps</span> <span id="hudKbps">0.0</span></div>
+    <div><span class="hud-k">Ping</span> <span id="hudPing">— ms</span></div>
     <div><span class="hud-k">Frames</span> <span id="hudFrames">0</span></div>
+  </div>
+
+  <!-- Hidden audio sink. JMuxer attaches a MediaSource to this element when
+       the user opts in via the audio toolbar toggle; otherwise it stays
+       inert. Browsers gate autoplay'd audio behind a user activation —
+       the toolbar toggle is one, but `location.reload()` immediately
+       afterwards drops the activation. The script below re-arms `play()`
+       on the next interaction and surfaces a clickable banner if needed. -->
+  <audio id="audioPlayer" autoplay playsinline preload="auto" hidden></audio>
+  <!-- Surfaced only when the browser blocks autoplay so the user can
+       resume audio with a single click anywhere. -->
+  <div id="audioGate" class="audio-gate" hidden role="button" tabindex="0">
+    <i class="fa-solid fa-volume-high"></i>
+    <span>Click để bật âm thanh (browser block autoplay)</span>
+  </div>
+
+  <!-- Audio diagnostics panel (toggle Ctrl+Shift+A). The script mutates
+       `_audioState` on every interesting event (codec parsed, ASC parsed,
+       frame fed to JMuxer, MediaSource state change, audioEl play() result,
+       errors). The panel is hidden by default — only the user opens it
+       when audio doesn't work, screenshots it, and shares so we can
+       pinpoint which step is breaking instead of guessing. -->
+  <div id="audioDiag" class="audio-diag" hidden>
+    <div class="ad-title">
+      <i class="fa-solid fa-stethoscope"></i> Audio diagnostics
+      <span class="ad-hint">Ctrl+Shift+A để ẩn</span>
+    </div>
+    <div class="ad-row"><span class="ad-k">enabled</span><span id="adEnabled">false</span></div>
+    <div class="ad-row"><span class="ad-k">stage</span><span id="adStage">init</span></div>
+    <div class="ad-row"><span class="ad-k">codec</span><span id="adCodec">—</span></div>
+    <div class="ad-row"><span class="ad-k">asc</span><span id="adAsc">—</span></div>
+    <div class="ad-row"><span class="ad-k">frames</span><span id="adFrames">cfg=0 data=0 fed=0</span></div>
+    <div class="ad-row"><span class="ad-k">jmuxer</span><span id="adMux">none</span></div>
+    <div class="ad-row"><span class="ad-k">mediaSource</span><span id="adMs">none</span></div>
+    <div class="ad-row"><span class="ad-k">&lt;audio&gt;</span><span id="adAudio">—</span></div>
+    <div class="ad-row"><span class="ad-k">play()</span><span id="adPlay">idle</span></div>
+    <div class="ad-row"><span class="ad-k">primed</span><span id="adPrimed">false</span></div>
+    <div class="ad-row"><span class="ad-k">last error</span><span id="adErr">—</span></div>
+    <div class="ad-actions">
+      <button id="adForcePlay" type="button"><i class="fa-solid fa-play"></i> Force play()</button>
+      <button id="adReset" type="button"><i class="fa-solid fa-rotate-left"></i> Reset audio</button>
+    </div>
   </div>
 
   <!-- Quick Controls overlay -->
@@ -279,14 +520,11 @@
       </div>
       <p class="lead">Lệnh chạy qua <code>adb shell</code> trên thiết bị đang chọn. Một số lệnh (Wi-Fi/BT) có thể bị chặn ở chính sách hệ thống của OEM (MIUI/HyperOS) và sẽ trả về lỗi.</p>
       <div class="qc-grid">
-        <button class="qc-btn" data-act="home" type="button"><i class="fa-solid fa-house"></i><span>Home</span></button>
-        <button class="qc-btn" data-act="back" type="button"><i class="fa-solid fa-arrow-left"></i><span>Back</span></button>
-        <button class="qc-btn" data-act="recent" type="button"><i class="fa-solid fa-layer-group"></i><span>Recent</span></button>
+        <!-- Home / Back / Recent / Vol+ / Vol- / Mute / Power(hw) đã chuyển
+             sang khung mockup điện thoại (nav bar dưới + side keys phải) — em
+             đã bỏ ra khỏi panel này để Quick Controls đỡ rối. -->
         <button class="qc-btn" data-act="lock" type="button"><i class="fa-solid fa-lock"></i><span>Lock</span></button>
         <button class="qc-btn" data-act="wake" type="button"><i class="fa-solid fa-sun"></i><span>Wake</span></button>
-        <button class="qc-btn" data-act="vol_up" type="button"><i class="fa-solid fa-volume-high"></i><span>Vol +</span></button>
-        <button class="qc-btn" data-act="vol_down" type="button"><i class="fa-solid fa-volume-low"></i><span>Vol −</span></button>
-        <button class="qc-btn" data-act="mute" type="button"><i class="fa-solid fa-volume-xmark"></i><span>Mute</span></button>
         <button class="qc-btn" data-act="wifi_on" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi ON</span></button>
         <button class="qc-btn" data-act="wifi_off" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi OFF</span></button>
         <button class="qc-btn" data-act="bt_on" type="button"><i class="fa-brands fa-bluetooth-b"></i><span>BT ON</span></button>
@@ -298,11 +536,92 @@
         <button class="qc-btn" data-act="notifications" type="button"><i class="fa-solid fa-bell"></i><span>Noti drawer</span></button>
         <button class="qc-btn danger" data-act="reboot" data-confirm="Khởi động lại thiết bị?" type="button"><i class="fa-solid fa-power-off"></i><span>Reboot</span></button>
       </div>
+
+      <!-- Resolution & DPI override (adb shell wm size / wm density). Useful
+           when the device's native resolution doesn't fit a PC monitor — e.g.
+           Galaxy Z Fold 3 inner display (1768x2208) is too tall for landscape
+           streaming. Backend POSTs go to /api/adb/wm with op + validated ints. -->
+      <div class="qc-section-title"><i class="fa-solid fa-display" aria-hidden="true"></i> Độ phân giải &amp; DPI (wm size / wm density)</div>
+      <div class="wm-row">
+        <label>Size:
+          <input id="wmW" type="number" inputmode="numeric" min="100" max="7680" placeholder="1080">
+        </label>
+        <span class="x">×</span>
+        <input id="wmH" type="number" inputmode="numeric" min="100" max="7680" placeholder="2400" aria-label="height">
+        <label>DPI:
+          <input id="wmD" type="number" inputmode="numeric" min="80" max="1000" placeholder="420">
+        </label>
+      </div>
+      <div class="wm-actions">
+        <button class="wm-act primary" id="wmApplySize" type="button"><i class="fa-solid fa-check"></i>Áp dụng size</button>
+        <button class="wm-act primary" id="wmApplyDpi" type="button"><i class="fa-solid fa-check"></i>Áp dụng DPI</button>
+        <button class="wm-act" id="wmGet" type="button"><i class="fa-solid fa-rotate"></i>Lấy hiện tại</button>
+        <button class="wm-act warn" id="wmResetSize" type="button"><i class="fa-solid fa-arrows-rotate"></i>Reset size</button>
+        <button class="wm-act warn" id="wmResetDpi" type="button"><i class="fa-solid fa-arrows-rotate"></i>Reset DPI</button>
+        <button class="wm-act warn" id="wmResetAll" type="button"><i class="fa-solid fa-eraser"></i>Reset all</button>
+      </div>
+      <div class="wm-presets" id="wmPresets">
+        <button class="wm-preset" data-w="1768" data-h="2208" data-d="380" type="button">Fold 3 inner (1768×2208/380)</button>
+        <button class="wm-preset" data-w="832" data-h="2268" data-d="387" type="button">Fold 3 outer (832×2268/387)</button>
+        <button class="wm-preset" data-w="2208" data-h="1768" data-d="380" type="button">Fold 3 landscape (2208×1768/380)</button>
+        <button class="wm-preset" data-w="1920" data-h="1080" data-d="240" type="button">1920×1080 / 240</button>
+        <button class="wm-preset" data-w="1080" data-h="2400" data-d="420" type="button">1080×2400 / 420</button>
+        <button class="wm-preset" data-w="720" data-h="1600" data-d="320" type="button">720×1600 / 320</button>
+      </div>
+      <div class="wm-info" id="wmInfo">Bấm "Lấy hiện tại" để đọc size/DPI từ thiết bị.</div>
+      <p class="wm-hint">Sau khi áp dụng, bấm <i class="fa-solid fa-plug-circle-bolt"></i> Reconnect để scrcpy bắt lại độ phân giải mới. Một số OEM có thể chặn lệnh này (Permission Denial). Khi reset hoặc đóng phiên, dùng "Reset all" nếu thiết bị giữ override sau khi rút cáp.</p>
+
+      <!-- Stream quality: video bit rate (Mbps) and max FPS. These are per
+           session: bumping the slider here and bấm "Áp dụng" tears down the
+           current socket and reopens it with the new query params, so the
+           scrcpy server is restarted with the new encoder settings. We do NOT
+           reload the page (that would also drop other state like UHID toggle
+           and the audio gate user activation). -->
+      <div class="qc-section-title"><i class="fa-solid fa-tachograph-digital" aria-hidden="true"></i> Stream quality (Mbps &amp; FPS)</div>
+      <div class="sq-row">
+        <label>Mbps:
+          <input id="sqBitrate" type="range" min="1" max="100" step="1" value="8">
+          <input id="sqBitrateNum" type="number" min="1" max="100" step="1" value="8" aria-label="Mbps">
+        </label>
+        <label>FPS:
+          <input id="sqFps" type="range" min="15" max="120" step="1" value="60">
+          <input id="sqFpsNum" type="number" min="15" max="120" step="1" value="60" aria-label="FPS">
+        </label>
+      </div>
+      <div class="wm-actions">
+        <button class="wm-act primary" id="sqApply" type="button"><i class="fa-solid fa-check"></i>Áp dụng &amp; reconnect</button>
+        <button class="wm-act" id="sqReset" type="button"><i class="fa-solid fa-rotate-left"></i>Mặc định (8 Mbps / 60 FPS)</button>
+      </div>
+      <div class="wm-presets" id="sqPresets">
+        <button class="sq-preset" data-mbps="4" data-fps="30" type="button">Nhẹ (4 Mbps / 30)</button>
+        <button class="sq-preset" data-mbps="8" data-fps="60" type="button">Mặc định (8 / 60)</button>
+        <button class="sq-preset" data-mbps="20" data-fps="60" type="button">HD (20 / 60)</button>
+        <button class="sq-preset" data-mbps="30" data-fps="90" type="button">Game (30 / 90)</button>
+        <button class="sq-preset" data-mbps="50" data-fps="120" type="button">Max (50 / 120)</button>
+      </div>
+      <p class="wm-hint">FPS cao &gt; 60 cần encoder hardware hỗ trợ và panel 120Hz (Fold 3 hỗ trợ 120Hz inner). Bitrate &gt; 30 Mbps có thể nghẽn Wi-Fi yếu — giảm xuống nếu thấy giật.</p>
+
+      <!-- Free-form ADB shell exec. The string is forwarded as-is to the
+           device's shell (so pipes, &&, redirects all work) but never
+           shell-evaluated on the *host* — see api_adb_exec in app.py. -->
+      <div class="qc-section-title"><i class="fa-solid fa-terminal" aria-hidden="true"></i> Lệnh ADB tự do (adb shell …)</div>
+      <div class="adb-exec-row">
+        <textarea id="adbExecCmd" rows="2" spellcheck="false" autocomplete="off"
+          placeholder="Ví dụ:&#10;  dumpsys display | head -30&#10;  pm list packages -3&#10;  settings put system screen_off_timeout 600000"></textarea>
+        <div class="adb-exec-actions">
+          <button class="wm-act primary" id="adbExecRun" type="button"><i class="fa-solid fa-play"></i>Chạy</button>
+          <button class="wm-act" id="adbExecClear" type="button"><i class="fa-solid fa-broom"></i>Clear</button>
+          <span id="adbExecHint" style="font-size:.72rem;color:var(--muted)">Enter để chạy · Shift+Enter để xuống dòng</span>
+        </div>
+        <pre class="adb-exec-out" id="adbExecOut" hidden></pre>
+        <p class="adb-exec-warn"><i class="fa-solid fa-triangle-exclamation"></i> Lệnh chạy trực tiếp trên thiết bị đã chọn (timeout 30s, output tối đa 100KB). Tránh lệnh phá hoại như <code>rm</code>, <code>reboot</code>… nếu chưa chắc.</p>
+      </div>
+
       <div class="qc-out" id="qcOut"></div>
     </div>
   </div>
 
-  <script src="/static/js/jmuxer.min.js"></script>
+  <script src="/static/js/jmuxer.min.js?v={{ static_ver }}"></script>
   <script>
     const st = (m)=>document.getElementById('status').innerHTML = `<span class='dot'></span>${m}`;
     const MACRO_KEY = 'beso_macro_v1';
@@ -334,8 +653,16 @@
       // In fullscreen the CSS rule takes over (width/height 100vw/100vh). Don't
       // fight it with inline styles or the video will stay small.
       if (document.fullscreenElement || document.webkitFullscreenElement) return;
-      const cw = videoWrap.clientWidth - 24;
-      const ch = videoWrap.clientHeight - 24;
+      // Reserve space for the soft nav bar that sits below .phone-shell.
+      // Its actual rendered height varies slightly with viewport zoom, so
+      // we measure rather than hard-code.  When the bar is hidden (DeX
+      // mode, virtual display), reserve = 0.
+      const navBar = document.getElementById('phoneNavBar');
+      const navBarReserve = (navBar && navBar.offsetParent !== null)
+        ? (navBar.offsetHeight + 14) : 0;
+      const sideKeysReserve = 6; // matches `.phone-side-keys{right:-9px}` overhang
+      const cw = videoWrap.clientWidth - 24 - sideKeysReserve;
+      const ch = videoWrap.clientHeight - 24 - navBarReserve;
       if (!cw || !ch) return;
 
       const baseRatio = Math.min(cw / deviceW, ch / deviceH);
@@ -442,7 +769,41 @@
     };
     const initUhidSpeed = parseSpeed(localStorage.getItem('uhidMouseSpeed'));
     const initUhidAccel = localStorage.getItem('uhidMouseAccel') === '1';
+    // Audio: opt-in via the toolbar toggle, persisted as localStorage
+    // 'audioStream' = '1'. Default OFF — the server only opens the extra
+    // audio socket when this query param is set, so the bandwidth/CPU
+    // cost is exactly zero unless the user asks for it.
+    const audioOn = localStorage.getItem('audioStream') === '1';
+    // Turn-screen-off: mirrors scrcpy's `--turn-screen-off` / `-S`. When ON
+    // we ask the server to blank the device's physical OLED right after the
+    // control socket is up — handy when the phone is in a drawer and you
+    // don't want it lighting up while you mirror. Persists across sessions
+    // via localStorage 'turnScreenOff' = '1'. Default OFF.
+    const turnScreenOffOn = localStorage.getItem('turnScreenOff') === '1';
+    // Gamepad UHID: opt-in via the toolbar toggle, persisted as
+    // localStorage 'gamepadInput' = '1'. Default OFF — having the rAF
+    // poll loop running for every page would waste CPU on users who
+    // don't have a controller. Picked up at attachInput time (no need to
+    // reconnect the socket to flip — the UHID device is created from the
+    // browser side over the existing control channel).
+    const gamepadOn = localStorage.getItem('gamepadInput') === '1';
+    // Stream quality: per-session Mbps + FPS, persisted in localStorage.
+    // The Quick Controls panel writes these and triggers a soft reconnect
+    // so the new values are picked up by the scrcpy server on restart.
+    // Server-side ranges are 500_000..200_000_000 bps and 1..240 fps; the
+    // UI clamps to user-friendly 1..100 Mbps and 15..120 fps before that.
+    const STREAM_BITRATE_KEY = 'streamBitrateMbps';
+    const STREAM_FPS_KEY = 'streamMaxFps';
+    const _clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const _initMbps = _clamp(parseInt(localStorage.getItem(STREAM_BITRATE_KEY) || '8', 10) || 8, 1, 100);
+    const _initFps = _clamp(parseInt(localStorage.getItem(STREAM_FPS_KEY) || '60', 10) || 60, 15, 120);
     const _socketQuery = vdesktopOn ? { new_display: vdesktopSpec } : {};
+    if (audioOn) _socketQuery.audio = '1';
+    if (turnScreenOffOn) _socketQuery.turn_screen_off = '1';
+    // Only send non-default values so the server log stays clean and we
+    // don't accidentally pin a value the user never explicitly chose.
+    if (_initMbps !== 8) _socketQuery.video_bit_rate = String(_initMbps * 1_000_000);
+    if (_initFps !== 60) _socketQuery.max_fps = String(_initFps);
     const socket = io({
       reconnection:true,
       autoConnect:true,
@@ -496,8 +857,30 @@
         useUhid: uhidOn,
         uhidMouseSpeed: initUhidSpeed,
         uhidMouseAccel: initUhidAccel,
+        // Surfaced via the toolbar status: connect/disconnect of a physical
+        // gamepad, or 'unsupported' on browsers without the Gamepad API.
+        gamepadStatusCallback: (idx, name, action) => {
+          if (action === 'unsupported') {
+            st('Trình duyệt không hỗ trợ Gamepad API. Hãy dùng Chrome/Edge/Firefox mới nhất.');
+            return;
+          }
+          if (action === 'connected') {
+            st('Gamepad #' + (idx + 1) + ' đã kết nối: ' + (name || 'unknown'));
+          } else if (action === 'disconnected') {
+            st('Gamepad #' + (idx + 1) + ' đã ngắt kết nối.');
+          } else if (action === 'ignored') {
+            st('Gamepad slot ' + idx + ' bị bỏ qua (tối đa 4 tay cầm).');
+          }
+        },
       });
       if (uhidOn) input.enableUhid();
+      // Gamepad UHID: opt-in via toolbar. Default OFF. If on, also requires
+      // UHID enabled — the gamepad device is created through the same
+      // UHID_CREATE control message channel, which needs the control socket
+      // to be live (true by the time attachInput is called).
+      if (gamepadOn) {
+        try { input.enableGamepadInput(); } catch (e) { /* surfaced via callback */ }
+      }
       if (vdesktopOn) {
         // Virtual Desktop cosmetics: drop the phone-shell decoration
         // (notch, camera dot, rounded portrait border) and hide the
@@ -675,29 +1058,321 @@
         if (e.key === 'Escape' && qcBackdrop.classList.contains('show')) showQc(false);
       });
       const _qcCsrf = document.querySelector('meta[name="csrf-token"]').content;
-      qcBackdrop.querySelectorAll('.qc-btn').forEach(btn => {
-        btn.addEventListener('click', async ()=>{
-          const act = btn.getAttribute('data-act');
-          const confirmMsg = btn.getAttribute('data-confirm');
-          if (confirmMsg && !confirm(confirmMsg)) return;
-          btn.setAttribute('disabled', 'true');
-          qcOut.textContent = `→ ${act}...`;
-          try {
-            const fd = new FormData();
+      // Shared dispatcher: any button with `data-act` POSTs /api/quick,
+      // any with `data-sendevent` POSTs /api/adb/sendevent.  `onOutput` is
+      // called with (`status`, `text`) so each call site can route the
+      // result to its own surface — qcOut for the panel, a brief flash
+      // for the mockup side/nav keys (which don't have a permanent
+      // output slot).
+      async function runControlBtn(btn, onOutput){
+        const act = btn.getAttribute('data-act');
+        const sendevent = btn.getAttribute('data-sendevent');
+        const confirmMsg = btn.getAttribute('data-confirm');
+        if (confirmMsg && !confirm(confirmMsg)) return;
+        if (!act && !sendevent) return;
+        btn.setAttribute('disabled', 'true');
+        const label = act || `hw:${sendevent}`;
+        if (onOutput) onOutput('pending', `→ ${label}...`);
+        try {
+          const fd = new FormData();
+          fd.append('csrf_token', _qcCsrf);
+          let url;
+          if (sendevent) {
+            fd.append('op', sendevent);
+            url = '/api/adb/sendevent';
+          } else {
             fd.append('action', act);
-            fd.append('csrf_token', _qcCsrf);
-            const r = await fetch('/api/quick', { method:'POST', body: fd, credentials:'same-origin' });
-            const j = await r.json().catch(()=>({}));
-            qcOut.textContent = (j.ok ? '✔ ' : '✖ ') + (j.output || j.error || JSON.stringify(j));
-          } catch (e) {
-            qcOut.textContent = '✖ ' + (e && e.message || String(e));
-          } finally {
-            btn.removeAttribute('disabled');
+            url = '/api/quick';
           }
+          const r = await fetch(url, { method:'POST', body: fd, credentials:'same-origin' });
+          const j = await r.json().catch(()=>({}));
+          if (onOutput){
+            const text = (j.ok ? '✔ ' : '✖ ') + (j.output || j.error || JSON.stringify(j));
+            onOutput(j.ok ? 'ok' : 'err', text);
+          }
+        } catch (e) {
+          if (onOutput) onOutput('err', '✖ ' + (e && e.message || String(e)));
+        } finally {
+          btn.removeAttribute('disabled');
+        }
+      }
+      qcBackdrop.querySelectorAll('.qc-btn').forEach(btn => {
+        btn.addEventListener('click', ()=> runControlBtn(btn, (_s, text)=>{ qcOut.textContent = text; }));
+      });
+
+      // Mockup side keys + bottom nav bar.  Same dispatcher, but the
+      // visual feedback is a brief class flash on the button itself
+      // (we don't show a status line on the video stage to avoid
+      // clutter).  Status bar text doubles as a debug surface.
+      const _stageStatus = document.getElementById('status');
+      const _flashKey = (btn, kind) => {
+        const cls = kind === 'ok' ? 'flash-ok' : 'flash-err';
+        btn.classList.add(cls);
+        setTimeout(()=> btn.classList.remove(cls), 600);
+      };
+      const _mockupOut = (btn) => (status, text) => {
+        if (status === 'pending') return;
+        _flashKey(btn, status);
+        if (_stageStatus && text){
+          // Keep the existing status text intact unless the call
+          // failed — in which case surface the error so the user
+          // knows something went wrong.
+          if (status === 'err'){
+            const prev = _stageStatus.textContent;
+            _stageStatus.textContent = text;
+            setTimeout(()=>{
+              if (_stageStatus.textContent === text) _stageStatus.textContent = prev;
+            }, 4000);
+          }
+        }
+      };
+      document.querySelectorAll('.side-key, .nav-key').forEach(btn => {
+        btn.addEventListener('click', ()=> runControlBtn(btn, _mockupOut(btn)));
+      });
+
+      // wm size / wm density controls. Each button POSTs /api/adb/wm with a
+      // server-side whitelisted op + range-checked ints. Inputs cleared after
+      // a successful Get with the device's current physical size; override
+      // (if set) is shown next to the physical value in the info line.
+      const wmW = document.getElementById('wmW');
+      const wmH = document.getElementById('wmH');
+      const wmD = document.getElementById('wmD');
+      const wmInfo = document.getElementById('wmInfo');
+      const wmAllBtns = qcBackdrop.querySelectorAll('.wm-act');
+      const _wmFmt = (label, parsed)=>{
+        if (!parsed) return `${label}: -`;
+        const phys = parsed.physical || '-';
+        const ovr = parsed.override ? ` (override → ${parsed.override})` : '';
+        return `${label}: ${phys}${ovr}`;
+      };
+      const _wmDisable = (on)=>{
+        wmAllBtns.forEach(b => on ? b.setAttribute('disabled','true') : b.removeAttribute('disabled'));
+      };
+      const _wmPost = async (params)=>{
+        const fd = new FormData();
+        for (const [k, v] of Object.entries(params)) fd.append(k, String(v));
+        fd.append('csrf_token', _wmCsrf);
+        const r = await fetch('/api/adb/wm', { method:'POST', body: fd, credentials:'same-origin' });
+        return { status: r.status, json: await r.json().catch(()=>({})) };
+      };
+      const _wmCsrf = _qcCsrf;
+      const wmRefresh = async ()=>{
+        wmInfo.textContent = '→ wm size / wm density...';
+        try {
+          const { json } = await _wmPost({ op: 'get' });
+          if (json.ok) {
+            const sz = json.size || {};
+            const de = json.density || {};
+            wmInfo.textContent = `${_wmFmt('Size', sz)}   |   ${_wmFmt('DPI', de)}`;
+            // Pre-fill inputs with current physical values when empty so the
+            // user has a starting point to tweak from.
+            if (!wmW.value && sz.physical && /^\d+x\d+$/.test(sz.physical)) {
+              const [pw, ph] = sz.physical.split('x');
+              wmW.value = pw; wmH.value = ph;
+            }
+            if (!wmD.value && de.physical && /^\d+$/.test(de.physical)) {
+              wmD.value = de.physical;
+            }
+          } else {
+            wmInfo.textContent = '✖ ' + (json.error || 'wm get failed');
+          }
+        } catch (e) {
+          wmInfo.textContent = '✖ ' + (e && e.message || String(e));
+        }
+      };
+      const _wmRun = async (params, label)=>{
+        _wmDisable(true);
+        qcOut.textContent = `→ ${label}...`;
+        try {
+          const { json } = await _wmPost(params);
+          qcOut.textContent = (json.ok ? '✔ ' : '✖ ') + (json.output || json.error || JSON.stringify(json));
+          if (json.ok) await wmRefresh();
+        } catch (e) {
+          qcOut.textContent = '✖ ' + (e && e.message || String(e));
+        } finally {
+          _wmDisable(false);
+        }
+      };
+      document.getElementById('wmGet').addEventListener('click', async ()=>{
+        _wmDisable(true);
+        try { await wmRefresh(); } finally { _wmDisable(false); }
+      });
+      document.getElementById('wmApplySize').addEventListener('click', ()=>{
+        const w = parseInt(wmW.value, 10);
+        const h = parseInt(wmH.value, 10);
+        if (!Number.isFinite(w) || !Number.isFinite(h) || w < 100 || h < 100 || w > 7680 || h > 7680) {
+          qcOut.textContent = '✖ width/height phải là số nguyên 100..7680';
+          return;
+        }
+        _wmRun({ op: 'set_size', width: w, height: h }, `wm size ${w}x${h}`);
+      });
+      document.getElementById('wmApplyDpi').addEventListener('click', ()=>{
+        const d = parseInt(wmD.value, 10);
+        if (!Number.isFinite(d) || d < 80 || d > 1000) {
+          qcOut.textContent = '✖ DPI phải là số nguyên 80..1000';
+          return;
+        }
+        _wmRun({ op: 'set_density', density: d }, `wm density ${d}`);
+      });
+      document.getElementById('wmResetSize').addEventListener('click', ()=>{
+        _wmRun({ op: 'reset_size' }, 'wm size reset');
+      });
+      document.getElementById('wmResetDpi').addEventListener('click', ()=>{
+        _wmRun({ op: 'reset_density' }, 'wm density reset');
+      });
+      document.getElementById('wmResetAll').addEventListener('click', ()=>{
+        if (!confirm('Reset cả wm size và wm density về mặc định?')) return;
+        _wmRun({ op: 'reset_all' }, 'wm reset all');
+      });
+      qcBackdrop.querySelectorAll('.wm-preset').forEach(p => {
+        p.addEventListener('click', ()=>{
+          wmW.value = p.dataset.w || '';
+          wmH.value = p.dataset.h || '';
+          wmD.value = p.dataset.d || '';
         });
       });
 
-      // UHID toggle. Reload so UHID_CREATE / control
+      // ---- Stream quality (Mbps / FPS) ------------------------------------
+      // Keep the slider and the numeric input in sync (two-way binding),
+      // persist to localStorage on change, and apply by tearing down the
+      // socket + reopening with the new query params. Soft reconnect — no
+      // page reload — so the audio gate user-activation and any other
+      // page state survives.
+      const sqBitrate = document.getElementById('sqBitrate');
+      const sqBitrateNum = document.getElementById('sqBitrateNum');
+      const sqFps = document.getElementById('sqFps');
+      const sqFpsNum = document.getElementById('sqFpsNum');
+      const sqApply = document.getElementById('sqApply');
+      const sqReset = document.getElementById('sqReset');
+      const _sqInit = () => {
+        sqBitrate.value = String(_clamp(parseInt(localStorage.getItem(STREAM_BITRATE_KEY) || '8', 10) || 8, 1, 100));
+        sqBitrateNum.value = sqBitrate.value;
+        sqFps.value = String(_clamp(parseInt(localStorage.getItem(STREAM_FPS_KEY) || '60', 10) || 60, 15, 120));
+        sqFpsNum.value = sqFps.value;
+      };
+      _sqInit();
+      const _sqSync = (src, dst, lo, hi) => {
+        let v = parseInt(src.value, 10);
+        if (!Number.isFinite(v)) v = parseInt(dst.value, 10) || lo;
+        v = _clamp(v, lo, hi);
+        src.value = String(v);
+        dst.value = String(v);
+      };
+      sqBitrate.addEventListener('input', () => _sqSync(sqBitrate, sqBitrateNum, 1, 100));
+      sqBitrateNum.addEventListener('input', () => _sqSync(sqBitrateNum, sqBitrate, 1, 100));
+      sqFps.addEventListener('input', () => _sqSync(sqFps, sqFpsNum, 15, 120));
+      sqFpsNum.addEventListener('input', () => _sqSync(sqFpsNum, sqFps, 15, 120));
+      const _sqApply = () => {
+        const mbps = _clamp(parseInt(sqBitrate.value, 10) || 8, 1, 100);
+        const fps = _clamp(parseInt(sqFps.value, 10) || 60, 15, 120);
+        localStorage.setItem(STREAM_BITRATE_KEY, String(mbps));
+        localStorage.setItem(STREAM_FPS_KEY, String(fps));
+        // Update the live socket query so the auto-reconnect path picks up
+        // the new values too, then disconnect and let socket.io reopen.
+        socket.io.opts.query = {
+          ..._socketQuery,
+          ...(mbps !== 8 ? { video_bit_rate: String(mbps * 1_000_000) } : {}),
+          ...(fps !== 60 ? { max_fps: String(fps) } : {}),
+        };
+        // Remove the defaults so they don't pin if the user re-sets to default.
+        if (mbps === 8) delete socket.io.opts.query.video_bit_rate;
+        if (fps === 60) delete socket.io.opts.query.max_fps;
+        qcOut.textContent = `→ Áp dụng ${mbps} Mbps / ${fps} FPS, đang reconnect...`;
+        try { socket.disconnect(); } catch (_e) {}
+        setTimeout(() => { try { socket.connect(); } catch (_e) {} }, 300);
+      };
+      sqApply.addEventListener('click', _sqApply);
+      sqReset.addEventListener('click', () => {
+        localStorage.removeItem(STREAM_BITRATE_KEY);
+        localStorage.removeItem(STREAM_FPS_KEY);
+        _sqInit();
+        _sqApply();
+      });
+      qcBackdrop.querySelectorAll('.sq-preset').forEach(p => {
+        p.addEventListener('click', () => {
+          const m = parseInt(p.dataset.mbps, 10) || 8;
+          const f = parseInt(p.dataset.fps, 10) || 60;
+          sqBitrate.value = String(_clamp(m, 1, 100));
+          sqBitrateNum.value = sqBitrate.value;
+          sqFps.value = String(_clamp(f, 15, 120));
+          sqFpsNum.value = sqFps.value;
+        });
+      });
+      // Auto-fetch current size/DPI the first time the user opens Quick Controls,
+      // so the info line isn't blank. Cached afterwards; manual refresh via
+      // the Get button.
+      let _wmFetched = false;
+      qcBtn.addEventListener('click', ()=>{
+        if (_wmFetched) return;
+        _wmFetched = true;
+        wmRefresh();
+      });
+
+      // ---- Free-form ADB shell exec --------------------------------------
+      // POSTs to /api/adb/exec which runs `adb shell <cmd>` on the selected
+      // device. The server-side argv is fixed (no shell=True) so nothing the
+      // user types here can run code on the *host*; the device shell does
+      // expand pipes/quotes/&&. Output is capped at 100KB.
+      const adbExecCmd = document.getElementById('adbExecCmd');
+      const adbExecOut = document.getElementById('adbExecOut');
+      const adbExecRun = document.getElementById('adbExecRun');
+      const adbExecClear = document.getElementById('adbExecClear');
+      const _adbHistKey = 'adbExecLast';
+      try{ adbExecCmd.value = localStorage.getItem(_adbHistKey) || ''; }catch(_e){}
+      const _showAdbOut = (text, isErr)=>{
+        adbExecOut.hidden = false;
+        adbExecOut.textContent = text || '';
+        adbExecOut.classList.toggle('err', !!isErr);
+        adbExecOut.scrollTop = adbExecOut.scrollHeight;
+      };
+      const runAdbExec = async ()=>{
+        const cmd = (adbExecCmd.value || '').trim();
+        if (!cmd){
+          _showAdbOut('Chưa nhập lệnh.', true);
+          return;
+        }
+        try{ localStorage.setItem(_adbHistKey, cmd); }catch(_e){}
+        adbExecRun.disabled = true;
+        adbExecRun.dataset._lbl = adbExecRun.innerHTML;
+        adbExecRun.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>Đang chạy…';
+        const fd = new FormData();
+        fd.append('cmd', cmd);
+        fd.append('csrf_token', _wmCsrf);
+        try{
+          const r = await fetch('/api/adb/exec', { method:'POST', body: fd, credentials:'same-origin' });
+          let body = null;
+          try{ body = await r.json(); }catch(_e){ body = null; }
+          if (r.ok && body && body.ok){
+            const suffix = body.truncated ? '\n[output đã bị cắt — vượt 100KB]' : '';
+            _showAdbOut((body.output || '') + suffix, false);
+          } else {
+            const msg = (body && (body.error || body.output)) || ('HTTP ' + r.status);
+            _showAdbOut(msg + (body && body.truncated ? '\n[output đã bị cắt — vượt 100KB]' : ''), true);
+          }
+        }catch(e){
+          _showAdbOut('Lỗi mạng: ' + (e?.message || String(e)), true);
+        }finally{
+          adbExecRun.disabled = false;
+          if (adbExecRun.dataset._lbl) adbExecRun.innerHTML = adbExecRun.dataset._lbl;
+        }
+      };
+      adbExecRun.addEventListener('click', runAdbExec);
+      adbExecClear.addEventListener('click', ()=>{
+        adbExecCmd.value = '';
+        adbExecOut.hidden = true;
+        adbExecOut.textContent = '';
+        try{ localStorage.removeItem(_adbHistKey); }catch(_e){}
+      });
+      // Enter to submit, Shift+Enter for newline. Ctrl+Enter also submits so
+      // muscle-memory from chat apps still works.
+      adbExecCmd.addEventListener('keydown', (e)=>{
+        if (e.key === 'Enter' && !e.shiftKey){
+          e.preventDefault();
+          runAdbExec();
+        }
+      });
+
+      // UHID toggle: independent of Virtual Desktop. Reload so UHID_CREATE / control
       // listeners are wired (or unwired) cleanly — the alternative is to
       // hot-swap event listeners at runtime, which is fragile.
       const uhidBtn = document.getElementById('uhidInput');
@@ -764,6 +1439,174 @@
       document.getElementById('zoomOut').onclick = ()=>setZoom(zoom - 0.12);
       document.getElementById('zoomIn').onclick = ()=>setZoom(zoom + 0.12);
       document.getElementById('zoomReset').onclick = ()=>setZoom(0.82);
+
+      // --- Screenshot + Screen recording (client-side, no backend) --------
+      // Both work directly on <video>, so they need an active stream — but
+      // their button bindings live OUTSIDE attachInput so the button isn't
+      // dead when the stream hasn't started; clicking before the first
+      // frame just shows a "chưa có stream" toast.
+      const screenshotBtn = document.getElementById('screenshot');
+      const recordBtn = document.getElementById('recordToggle');
+      let mediaRecorder = null;       // MediaRecorder instance (null when idle)
+      let recordedChunks = [];        // accumulated Blob parts
+      let recordStartTs = 0;          // ms epoch, for filename
+
+      const tsFilename = (ext) => {
+        const d = new Date();
+        const pad = (n)=>String(n).padStart(2,'0');
+        return `web-scrcpy-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-`
+          + `${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${ext}`;
+      };
+      const downloadBlob = (blob, name) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = name; a.style.display = 'none';
+        document.body.appendChild(a); a.click();
+        // Revoke after a tick so the browser has time to start the download.
+        setTimeout(()=>{ try { URL.revokeObjectURL(url); a.remove(); } catch {} }, 1000);
+      };
+
+      const takeScreenshot = () => {
+        // videoWidth/Height are 0 until the first SPS is decoded.
+        if (!videoElement.videoWidth || !videoElement.videoHeight) {
+          st('Chưa có stream để chụp');
+          return;
+        }
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = videoElement.videoWidth;
+          canvas.height = videoElement.videoHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob)=>{
+            if (!blob) { st('Lỗi tạo ảnh'); return; }
+            downloadBlob(blob, tsFilename('png'));
+            st(`Đã chụp (${canvas.width}×${canvas.height})`);
+          }, 'image/png');
+        } catch (e) {
+          // Cross-origin tainting will throw on toBlob — but jmuxer feeds
+          // <video> via MSE / blob URLs, which are same-origin, so this
+          // should not happen in practice.
+          st('Lỗi chụp: '+(e?.message||e));
+        }
+      };
+      screenshotBtn.onclick = takeScreenshot;
+
+      // Pick the best supported MIME for this browser. webm/vp9 is the
+      // most compatible across Chrome/Edge/Firefox; Safari only supports
+      // mp4 via captureStream (and only on macOS 14+).
+      const pickRecMime = () => {
+        const candidates = [
+          'video/webm;codecs=vp9,opus',
+          'video/webm;codecs=vp9',
+          'video/webm;codecs=vp8',
+          'video/webm',
+          'video/mp4;codecs=avc1.42E01E',
+          'video/mp4',
+        ];
+        for (const m of candidates) {
+          if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+        }
+        return ''; // browser default
+      };
+      const refreshRecBtn = () => {
+        const recording = !!mediaRecorder && mediaRecorder.state === 'recording';
+        recordBtn.classList.toggle('active', recording);
+        // Swap icon to a stop square while recording so the user knows
+        // clicking again stops + downloads.
+        const icon = recordBtn.querySelector('i');
+        icon.className = recording ? 'fa-solid fa-stop' : 'fa-solid fa-circle';
+        recordBtn.title = recording
+          ? 'Dừng ghi và tải về (Ctrl+Shift+R)'
+          : 'Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về';
+      };
+
+      const startRecording = () => {
+        if (!videoElement.videoWidth) { st('Chưa có stream để ghi'); return; }
+        if (typeof MediaRecorder === 'undefined') {
+          st('Trình duyệt không hỗ trợ MediaRecorder');
+          return;
+        }
+        let stream;
+        try {
+          // captureStream() pulls frames from the <video> at its native
+          // playback rate. Pass an FPS argument to throttle on weak
+          // browsers; default (no arg) follows playback.
+          stream = videoElement.captureStream
+            ? videoElement.captureStream()
+            : (videoElement.mozCaptureStream && videoElement.mozCaptureStream());
+        } catch (e) {
+          st('captureStream lỗi: '+(e?.message||e));
+          return;
+        }
+        if (!stream || !stream.getVideoTracks().length) {
+          st('Không lấy được video track từ stream');
+          return;
+        }
+        const mime = pickRecMime();
+        try {
+          mediaRecorder = mime
+            ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12_000_000 })
+            : new MediaRecorder(stream);
+        } catch (e) {
+          st('MediaRecorder lỗi: '+(e?.message||e));
+          mediaRecorder = null;
+          return;
+        }
+        recordedChunks = [];
+        recordStartTs = Date.now();
+        mediaRecorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size) recordedChunks.push(ev.data);
+        };
+        mediaRecorder.onstop = () => {
+          const ext = (mime.includes('mp4') ? 'mp4' : 'webm');
+          const blob = new Blob(recordedChunks, { type: mime || `video/${ext}` });
+          recordedChunks = [];
+          if (!blob.size) { st('File rỗng — không lưu'); refreshRecBtn(); return; }
+          const dur = ((Date.now() - recordStartTs) / 1000).toFixed(1);
+          downloadBlob(blob, tsFilename(ext));
+          st(`Đã lưu video (${dur}s, ${(blob.size/1024/1024).toFixed(1)} MB)`);
+          mediaRecorder = null;
+          refreshRecBtn();
+        };
+        // Get a chunk every 500ms so a browser crash mid-recording at
+        // least leaves us with partial chunks already in memory.
+        try {
+          mediaRecorder.start(500);
+        } catch (e) {
+          st('Không start được recording: '+(e?.message||e));
+          mediaRecorder = null;
+          return;
+        }
+        st(`Đang ghi (${mime || 'default'})...`);
+        refreshRecBtn();
+      };
+      const stopRecording = () => {
+        if (!mediaRecorder) return;
+        try { mediaRecorder.stop(); } catch {}
+        // refreshRecBtn() runs in onstop after the blob is built.
+      };
+      const toggleRecording = () => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording();
+        else startRecording();
+      };
+      recordBtn.onclick = toggleRecording;
+      refreshRecBtn();
+
+      // Keyboard shortcuts. Use capture phase so they fire before the
+      // global typing-into-device handler grabs them.
+      document.addEventListener('keydown', (e) => {
+        // Only react when no input element is focused (otherwise the
+        // user might be typing a path / URL into installApk dialog etc.).
+        const active = document.activeElement;
+        const tag = active && active.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (active && active.isContentEditable)) return;
+        if (e.ctrlKey && e.shiftKey && (e.key === 'S' || e.key === 's')) {
+          e.preventDefault(); takeScreenshot();
+        } else if (e.ctrlKey && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
+          e.preventDefault(); toggleRecording();
+        }
+      });
 
       // --- APK install (file or URL) + file push ---------------------------
       const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -1156,10 +1999,33 @@
     const _hudFps = document.getElementById('hudFps');
     const _hudKbps = document.getElementById('hudKbps');
     const _hudFramesEl = document.getElementById('hudFrames');
+    const _hudPing = document.getElementById('hudPing');
+    const _hudBtn = document.getElementById('hudToggle');
+    // HUD visibility — default ON the first time someone visits so newcomers
+    // see the FPS/Mbps/Ping overlay without hunting for Ctrl+Shift+H. Once
+    // the user explicitly toggles, that choice sticks via localStorage.
+    if (localStorage.getItem('streamHud') === null){
+      localStorage.setItem('streamHud', '1');
+    }
     const _refreshHud = ()=>{
-      _hudEl.hidden = localStorage.getItem('streamHud') !== '1';
+      const on = localStorage.getItem('streamHud') === '1';
+      _hudEl.hidden = !on;
+      if (_hudBtn){
+        _hudBtn.classList.toggle('active', on);
+        _hudBtn.title = on
+          ? 'HUD: ON — bấm để tắt (Ctrl+Shift+H)'
+          : 'HUD: OFF — bấm để bật (Ctrl+Shift+H)';
+      }
     };
     _refreshHud();
+    if (_hudBtn){
+      _hudBtn.addEventListener('click', ()=>{
+        const cur = localStorage.getItem('streamHud') === '1';
+        localStorage.setItem('streamHud', cur ? '0' : '1');
+        _refreshHud();
+        st(cur ? 'HUD: OFF' : 'HUD: ON');
+      });
+    }
     const _origAppend = parser.appendData.bind(parser);
     parser.appendData = (chunk) => {
       _hudBytes += chunk.byteLength || 0;
@@ -1179,8 +2045,35 @@
       _hudBytes = 0;
       _hudFrames = 0;
     }, 1000);
-    // Toggle HUD with Ctrl+Shift+H so power users can flip it without going
-    // into DevTools, but no toolbar real estate is consumed by default.
+    // Ping/RTT measurement: emit a token every 2s and time how long the
+    // server takes to bounce it back. EWMA smooths out one-off jitter so the
+    // HUD doesn't flicker by 30+ms on every sample. If the server doesn't
+    // pong within 5s we display a dash so a stalled WS is obvious.
+    let _pingEwma = null;
+    let _pingPending = null;
+    let _pingTimeoutHandle = null;
+    setInterval(()=>{
+      if (!socket.connected) return;
+      const t = performance.now();
+      _pingPending = t;
+      socket.emit('client_ping', { t });
+      if (_pingTimeoutHandle) clearTimeout(_pingTimeoutHandle);
+      _pingTimeoutHandle = setTimeout(()=>{
+        // No pong within 5s — surface that explicitly so the user knows the
+        // socket is hung even though the video might still be flowing.
+        if (_pingPending !== null && _hudPing) _hudPing.textContent = '— ms';
+      }, 5000);
+    }, 2000);
+    socket.on('server_pong', (msg)=>{
+      const sentAt = (msg && typeof msg.t === 'number') ? msg.t : _pingPending;
+      if (sentAt == null) return;
+      _pingPending = null;
+      const rtt = performance.now() - sentAt;
+      _pingEwma = _pingEwma == null ? rtt : (_pingEwma * 0.7 + rtt * 0.3);
+      if (_hudPing) _hudPing.textContent = Math.round(_pingEwma) + ' ms';
+    });
+    // Toggle HUD with Ctrl+Shift+H so power users can flip it without
+    // touching the toolbar.
     document.addEventListener('keydown', (e)=>{
       if (e.ctrlKey && e.shiftKey && e.code === 'KeyH') {
         e.preventDefault();
@@ -1190,6 +2083,438 @@
         st(cur ? 'HUD: OFF' : 'HUD: ON (Ctrl+Shift+H để tắt)');
       }
     });
+
+    // ---- Audio playback (opt-in) -----------------------------------------
+    // JMuxer in audio mode wraps an AAC ADTS stream into a MediaSource on
+    // the <audio> element. We build it lazily — only when the user has
+    // turned audio on AND the first audio packet arrives, so the
+    // performance cost is exactly zero in the common (audio=off) case.
+    //
+    // History: turning audio on/off used to do `location.reload()` so the
+    // server could restart scrcpy with `audio=true`. That worked but
+    // reloaded the page in the same tick the user clicked the toolbar
+    // button — destroying the user-activation needed for `<audio>` to
+    // autoplay. Browsers (Chrome especially) would then silently block
+    // playback and the only way to recover was the gate banner.
+    //
+    // The new flow keeps the page alive: we soft-reconnect the socket
+    // with the new `?audio=1` query so server-side scrcpy restarts but
+    // the user gesture stays in scope. We *also* prime the audio
+    // element from inside the click handler (calling `audioEl.play()` /
+    // `AudioContext.resume()`) so the browser remembers this page has
+    // explicit audio consent — which carries over to the post-reconnect
+    // MediaSource attach.
+    const audioEl = document.getElementById('audioPlayer');
+    const audioBtn = document.getElementById('audioToggle');
+    let audioMux = null;
+    let audioParserInstance = null;
+    // Live, observable state for the diagnostics panel (Ctrl+Shift+A) and
+    // a window-level handle (`window.__scrcpyAudio`) for ad-hoc debugging
+    // from DevTools. Every meaningful audio event mutates this and refreshes
+    // the panel — that's how the user can prove which step is failing
+    // without us needing to ship a one-off debug build.
+    const _audioState = {
+      enabled: localStorage.getItem('audioStream') === '1',
+      primed: false,
+      codec: null,
+      asc: null,
+      framesConfig: 0,
+      framesData: 0,
+      framesFedToMux: 0,
+      bytesReceived: 0,
+      msState: 'none',
+      playState: 'idle',
+      lastError: null,
+      lastStage: 'init',
+    };
+    // The diagnostics panel renders `_audioState`. Defined now (before any
+    // function that calls `_audioLog`) so the TDZ for `const` doesn't
+    // ReferenceError on script-load `_setupAudioForCurrentSession()`.
+    const audioDiagEl = document.getElementById('audioDiag');
+    const _refreshAudioDiag = ()=>{
+      if (!audioDiagEl || audioDiagEl.hidden) return;
+      const set = (id, v)=>{
+        const el = audioDiagEl.querySelector('#'+id);
+        if (el) el.textContent = String(v);
+      };
+      set('adEnabled', _audioState.enabled);
+      set('adStage', _audioState.lastStage);
+      set('adCodec', _audioState.codec || '—');
+      set('adAsc', _audioState.asc
+        ? `profile=${_audioState.asc.profile} freqIdx=${_audioState.asc.freqIdx} channels=${_audioState.asc.channels}`
+        : '—');
+      set('adFrames',
+        `cfg=${_audioState.framesConfig} data=${_audioState.framesData} fed=${_audioState.framesFedToMux} (${(_audioState.bytesReceived/1024).toFixed(1)} KiB recv)`);
+      set('adMux', audioMux ? 'attached' : 'none');
+      set('adMs', _audioState.msState);
+      set('adAudio', audioEl
+        ? `readyState=${audioEl.readyState} paused=${audioEl.paused} muted=${audioEl.muted} vol=${audioEl.volume.toFixed(2)} err=${audioEl.error?audioEl.error.code:'no'}`
+        : 'no-element');
+      set('adPlay', _audioState.playState);
+      set('adErr', _audioState.lastError || '—');
+      set('adPrimed', _audioState.primed);
+    };
+    const _audioLog = (stage, detail)=>{
+      _audioState.lastStage = stage;
+      try { console.log('[audio]', stage, detail || ''); } catch (_e) {}
+      _refreshAudioDiag();
+    };
+    if (typeof window !== 'undefined') window.__scrcpyAudio = _audioState;
+    const refreshAudioBtn = ()=>{
+      if (!audioBtn) return;
+      const on = localStorage.getItem('audioStream') === '1';
+      audioBtn.classList.toggle('active', on);
+      // Swap icon between volume-high / volume-xmark for clarity.
+      const ic = audioBtn.querySelector('i');
+      if (ic){
+        ic.classList.remove('fa-volume-high', 'fa-volume-xmark');
+        ic.classList.add(on ? 'fa-volume-high' : 'fa-volume-xmark');
+      }
+      audioBtn.title = on
+        ? 'Audio thiết bị: ON — bấm để tắt (soft reconnect)'
+        : 'Audio thiết bị: OFF — bấm để bật streaming audio (soft reconnect)';
+    };
+    refreshAudioBtn();
+    // Capture the user-gesture activation while it is still alive in this
+    // click handler. Browsers track activation per audio element: once
+    // play() is invoked synchronously from a gesture, subsequent calls
+    // (after we attach a MediaSource) are no longer subject to the
+    // autoplay policy on this element. We also resume the AudioContext
+    // (if any) because some platforms gate <audio> playback behind it.
+    const _primeAudioUserActivation = ()=>{
+      _audioState.primed = true;
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) {
+          if (!window._scrcpyAudioCtx) window._scrcpyAudioCtx = new Ctx();
+          if (window._scrcpyAudioCtx.state === 'suspended') {
+            window._scrcpyAudioCtx.resume().catch(()=>{});
+          }
+        }
+      } catch (_e) {}
+      try {
+        // No src yet → this rejects with `NotSupportedError`, but the
+        // gesture is *consumed* against the audio element. JMuxer's later
+        // setSrc() inherits that user-activation.
+        const p = audioEl && audioEl.play();
+        if (p && typeof p.catch === 'function') p.catch(()=>{});
+      } catch (_e) {}
+      _audioLog('user-activation-primed');
+    };
+    if (audioBtn){
+      audioBtn.addEventListener('click', ()=>{
+        const cur = localStorage.getItem('audioStream') === '1';
+        const next = !cur;
+        localStorage.setItem('audioStream', next ? '1' : '0');
+        refreshAudioBtn();
+        _audioLog('toggle', { from: cur, to: next });
+        // CRITICAL: synchronously inside the click handler before any
+        // setTimeout or socket.disconnect() that would defer execution
+        // and risk losing the user-activation window.
+        _primeAudioUserActivation();
+        if (next) {
+          _socketQuery.audio = '1';
+          _audioState.enabled = true;
+          _setupAudioForCurrentSession();
+        } else {
+          delete _socketQuery.audio;
+          _audioState.enabled = false;
+          _teardownAudio();
+        }
+        // Soft reconnect — server will see new ?audio= on the next
+        // handle_connect and restart scrcpy with audio capture on/off.
+        socket.io.opts.query = { ..._socketQuery };
+        st(next ? 'Bật audio, đang reconnect...' : 'Tắt audio, đang reconnect...');
+        try { socket.disconnect(); } catch (_e) {}
+        setTimeout(()=>{ try { socket.connect(); } catch (_e) {} }, 250);
+      });
+    }
+
+    // ---- Turn-screen-off toggle ------------------------------------------
+    // Mirrors scrcpy's `--turn-screen-off` / `-S`. Persists in localStorage
+    // as 'turnScreenOff' = '1' so the choice survives reloads. Toggling
+    // updates the socket.io query and does a soft reconnect — same pattern
+    // as the audio toggle — so the server gets a fresh handle_connect with
+    // the new `?turn_screen_off=` value and re-emits the SET_DISPLAY_POWER
+    // control message (or doesn't) accordingly. No page reload, no loss of
+    // macro/clipboard state.
+    const screenOffBtn = document.getElementById('screenOffToggle');
+    const refreshScreenOffBtn = ()=>{
+      if (!screenOffBtn) return;
+      const on = localStorage.getItem('turnScreenOff') === '1';
+      screenOffBtn.classList.toggle('active', on);
+      screenOffBtn.title = on
+        ? 'Tắt màn hình thiết bị: ON — bấm để bật lại màn hình (cần reconnect). Tay vẫn điều khiển bình thường qua web.'
+        : 'Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)';
+    };
+    refreshScreenOffBtn();
+    if (screenOffBtn){
+      screenOffBtn.addEventListener('click', ()=>{
+        const cur = localStorage.getItem('turnScreenOff') === '1';
+        const next = !cur;
+        localStorage.setItem('turnScreenOff', next ? '1' : '0');
+        refreshScreenOffBtn();
+        if (next) {
+          _socketQuery.turn_screen_off = '1';
+        } else {
+          delete _socketQuery.turn_screen_off;
+        }
+        socket.io.opts.query = { ..._socketQuery };
+        st(next ? 'Tắt màn hình thiết bị, đang reconnect...' : 'Bật lại màn hình thiết bị, đang reconnect...');
+        try { socket.disconnect(); } catch (_e) {}
+        setTimeout(()=>{ try { socket.connect(); } catch (_e) {} }, 250);
+      });
+    }
+
+    // ---- Gamepad UHID toggle ---------------------------------------------
+    // Toolbar button toggles the localStorage flag and calls the input's
+    // enable/disable. No reload needed — UHID_CREATE/DESTROY are sent over
+    // the existing control socket. If `input` hasn't attached yet (waiting
+    // on screen_size from the server) we just flip the flag; attachInput
+    // re-reads `gamepadOn` from localStorage when it runs.
+    const gamepadBtn = document.getElementById('gamepadInput');
+    const refreshGamepadBtn = ()=>{
+      if (!gamepadBtn) return;
+      const on = localStorage.getItem('gamepadInput') === '1';
+      gamepadBtn.classList.toggle('active', on);
+      gamepadBtn.title = on
+        ? 'Gamepad UHID: ON — bấm để tắt. Cắm tay cầm vào PC rồi bấm 1 nút bất kỳ để Android nhận.'
+        : 'Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối.';
+    };
+    refreshGamepadBtn();
+    if (gamepadBtn){
+      gamepadBtn.addEventListener('click', ()=>{
+        const cur = localStorage.getItem('gamepadInput') === '1';
+        const next = cur ? '0' : '1';
+        localStorage.setItem('gamepadInput', next);
+        refreshGamepadBtn();
+        if (!input){
+          st(cur ? 'Gamepad UHID: OFF (sẽ áp dụng khi kết nối)' : 'Gamepad UHID: ON (sẽ áp dụng khi kết nối)');
+          return;
+        }
+        try {
+          if (next === '1') {
+            input.enableGamepadInput();
+            st('Gamepad UHID: ON. Cắm tay cầm vào PC rồi bấm 1 nút bất kỳ để Android nhận.');
+          } else {
+            input.disableGamepadInput();
+            st('Gamepad UHID: OFF.');
+          }
+        } catch (e) {
+          st('Lỗi gamepad: ' + ((e && e.message) || e));
+        }
+      });
+    }
+    // ---- Autoplay-gated playback ----------------------------------------
+    // Even with soft reconnect (no page reload), Chrome can still block
+    // `<audio>` playback when the user's MEI is low. So we ALSO ship a
+    // gate banner that anchors a "click anywhere" listener on the page
+    // — any subsequent user gesture immediately calls play() again and
+    // hides the banner on success. We track the audio element + the
+    // MediaSource state so the diagnostics panel always reflects reality.
+    const audioGate = document.getElementById('audioGate');
+    let _audioGateArmed = false;
+    const _hideAudioGate = ()=>{ if (audioGate) audioGate.hidden = true; };
+    const _showAudioGate = ()=>{
+      if (!audioGate) return;
+      audioGate.hidden = false;
+      if (_audioGateArmed) return;
+      _audioGateArmed = true;
+      const onceAnyGesture = ()=>{
+        document.removeEventListener('click', onceAnyGesture, true);
+        document.removeEventListener('keydown', onceAnyGesture, true);
+        document.removeEventListener('touchstart', onceAnyGesture, true);
+        _audioGateArmed = false;
+        _primeAudioUserActivation();
+        _tryAudioPlay();
+      };
+      document.addEventListener('click', onceAnyGesture, true);
+      document.addEventListener('keydown', onceAnyGesture, true);
+      document.addEventListener('touchstart', onceAnyGesture, true);
+    };
+    const _tryAudioPlay = ()=>{
+      if (!audioEl) return;
+      const p = audioEl.play();
+      _audioState.playState = 'pending';
+      if (p && typeof p.then === 'function'){
+        p.then(()=>{
+          _audioState.playState = 'playing';
+          _audioLog('play-success');
+          _hideAudioGate();
+          st('Audio: đang phát.');
+        }).catch((err)=>{
+          _audioState.playState = 'rejected:' + (err?.name || 'unknown');
+          _audioState.lastError = err?.message || String(err);
+          _audioLog('play-error', { name: err?.name, message: err?.message });
+          // NotAllowedError = autoplay block. AbortError = src changed
+          // mid-play; we'll retry on the next call.
+          if (err && err.name === 'NotAllowedError'){
+            _showAudioGate();
+            st('Audio: chờ click để phát (browser block autoplay).');
+          } else {
+            st('Audio play() lỗi: '+(err?.name||err));
+          }
+        });
+      }
+    };
+    const _ensureAudioMux = ()=>{
+      if (audioMux) return audioMux;
+      if (!_audioState.enabled) return null;
+      try{
+        // sampleRate 48k is scrcpy's default; channels=2 matches the AAC
+        // encoder's output. flushingTime kept tight so latency stays low.
+        audioMux = new JMuxer({ node:'audioPlayer', mode:'audio', flushingTime:0,
+          clearBuffer:true,
+          onError:(err)=>{
+            _audioState.lastError = err?.message || JSON.stringify(err);
+            _audioLog('jmuxer-error', { err: _audioState.lastError });
+            st('Audio decoder error: '+(err?.message||JSON.stringify(err)));
+          }
+        });
+        _audioLog('jmuxer-created');
+        // JMuxer sets <audio>.src to a MediaSource blob URL. Wait for the
+        // MediaSource to open (which is when the element actually has a
+        // playable source) before calling play() — calling earlier races
+        // and frequently rejects with AbortError.
+        const armPlayWhenReady = ()=>{
+          // `audioEl.readyState >= 1` (HAVE_METADATA) is a loose check;
+          // attempting play() at HAVE_NOTHING is harmless but noisier.
+          // We just retry every 250ms for up to 3s, then call once anyway.
+          let tries = 0;
+          const id = setInterval(()=>{
+            tries++;
+            _audioState.msState = audioEl && audioEl.src
+              ? ('attached/readyState=' + audioEl.readyState)
+              : 'no-src';
+            _refreshAudioDiag();
+            if (audioEl.readyState >= 2 || tries >= 12){
+              clearInterval(id);
+              _tryAudioPlay();
+            }
+          }, 250);
+        };
+        armPlayWhenReady();
+      }catch(e){
+        _audioState.lastError = e?.message || String(e);
+        _audioLog('jmuxer-create-failed', { err: _audioState.lastError });
+        st('Không tạo được audio decoder: '+(e?.message||e));
+        audioMux = null;
+      }
+      return audioMux;
+    };
+    if (audioGate){
+      audioGate.addEventListener('click', ()=>{
+        _hideAudioGate();
+        _primeAudioUserActivation();
+        _tryAudioPlay();
+      });
+    }
+    // The audio_data socket handler is installed UNCONDITIONALLY (cheap
+    // — just registers a callback) so that toggling audio on later
+    // doesn't require re-registering after socket reconnect. The
+    // parser is only created when audio is enabled.
+    const _setupAudioForCurrentSession = ()=>{
+      if (audioParserInstance) return;
+      audioParserInstance = new AudioParser({
+        onCodec: ({codec})=>{
+          _audioState.codec = codec;
+          _audioLog('codec', { codec });
+          // Server is asked for AAC explicitly (audio_codec=aac in scrcpy.py),
+          // so anything else here is a real misconfiguration worth surfacing.
+          if (codec !== 'aac'){
+            st('Audio codec '+codec+' chưa hỗ trợ trong trình duyệt.');
+          } else {
+            st('Audio: bắt đầu nhận stream AAC từ thiết bị.');
+          }
+        },
+        onFrame: ({data, isConfig})=>{
+          // Config frames carry the AudioSpecificConfig — the parser already
+          // captured it to build ADTS headers for following frames. The raw
+          // ASC bytes themselves are not playable so we drop them.
+          if (isConfig){
+            _audioState.framesConfig++;
+            _audioState.asc = {
+              profile: audioParserInstance._aacProfile,
+              freqIdx: audioParserInstance._aacFreqIdx,
+              channels: audioParserInstance._aacChannels,
+            };
+            _audioLog('config-frame', _audioState.asc);
+            return;
+          }
+          _audioState.framesData++;
+          const mux = _ensureAudioMux();
+          if (!mux) return;
+          try {
+            mux.feed({ audio: data });
+            _audioState.framesFedToMux++;
+            if (_audioState.framesFedToMux === 1) _audioLog('first-frame-fed', { len: data.length });
+            if ((_audioState.framesFedToMux % 50) === 0) _refreshAudioDiag();
+          } catch (e) {
+            _audioState.lastError = e?.message || String(e);
+            _audioLog('mux-feed-error', { err: _audioState.lastError });
+          }
+        },
+      });
+      _audioLog('parser-created');
+    };
+    const _teardownAudio = ()=>{
+      audioParserInstance = null;
+      if (audioMux){
+        try { audioMux.destroy && audioMux.destroy(); } catch (_e) {}
+        audioMux = null;
+      }
+      if (audioEl){
+        try { audioEl.pause(); audioEl.removeAttribute('src'); audioEl.load(); } catch (_e) {}
+      }
+      _audioState.framesConfig = 0;
+      _audioState.framesData = 0;
+      _audioState.framesFedToMux = 0;
+      _audioState.bytesReceived = 0;
+      _audioState.codec = null;
+      _audioState.asc = null;
+      _audioState.msState = 'none';
+      _audioState.playState = 'idle';
+      _audioLog('teardown');
+    };
+    socket.on('audio_data', (data)=>{
+      _audioState.bytesReceived += (data && data.byteLength) || 0;
+      if (!audioParserInstance) return;
+      audioParserInstance.appendData(new Uint8Array(data));
+    });
+    if (_audioState.enabled){
+      _setupAudioForCurrentSession();
+    }
+
+    // ---- Audio diagnostics panel wiring (Ctrl+Shift+A) ------------------
+    // Renders the live `_audioState` so the user can screenshot exactly
+    // what's failing without us shipping a debug build. The "Force play()"
+    // button manually retries audioEl.play(); "Reset audio" tears down
+    // everything so a stuck JMuxer / hung MediaSource can be recovered
+    // without reloading the page.
+    document.addEventListener('keydown', (e)=>{
+      // Ctrl+Shift+A or Cmd+Shift+A
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')){
+        if (!audioDiagEl) return;
+        audioDiagEl.hidden = !audioDiagEl.hidden;
+        if (!audioDiagEl.hidden) _refreshAudioDiag();
+        e.preventDefault();
+      }
+    });
+    const _adForce = document.getElementById('adForcePlay');
+    if (_adForce){
+      _adForce.addEventListener('click', ()=>{
+        _primeAudioUserActivation();
+        _tryAudioPlay();
+      });
+    }
+    const _adReset = document.getElementById('adReset');
+    if (_adReset){
+      _adReset.addEventListener('click', ()=>{
+        _teardownAudio();
+        if (_audioState.enabled) _setupAudioForCurrentSession();
+        st('Audio: đã reset trạng thái decoder.');
+      });
+    }
 
     socket.on('video_data', (data)=>{ parser.appendData(new Uint8Array(data)); });
     socket.on('connect', ()=>{

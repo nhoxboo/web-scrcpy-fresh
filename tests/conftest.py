@@ -19,16 +19,36 @@ def _install_fake_scrcpy():
     class Scrcpy:  # noqa: D401 - test stub
         """No-op replacement for the real Scrcpy class."""
 
-        def __init__(self, serial=None, display_id=None, max_size=None, new_display=None):
+        def __init__(
+            self,
+            serial=None,
+            display_id=None,
+            max_size=None,
+            new_display=None,
+            enable_audio=False,
+            audio_codec='aac',
+            turn_screen_off=False,
+        ):
             self.started = False
             self.stopped = False
             self.serial = serial
             self.display_id = display_id
             self.max_size = max_size
             self.new_display = new_display
+            self.enable_audio = bool(enable_audio)
+            self.audio_codec = audio_codec
+            self.turn_screen_off = bool(turn_screen_off)
+            self.audio_callback = None
 
-        def scrcpy_start(self, video_callback, video_bit_rate, max_fps=None):  # noqa: ARG002
+        def scrcpy_start(
+            self,
+            video_callback,
+            video_bit_rate,
+            max_fps=None,
+            audio_callback=None,
+        ):  # noqa: ARG002
             self.started = True
+            self.audio_callback = audio_callback
 
         def scrcpy_stop(self):
             self.stopped = True
