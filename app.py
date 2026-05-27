@@ -57,6 +57,7 @@ log = logging.getLogger('web-scrcpy')
 BASE_DIR = os.path.dirname(__file__)
 AUTH_FILE = os.path.join(BASE_DIR, 'auth.json')
 SECRET_FILE = os.path.join(BASE_DIR, 'secret.key')
+SAVED_WIFI_DEVICES_FILE = os.path.join(BASE_DIR, 'saved_wifi_devices.json')
 
 DEFAULT_USERNAME = 'admin'
 DEFAULT_PASSWORD = 'admin123'
@@ -430,6 +431,75 @@ def _security_headers(response):
         "font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
     )
     return response
+
+
+# --- routes ----------------------------------------------------------------------
+
+# --- saved WiFi devices management -----------------------------------------------
+import uuid
+from datetime import datetime
+
+def _load_saved_wifi_devices() -> dict:
+    """Load saved WiFi devices from JSON file."""
+    try:
+        if os.path.exists(SAVED_WIFI_DEVICES_FILE):
+            with open(SAVED_WIFI_DEVICES_FILE, 'r') as f:
+                return json.load(f) or {}
+    except (OSError, json.JSONDecodeError) as e:
+        log.warning('Failed to load saved WiFi devices: %s', e)
+    return {}
+
+def _save_wifi_devices(devices: dict) -> bool:
+    """Save WiFi devices to JSON file."""
+    try:
+        with open(SAVED_WIFI_DEVICES_FILE, 'w') as f:
+            json.dump(devices, f, indent=2)
+        return True
+    except OSError as e:
+        log.warning('Failed to save WiFi devices: %s', e)
+        return False
+
+def _add_saved_wifi_device(host: str, port: int, name: str = '') -> dict:
+    """Add a new saved WiFi device, return the device dict."""
+    devices = _load_saved_wifi_devices()
+    device_id = str(uuid.uuid4()).replace('-', '')  # Full UUID without dashes (32 hex chars)
+    target = f'{host}:{port}'
+    device = {
+        'id': device_id,
+        'host': host,
+        'port': port,
+        'target': target,
+        'name': name or target,
+        'created_at': datetime.now().isoformat(),
+        'last_used': datetime.now().isoformat(),
+    }
+    devices[device_id] = device
+    _save_wifi_devices(devices)
+    _audit('saved_wifi_device_added', host=host, port=port, id=device_id)
+    return device
+
+def _get_saved_wifi_devices() -> list[dict]:
+    """Get list of all saved WiFi devices, sorted by creation date (newest first)."""
+    devices = _load_saved_wifi_devices()
+    # Use a reasonable default for missing timestamps to ensure consistent ordering
+    return sorted(devices.values(), key=lambda d: d.get('created_at', '0000-01-01T00:00:00'), reverse=True)
+
+def _delete_saved_wifi_device(device_id: str) -> bool:
+    """Delete a saved WiFi device."""
+    devices = _load_saved_wifi_devices()
+    if device_id in devices:
+        devices.pop(device_id)
+        _save_wifi_devices(devices)
+        _audit('saved_wifi_device_deleted', id=device_id)
+        return True
+    return False
+
+def _update_last_used(device_id: str) -> None:
+    """Update the last_used timestamp for a device."""
+    devices = _load_saved_wifi_devices()
+    if device_id in devices:
+        devices[device_id]['last_used'] = datetime.now().isoformat()
+        _save_wifi_devices(devices)
 
 
 # --- routes ----------------------------------------------------------------------
@@ -978,6 +1048,9 @@ def api_adb_pair():
     host = (request.form.get('host') or '').strip()
     port = (request.form.get('port') or '').strip()
     code = (request.form.get('code') or '').strip()
+    save_device = request.form.get('save_device') in ('true', '1', 'on', True)
+    device_name = (request.form.get('device_name') or '').strip()
+    
     if not is_valid_host(host) or not is_valid_port(port):
         return jsonify(ok=False, error='Host hoặc port không hợp lệ.'), 400
     if not code.isdigit() or not (4 <= len(code) <= 8):
@@ -985,7 +1058,10 @@ def api_adb_pair():
     ok, output = adb_pair(host, port, code)
     _audit('adb_pair', host=host, port=port, ok=ok)
     if ok:
-        return jsonify(ok=True, output=output)
+        saved_device = None
+        if save_device:
+            saved_device = _add_saved_wifi_device(host, int(port), device_name)
+        return jsonify(ok=True, output=output, saved_device=saved_device)
     return jsonify(ok=False, error=output or 'adb pair failed'), 500
 
 
@@ -994,12 +1070,23 @@ def api_adb_pair():
 def api_adb_connect():
     host = (request.form.get('host') or '').strip()
     port = (request.form.get('port') or '').strip()
+    device_id = (request.form.get('device_id') or '').strip()
+    save_device = request.form.get('save_device') in ('true', '1', 'on', True)
+    device_name = (request.form.get('device_name') or '').strip()
+    
     if not is_valid_host(host) or not is_valid_port(port):
         return jsonify(ok=False, error='Host hoặc port không hợp lệ.'), 400
     ok, output = adb_connect(host, port)
     _audit('adb_connect', host=host, port=port, ok=ok)
     if ok:
-        return jsonify(ok=True, output=output)
+        saved_device = None
+        # Update last_used if device_id provided
+        if device_id:
+            _update_last_used(device_id)
+        # Save device if requested
+        if save_device:
+            saved_device = _add_saved_wifi_device(host, int(port), device_name)
+        return jsonify(ok=True, output=output, saved_device=saved_device)
     return jsonify(ok=False, error=output or 'adb connect failed'), 500
 
 
@@ -1017,6 +1104,39 @@ def api_adb_disconnect():
     if ok:
         return jsonify(ok=True, output=output)
     return jsonify(ok=False, error=output or 'adb disconnect failed'), 500
+
+
+# ---- Saved WiFi devices management -------------------------------------------
+@app.route('/api/saved-wifi-devices', methods=['GET'])
+@login_required
+def api_get_saved_wifi_devices():
+    """Get list of all saved WiFi devices."""
+    devices = _get_saved_wifi_devices()
+    return jsonify(ok=True, devices=devices)
+
+
+@app.route('/api/saved-wifi-devices', methods=['POST'])
+@login_required
+def api_save_wifi_device():
+    """Save a new WiFi device."""
+    host = (request.form.get('host') or '').strip()
+    port = (request.form.get('port') or '').strip()
+    name = (request.form.get('name') or '').strip()
+    
+    if not is_valid_host(host) or not is_valid_port(port):
+        return jsonify(ok=False, error='Host hoặc port không hợp lệ.'), 400
+    
+    device = _add_saved_wifi_device(host, int(port), name)
+    return jsonify(ok=True, device=device)
+
+
+@app.route('/api/saved-wifi-devices/<device_id>', methods=['DELETE'])
+@login_required
+def api_delete_saved_wifi_device(device_id: str):
+    """Delete a saved WiFi device."""
+    if _delete_saved_wifi_device(device_id):
+        return jsonify(ok=True, message='Thiết bị đã được xóa.')
+    return jsonify(ok=False, error='Không tìm thấy thiết bị.'), 404
 
 
 # ---- wm size / wm density (resolution & DPI override) ----------------------
