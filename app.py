@@ -1660,7 +1660,10 @@ def _adb_keepalive_loop() -> None:
                         connected_wireless.append(serial)
                     elif state == 'offline':
                         # Offline wireless devices are disconnected and reconnected to recover
-                        log.info('Wireless device %s is offline. Attempting disconnect and reconnect...', serial)
+                        log.info(
+                            'Wireless device %s is offline. Attempting disconnect and reconnect...',
+                            serial,
+                        )
                         parts = serial.split(':', 1)
                         if len(parts) == 2:
                             h, p = parts[0], parts[1]
@@ -1679,7 +1682,7 @@ def _adb_keepalive_loop() -> None:
 
             # 3. For any saved WiFi device, if it is disconnected, try to auto-reconnect
             saved_devices = _load_saved_wifi_devices()
-            for dev_id, dev in saved_devices.items():
+            for _dev_id, dev in saved_devices.items():
                 host = dev.get('host')
                 port = dev.get('port')
                 target = dev.get('target') or f'{host}:{port}'
@@ -1692,7 +1695,10 @@ def _adb_keepalive_loop() -> None:
                         break
 
                 if not is_connected:
-                    log.debug('Saved wireless device %s is disconnected. Attempting auto-reconnect...', target)
+                    log.debug(
+                        'Saved wireless device %s is disconnected. Attempting auto-reconnect...',
+                        target,
+                    )
                     ok, out = adb_connect(host, port, timeout=3.0)
                     if ok:
                         log.info('Auto-reconnected to %s successfully: %s', target, out.strip())
@@ -1707,6 +1713,7 @@ def _adb_keepalive_loop() -> None:
 
 def start_adb_keepalive() -> None:
     import sys
+
     # Disable keep-alive loop under tests to avoid side-effects and thread leaks
     is_testing = (
         'pytest' in sys.modules
@@ -1714,9 +1721,16 @@ def start_adb_keepalive() -> None:
         or os.environ.get('PYTEST_CURRENT_TEST') is not None
         or os.environ.get('TESTING') == '1'
     )
-    disable_env = os.environ.get('DISABLE_ADB_KEEPALIVE', '').strip().lower() in ('1', 'true', 'yes', 'on')
+    disable_env = os.environ.get('DISABLE_ADB_KEEPALIVE', '').strip().lower() in (
+        '1',
+        'true',
+        'yes',
+        'on',
+    )
     if is_testing or disable_env:
-        log.info('ADB keep-alive loop is disabled (testing=%s, disable_env=%s)', is_testing, disable_env)
+        log.info(
+            'ADB keep-alive loop is disabled (testing=%s, disable_env=%s)', is_testing, disable_env
+        )
         return
     t = threading.Thread(target=_adb_keepalive_loop, daemon=True, name='adb-keepalive')
     t.start()
