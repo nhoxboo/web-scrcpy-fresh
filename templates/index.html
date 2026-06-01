@@ -94,10 +94,10 @@
        drop target), which steals mousemove events and makes touch-mode
        drag feel sluggish. user-select:none also stops the browser from
        starting a text selection that flashes on the page. */
-    video{max-width:none;max-height:none;object-fit:contain;border-radius:20px;background:#000;touch-action:none;display:block;border:1px solid #1f2937;image-rendering:auto;image-rendering:-webkit-optimize-contrast;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
+    video, canvas#playerCanvas {max-width:none;max-height:none;object-fit:contain;border-radius:20px;background:#000;touch-action:none;display:block;border:1px solid #1f2937;image-rendering:auto;image-rendering:-webkit-optimize-contrast;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
     .phone-shell{user-select:none;-webkit-user-select:none}
     /* In fullscreen, let the video fill the screen instead of keeping the shrunk inline size. */
-    video:fullscreen,video:-webkit-full-screen{width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;border-radius:0;border:0;background:#000;object-fit:contain}
+    video:fullscreen,video:-webkit-full-screen,canvas#playerCanvas:fullscreen,canvas#playerCanvas:-webkit-full-screen{width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;border-radius:0;border:0;background:#000;object-fit:contain}
     .phone-shell:fullscreen,.phone-shell:-webkit-full-screen{width:100vw!important;height:100vh!important;padding:0;border:0;border-radius:0;background:#000}
     .phone-shell:fullscreen::before,.phone-shell:fullscreen::after,.phone-shell:-webkit-full-screen::before,.phone-shell:-webkit-full-screen::after{display:none}
     /* Landscape (post-rotation): drop the portrait-only notch + camera dot,
@@ -381,10 +381,17 @@
     <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
     <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
     <button class="tool" id="vdesktopMode" title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
-    <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:6px;padding:0 8px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:38px;">
+    <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:6px;padding:0 8px;border-left:1px solid var(--line);height:38px;">
       <i class="fa-solid fa-tv" style="color:#dbe1f3;font-size:0.9rem;"></i>
       <select id="displaySelect">
         <option value="0">Display 0 (Mặc định)</option>
+      </select>
+    </div>
+    <div class="tool-select-wrap" title="Chọn bộ giải mã video" style="display:flex;align-items:center;gap:6px;padding:0 8px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:38px;">
+      <i class="fa-solid fa-code" style="color:#dbe1f3;font-size:0.9rem;"></i>
+      <select id="decoderSelect">
+        <option value="mse">MSE (Mặc định)</option>
+        <option value="webcodecs">WebCodecs (Trễ thấp)</option>
       </select>
     </div>
     <button class="tool" id="quickCtl" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
@@ -415,6 +422,7 @@
     <div class="phone-mockup" id="phoneMockup">
       <div class="phone-shell" id="phoneShell">
         <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
+        <canvas id="playerCanvas" style="display:none;"></canvas>
         <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
         <!-- Physical side keys (right edge of the phone frame). All three call
              /api/adb/sendevent → raw kernel input, so they work for both
@@ -692,9 +700,14 @@
       // width/height while preserving the stream's aspect ratio. Without this,
       // a stale buffered frame in a different aspect (right after a rotation)
       // can briefly distort the video before the new stream takes over.
-      videoElement.style.objectFit = 'contain';
-      videoElement.style.width = `${w}px`;
-      videoElement.style.height = `${h}px`;
+      const activePlayer = useWebCodecs ? canvasElement : videoElement;
+      activePlayer.style.objectFit = 'contain';
+      activePlayer.style.width = `${w}px`;
+      activePlayer.style.height = `${h}px`;
+
+      const hiddenPlayer = useWebCodecs ? videoElement : canvasElement;
+      hiddenPlayer.style.width = '0px';
+      hiddenPlayer.style.height = '0px';
       const landscape = deviceW > deviceH;
       const shellExtraW = landscape ? 16 : 20; // tighter horizontal frame in landscape
       const shellExtraH = landscape ? 16 : 32; // hide notch space in landscape
@@ -722,8 +735,99 @@
       zoom = Math.max(0.3, Math.min(2.0, nextZoom));
       fitVideoToViewport();
     }
+    const hasWebCodecs = typeof window.VideoDecoder !== 'undefined';
+    let useWebCodecs = localStorage.getItem('decoderMode') === 'webcodecs';
+    if (useWebCodecs && !hasWebCodecs) {
+      useWebCodecs = false;
+      localStorage.setItem('decoderMode', 'mse');
+    }
+
+    let videoDecoder = null;
+    const canvasElement = document.getElementById('playerCanvas');
+    const canvasCtx = canvasElement ? canvasElement.getContext('2d') : null;
+
+    function getCodecStringFromSps(sps) {
+      let offset = 0;
+      if (sps[0] === 0 && sps[1] === 0 && sps[2] === 0 && sps[3] === 1) {
+        offset = 4;
+      } else if (sps[0] === 0 && sps[1] === 0 && sps[2] === 1) {
+        offset = 3;
+      }
+      if (sps.length < offset + 4) {
+        return 'avc1.64002a';
+      }
+      const profile_idc = sps[offset + 1];
+      const constraint_flags = sps[offset + 2];
+      const level_idc = sps[offset + 3];
+      const toHex = (x) => {
+        const hex = x.toString(16);
+        return hex.length === 1 ? '0' + hex : hex;
+      };
+      const codec = `avc1.${toHex(profile_idc)}${toHex(constraint_flags)}${toHex(level_idc)}`;
+      console.log('WebCodecs codec generated:', codec);
+      return codec;
+    }
+
+    function initWebCodecsDecoder(codecString) {
+      if (videoDecoder) {
+        try { videoDecoder.close(); } catch(e) {}
+        videoDecoder = null;
+      }
+      
+      const config = {
+        codec: codecString || 'avc1.64002a',
+        avc: { format: 'annexb' },
+        optimizeForLatency: true
+      };
+      
+      videoDecoder = new VideoDecoder({
+        output: (frame) => {
+          if (canvasElement.width !== frame.displayWidth || canvasElement.height !== frame.displayHeight) {
+            canvasElement.width = frame.displayWidth;
+            canvasElement.height = frame.displayHeight;
+            scheduleRefit();
+          }
+          canvasCtx.drawImage(frame, 0, 0, canvasElement.width, canvasElement.height);
+          frame.close();
+        },
+        error: (err) => {
+          console.error('WebCodecs Decoder Error:', err);
+          st('Lỗi bộ giải mã WebCodecs: ' + err.message);
+        }
+      });
+      
+      videoDecoder.configure(config);
+    }
+
+    function feedWebCodecs(naluData, type) {
+      if (!videoDecoder || videoDecoder.state !== 'configured') return;
+      try {
+        const chunk = new EncodedVideoChunk({
+          type: type === 'key' ? 'key' : 'delta',
+          timestamp: (performance.now() * 1000) | 0,
+          data: naluData
+        });
+        videoDecoder.decode(chunk);
+      } catch (err) {
+        console.error('WebCodecs decode error:', err);
+      }
+    }
+
     let jmuxer = null;
     function createJmuxer(){
+      if (useWebCodecs) {
+        if (videoDecoder) {
+          try { videoDecoder.close(); } catch(e) {}
+          videoDecoder = null;
+        }
+        videoElement.style.display = 'none';
+        canvasElement.style.display = 'block';
+        return;
+      } else {
+        videoElement.style.display = 'block';
+        canvasElement.style.display = 'none';
+      }
+
       if (jmuxer){
         try{ jmuxer.destroy(); }catch(_e){}
         jmuxer = null;
@@ -1443,6 +1547,8 @@
         try { socket.disconnect(); } catch {}
         try { if (jmuxer) { jmuxer.destroy(); } } catch {}
         jmuxer = null;
+        try { if (videoDecoder) { videoDecoder.close(); } } catch {}
+        videoDecoder = null;
         try {
           videoElement.pause();
           videoElement.removeAttribute('src');
@@ -1487,17 +1593,18 @@
       };
 
       const takeScreenshot = () => {
-        // videoWidth/Height are 0 until the first SPS is decoded.
-        if (!videoElement.videoWidth || !videoElement.videoHeight) {
+        const widthVal = useWebCodecs ? canvasElement.width : videoElement.videoWidth;
+        const heightVal = useWebCodecs ? canvasElement.height : videoElement.videoHeight;
+        if (!widthVal || !heightVal) {
           st('Chưa có stream để chụp');
           return;
         }
         try {
           const canvas = document.createElement('canvas');
-          canvas.width = videoElement.videoWidth;
-          canvas.height = videoElement.videoHeight;
+          canvas.width = widthVal;
+          canvas.height = heightVal;
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+          ctx.drawImage(useWebCodecs ? canvasElement : videoElement, 0, 0, canvas.width, canvas.height);
           canvas.toBlob((blob)=>{
             if (!blob) { st('Lỗi tạo ảnh'); return; }
             downloadBlob(blob, tsFilename('png'));
@@ -1542,19 +1649,18 @@
       };
 
       const startRecording = () => {
-        if (!videoElement.videoWidth) { st('Chưa có stream để ghi'); return; }
+        const widthVal = useWebCodecs ? canvasElement.width : videoElement.videoWidth;
+        if (!widthVal) { st('Chưa có stream để ghi'); return; }
         if (typeof MediaRecorder === 'undefined') {
           st('Trình duyệt không hỗ trợ MediaRecorder');
           return;
         }
         let stream;
         try {
-          // captureStream() pulls frames from the <video> at its native
-          // playback rate. Pass an FPS argument to throttle on weak
-          // browsers; default (no arg) follows playback.
-          stream = videoElement.captureStream
-            ? videoElement.captureStream()
-            : (videoElement.mozCaptureStream && videoElement.mozCaptureStream());
+          const streamSource = useWebCodecs ? canvasElement : videoElement;
+          stream = streamSource.captureStream
+            ? streamSource.captureStream()
+            : (streamSource.mozCaptureStream && streamSource.mozCaptureStream());
         } catch (e) {
           st('captureStream lỗi: '+(e?.message||e));
           return;
@@ -1961,10 +2067,21 @@
 
     const parser = new VideoParser(({ type, data }) => {
       if (type === 'nalu') {
-        jmuxer.feed({ video: data });
+        if (useWebCodecs) {
+          feedWebCodecs(data, 'delta');
+        } else {
+          jmuxer.feed({ video: data });
+        }
       } else if (type === 'init') {
-        jmuxer.feed({ video: data['sps'] });
-        jmuxer.feed({ video: data['pps'] });
+        if (useWebCodecs) {
+          const codecStr = getCodecStringFromSps(data['sps']);
+          initWebCodecsDecoder(codecStr);
+          feedWebCodecs(data['sps'], 'key');
+          feedWebCodecs(data['pps'], 'key');
+        } else {
+          jmuxer.feed({ video: data['sps'] });
+          jmuxer.feed({ video: data['pps'] });
+        }
       } else if (type === 'screen_size') {
         deviceW = data['width'];
         deviceH = data['height'];
@@ -2286,6 +2403,46 @@
       });
     }
 
+    // ---- Gamepad UHID toggle ---------------------------------------------
+    // Toolbar button toggles the localStorage flag and calls the input's
+    // enable/disable. No reload needed — UHID_CREATE/DESTROY are sent over
+    // the existing control socket. If `input` hasn't attached yet (waiting
+    // on screen_size from the server) we just flip the flag; attachInput
+    // re-reads `gamepadOn` from localStorage when it runs.
+    const gamepadBtn = document.getElementById('gamepadInput');
+    const refreshGamepadBtn = ()=>{
+      if (!gamepadBtn) return;
+      const on = localStorage.getItem('gamepadInput') === '1';
+      gamepadBtn.classList.toggle('active', on);
+      gamepadBtn.title = on
+        ? 'Gamepad UHID: ON — bấm để tắt. Cắm tay cầm vào PC rồi bấm 1 nút bất kỳ để Android nhận.'
+        : 'Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối.';
+    };
+    refreshGamepadBtn();
+    if (gamepadBtn){
+      gamepadBtn.addEventListener('click', ()=>{
+        const cur = localStorage.getItem('gamepadInput') === '1';
+        const next = cur ? '0' : '1';
+        localStorage.setItem('gamepadInput', next);
+        refreshGamepadBtn();
+        if (!input){
+          st(cur ? 'Gamepad UHID: OFF (sẽ áp dụng khi kết nối)' : 'Gamepad UHID: ON (sẽ áp dụng khi kết nối)');
+          return;
+        }
+        try {
+          if (next === '1') {
+            input.enableGamepadInput();
+            st('Gamepad UHID: ON. Cắm tay cầm vào PC rồi bấm 1 nút bất kỳ để Android nhận.');
+          } else {
+            input.disableGamepadInput();
+            st('Gamepad UHID: OFF.');
+          }
+        } catch (e) {
+          st('Lỗi gamepad: ' + ((e && e.message) || e));
+        }
+      });
+    }
+
     // ---- Display Selection ------------------------------------------------
     const displaySelect = document.getElementById('displaySelect');
     if (displaySelect) {
@@ -2332,42 +2489,21 @@
       });
     }
 
-    // ---- Gamepad UHID toggle ---------------------------------------------
-    // Toolbar button toggles the localStorage flag and calls the input's
-    // enable/disable. No reload needed — UHID_CREATE/DESTROY are sent over
-    // the existing control socket. If `input` hasn't attached yet (waiting
-    // on screen_size from the server) we just flip the flag; attachInput
-    // re-reads `gamepadOn` from localStorage when it runs.
-    const gamepadBtn = document.getElementById('gamepadInput');
-    const refreshGamepadBtn = ()=>{
-      if (!gamepadBtn) return;
-      const on = localStorage.getItem('gamepadInput') === '1';
-      gamepadBtn.classList.toggle('active', on);
-      gamepadBtn.title = on
-        ? 'Gamepad UHID: ON — bấm để tắt. Cắm tay cầm vào PC rồi bấm 1 nút bất kỳ để Android nhận.'
-        : 'Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối.';
-    };
-    refreshGamepadBtn();
-    if (gamepadBtn){
-      gamepadBtn.addEventListener('click', ()=>{
-        const cur = localStorage.getItem('gamepadInput') === '1';
-        const next = cur ? '0' : '1';
-        localStorage.setItem('gamepadInput', next);
-        refreshGamepadBtn();
-        if (!input){
-          st(cur ? 'Gamepad UHID: OFF (sẽ áp dụng khi kết nối)' : 'Gamepad UHID: ON (sẽ áp dụng khi kết nối)');
-          return;
-        }
-        try {
-          if (next === '1') {
-            input.enableGamepadInput();
-            st('Gamepad UHID: ON. Cắm tay cầm vào PC rồi bấm 1 nút bất kỳ để Android nhận.');
-          } else {
-            input.disableGamepadInput();
-            st('Gamepad UHID: OFF.');
-          }
-        } catch (e) {
-          st('Lỗi gamepad: ' + ((e && e.message) || e));
+    // ---- Decoder Selection ------------------------------------------------
+    const decoderSelect = document.getElementById('decoderSelect');
+    if (decoderSelect) {
+      if (!hasWebCodecs) {
+        const opt = decoderSelect.querySelector('option[value="webcodecs"]');
+        if (opt) opt.disabled = true;
+      }
+      decoderSelect.value = useWebCodecs ? 'webcodecs' : 'mse';
+      decoderSelect.addEventListener('change', () => {
+        const selected = decoderSelect.value;
+        const current = localStorage.getItem('decoderMode') || 'mse';
+        if (selected !== current) {
+          localStorage.setItem('decoderMode', selected);
+          st('Đang chuyển đổi bộ giải mã, tải lại trang...');
+          setTimeout(() => location.reload(), 250);
         }
       });
     }

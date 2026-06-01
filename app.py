@@ -124,7 +124,7 @@ message_queue = queue.Queue()
 audio_message_queue = queue.Queue()
 video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '10000000')
 max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
-max_size = os.environ.get('SCRCPY_MAX_SIZE', '1920').strip() or '1920'
+max_size = os.environ.get('SCRCPY_MAX_SIZE', '1080').strip() or '1080'
 adb_serial = os.environ.get('ADB_SERIAL', '').strip() or None
 display_id = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
 # Mirrors scrcpy's `--turn-screen-off` / `-S`: when truthy we ask the device

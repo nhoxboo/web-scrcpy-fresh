@@ -357,7 +357,7 @@ LOCAL_PORT = int(os.environ.get('SCRCPY_LOCAL_PORT', '5555'))
 #     at the same bitrate. Set SCRCPY_MAX_SIZE=0 to opt back into native res.
 DEFAULT_VIDEO_BIT_RATE = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '10000000')
 DEFAULT_MAX_FPS = os.environ.get('SCRCPY_MAX_FPS', '60')
-DEFAULT_MAX_SIZE = os.environ.get('SCRCPY_MAX_SIZE', '1920').strip() or '1920'
+DEFAULT_MAX_SIZE = os.environ.get('SCRCPY_MAX_SIZE', '1080').strip() or '1080'
 DEFAULT_ADB_SERIAL = os.environ.get('ADB_SERIAL', '').strip() or None
 DEFAULT_DISPLAY_ID = os.environ.get('SCRCPY_DISPLAY_ID', '0').strip() or '0'
 # Mirror of scrcpy v3.3.x ControlMessage.TYPE_SET_DISPLAY_POWER. Sent over the
