@@ -26,6 +26,9 @@ def _resolve_adb_path() -> str:
     fallback_candidates = [
         os.path.join(base_dir, '..', 'platform-tools', 'adb.exe'),
         os.path.join(base_dir, '..', 'platform-tools', 'adb'),
+        os.path.expanduser('~/Downloads/platform-tools-latest-windows/platform-tools/adb.exe'),
+        os.path.expanduser('~/Downloads/scrcpy-win64-v3.3.1/scrcpy-win64-v3.3.1/adb.exe'),
+        os.path.expanduser('~/AppData/Local/Android/Sdk/platform-tools/adb.exe'),
     ]
     for fb in fallback_candidates:
         fb_norm = os.path.normpath(fb)

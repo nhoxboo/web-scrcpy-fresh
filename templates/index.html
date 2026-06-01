@@ -61,6 +61,18 @@
       background:linear-gradient(135deg,rgba(106,166,255,.35),rgba(192,132,252,.35));
       box-shadow:0 8px 24px rgba(192,132,252,.25),inset 0 1px 0 rgba(255,255,255,.25);
     }
+    .tool-select-wrap select{
+      background:rgba(255,255,255,.04);color:#dbe1f3;border:1px solid var(--line);
+      border-radius:8px;padding:4px 8px;font:inherit;font-size:.8rem;
+      outline:none;cursor:pointer;height:28px;
+      transition:border-color .2s var(--easing),background .2s var(--easing);
+    }
+    .tool-select-wrap select:hover{
+      border-color:var(--line-strong);background:rgba(255,255,255,.08);
+    }
+    .tool-select-wrap select option{
+      background:#0f172a;color:#e2e8f0;
+    }
     .video-wrap{flex:1 1 auto;min-height:0;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;padding:14px;overflow:hidden;touch-action:none}
     .phone-shell{
       position:relative;display:flex;align-items:center;justify-content:center;
@@ -369,6 +381,12 @@
     <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
     <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
     <button class="tool" id="vdesktopMode" title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
+    <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:6px;padding:0 8px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:38px;">
+      <i class="fa-solid fa-tv" style="color:#dbe1f3;font-size:0.9rem;"></i>
+      <select id="displaySelect">
+        <option value="0">Display 0 (Mặc định)</option>
+      </select>
+    </div>
     <button class="tool" id="quickCtl" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
     <button class="tool" id="uhidInput" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
     <div class="uhid-speed" id="uhidSpeedBox" title="Tốc độ chuột UHID — kéo để chỉnh, không cần reload">
@@ -800,6 +818,8 @@
     const _socketQuery = vdesktopOn ? { new_display: vdesktopSpec } : {};
     if (audioOn) _socketQuery.audio = '1';
     if (turnScreenOffOn) _socketQuery.turn_screen_off = '1';
+    const displayIdSaved = localStorage.getItem('scrcpyDisplayId') || '0';
+    if (displayIdSaved !== '0') _socketQuery.display_id = displayIdSaved;
     // Only send non-default values so the server log stays clean and we
     // don't accidentally pin a value the user never explicitly chose.
     if (_initMbps !== 8) _socketQuery.video_bit_rate = String(_initMbps * 1_000_000);
@@ -2263,6 +2283,52 @@
         st(next ? 'Tắt màn hình thiết bị, đang reconnect...' : 'Bật lại màn hình thiết bị, đang reconnect...');
         try { socket.disconnect(); } catch (_e) {}
         setTimeout(()=>{ try { socket.connect(); } catch (_e) {} }, 250);
+      });
+    }
+
+    // ---- Display Selection ------------------------------------------------
+    const displaySelect = document.getElementById('displaySelect');
+    if (displaySelect) {
+      const savedDisplayId = localStorage.getItem('scrcpyDisplayId') || '0';
+      displaySelect.value = savedDisplayId;
+
+      async function loadDisplays() {
+        try {
+          const response = await fetch('/api/adb/displays');
+          const data = await response.json();
+          if (data.ok && data.displays) {
+            displaySelect.innerHTML = '';
+            data.displays.forEach(d => {
+              const opt = document.createElement('option');
+              opt.value = String(d.id);
+              opt.textContent = d.name + (d.info ? ` (${d.info})` : '');
+              displaySelect.appendChild(opt);
+            });
+            displaySelect.value = localStorage.getItem('scrcpyDisplayId') || '0';
+          }
+        } catch (err) {
+          console.error('Không thể lấy danh sách displays:', err);
+        }
+      }
+
+      loadDisplays();
+
+      displaySelect.addEventListener('change', () => {
+        const selectedId = displaySelect.value;
+        const currentId = localStorage.getItem('scrcpyDisplayId') || '0';
+        if (selectedId !== currentId) {
+          localStorage.setItem('scrcpyDisplayId', selectedId);
+          if (selectedId === '0') {
+            delete _socketQuery.display_id;
+          } else {
+            _socketQuery.display_id = selectedId;
+          }
+
+          socket.io.opts.query = { ..._socketQuery };
+          st(`Chuyển sang màn hình ${selectedId}, đang reconnect...`);
+          try { socket.disconnect(); } catch (_e) {}
+          setTimeout(() => { try { socket.connect(); } catch (_e) {} }, 250);
+        }
       });
     }
 

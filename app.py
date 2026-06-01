@@ -1285,6 +1285,77 @@ def _parse_wm_density(out: str) -> dict:
     return result
 
 
+def parse_displays(output: str) -> list[dict]:
+    import re
+    displays = []
+    found_ids = set()
+    current_id = None
+    
+    for line in (output or '').splitlines():
+        line_stripped = line.strip()
+        
+        m_id = re.search(r'(?:Display\s+#|mDisplayId=|displayId=)(\d+)', line_stripped, re.IGNORECASE)
+        if m_id:
+            current_id = int(m_id.group(1))
+            if current_id not in found_ids:
+                found_ids.add(current_id)
+                displays.append({
+                    'id': current_id,
+                    'name': f'Display {current_id}',
+                    'info': ''
+                })
+        
+        if current_id is not None:
+            display_entry = next((d for d in displays if d['id'] == current_id), None)
+            if display_entry:
+                m_name = re.search(r'(?:DisplayInfo|DisplayDeviceInfo)\{"([^"]+)"', line_stripped)
+                if m_name:
+                    display_entry['name'] = f"Display {current_id} ({m_name.group(1)})"
+                
+                m_res = re.search(r'real\s+(\d+\s*x\s*\d+)', line_stripped)
+                if m_res:
+                    res_str = m_res.group(1).replace(' ', '')
+                    display_entry['info'] = res_str
+                else:
+                    m_res_generic = re.search(r'(\d+)\s*x\s*(\d+)', line_stripped)
+                    if m_res_generic and not display_entry['info']:
+                        display_entry['info'] = f"{m_res_generic.group(1)}x{m_res_generic.group(2)}"
+                        
+    if not displays:
+        for m in re.finditer(r'mDisplayId=(\d+)', output or ''):
+            d_id = int(m.group(1))
+            if d_id not in found_ids:
+                found_ids.add(d_id)
+                displays.append({
+                    'id': d_id,
+                    'name': f'Display {d_id}',
+                    'info': ''
+                })
+                
+    displays.sort(key=lambda x: x['id'])
+    
+    if not displays:
+        displays.append({
+            'id': 0,
+            'name': 'Display 0 (Mặc định)',
+            'info': ''
+        })
+        
+    return displays
+
+
+@app.route('/api/adb/displays', methods=['GET'])
+@login_required
+def api_adb_displays():
+    serial = _selected_serial()
+    ok, out = adb_shell(['dumpsys', 'window', 'displays'], serial=serial)
+    if not ok:
+        ok, out = adb_shell(['dumpsys', 'display'], serial=serial)
+    
+    displays = parse_displays(out if ok else '')
+    return jsonify(ok=True, displays=displays)
+
+
 # ---- Free-form `adb shell` exec --------------------------------------------
 #
 # The authenticated owner of the deployment already has direct ADB access to
