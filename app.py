@@ -1640,6 +1640,92 @@ def handle_client_ping(data):
     socketio.emit('server_pong', {'t': token}, to=request.sid)
 
 
+# --- ADB wireless keep-alive & auto-reconnect ---------------------------------
+def _adb_keepalive_loop() -> None:
+    """Background loop to prevent ADB Wi-Fi connection timeouts and auto-reconnect saved devices."""
+    interval = int(os.environ.get('ADB_KEEPALIVE_INTERVAL', '30'))
+    log.info('ADB wireless keep-alive thread started. Interval: %d seconds.', interval)
+    while True:
+        try:
+            # 1. Get list of currently connected adb devices
+            devices = list_adb_devices()
+
+            # Identify connected wireless devices (serial contains ':')
+            connected_wireless = []
+            for d in devices:
+                serial = d.get('serial', '')
+                state = d.get('state', '')
+                if ':' in serial:
+                    if state == 'device':
+                        connected_wireless.append(serial)
+                    elif state == 'offline':
+                        # Offline wireless devices are disconnected and reconnected to recover
+                        log.info('Wireless device %s is offline. Attempting disconnect and reconnect...', serial)
+                        parts = serial.split(':', 1)
+                        if len(parts) == 2:
+                            h, p = parts[0], parts[1]
+                            adb_disconnect(h, p)
+                            time.sleep(1.0)
+                            adb_connect(h, p, timeout=3.0)
+
+            # 2. Send a keep-alive ping command to each online wireless device
+            for serial in connected_wireless:
+                # Run a lightweight shell command to keep connection active and prevent Wi-Fi sleep
+                ok, _ = adb_shell(['true'], serial=serial, timeout=2.0)
+                if ok:
+                    log.debug('Sent keep-alive ping to %s', serial)
+                else:
+                    log.warning('Keep-alive ping to %s failed', serial)
+
+            # 3. For any saved WiFi device, if it is disconnected, try to auto-reconnect
+            saved_devices = _load_saved_wifi_devices()
+            for dev_id, dev in saved_devices.items():
+                host = dev.get('host')
+                port = dev.get('port')
+                target = dev.get('target') or f'{host}:{port}'
+
+                # Check if this target is currently connected and active
+                is_connected = False
+                for d in devices:
+                    if d.get('serial') == target and d.get('state') == 'device':
+                        is_connected = True
+                        break
+
+                if not is_connected:
+                    log.debug('Saved wireless device %s is disconnected. Attempting auto-reconnect...', target)
+                    ok, out = adb_connect(host, port, timeout=3.0)
+                    if ok:
+                        log.info('Auto-reconnected to %s successfully: %s', target, out.strip())
+                    else:
+                        log.debug('Auto-reconnect to %s failed: %s', target, out.strip())
+
+        except Exception as e:
+            log.error('Error in ADB keep-alive loop: %s', e)
+
+        time.sleep(interval)
+
+
+def start_adb_keepalive() -> None:
+    import sys
+    # Disable keep-alive loop under tests to avoid side-effects and thread leaks
+    is_testing = (
+        'pytest' in sys.modules
+        or 'pytest' in sys.argv[0]
+        or os.environ.get('PYTEST_CURRENT_TEST') is not None
+        or os.environ.get('TESTING') == '1'
+    )
+    disable_env = os.environ.get('DISABLE_ADB_KEEPALIVE', '').strip().lower() in ('1', 'true', 'yes', 'on')
+    if is_testing or disable_env:
+        log.info('ADB keep-alive loop is disabled (testing=%s, disable_env=%s)', is_testing, disable_env)
+        return
+    t = threading.Thread(target=_adb_keepalive_loop, daemon=True, name='adb-keepalive')
+    t.start()
+
+
+# Auto-start keepalive when app module is loaded
+start_adb_keepalive()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Web server for scrcpy')
     parser.add_argument(
