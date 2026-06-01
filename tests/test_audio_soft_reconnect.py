@@ -38,7 +38,7 @@ def _audio_toggle_block() -> str:
     """
     html = INDEX_HTML.read_text(encoding='utf-8')
     match = re.search(
-        r"audioBtn\.addEventListener\('click'.*?// ---- Gamepad UHID toggle",
+        r"audioBtn\.addEventListener\('click'.*?// ---- Turn-screen-off toggle",
         html,
         flags=re.DOTALL,
     )

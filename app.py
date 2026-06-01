@@ -284,10 +284,11 @@ def _get_csrf_token() -> str:
 def _validate_csrf() -> bool:
     expected = session.get('_csrf') or ''
     # Accept the token in either the form field (classic POST) or the
-    # X-CSRF-Token header (multipart upload from fetch / XMLHttpRequest where
+    # X-CSRF-Token/X-CSRFToken header (multipart upload from fetch / XMLHttpRequest where
     # adding form fields next to a binary file is awkward).
     received = (request.form.get('csrf_token') or '').strip() or (
-        request.headers.get('X-CSRF-Token') or ''
+        request.headers.get('X-CSRF-Token') or
+        request.headers.get('X-CSRFToken') or ''
     ).strip()
     if not expected or not received:
         return False
@@ -1356,6 +1357,125 @@ def api_adb_displays():
     return jsonify(ok=True, displays=displays)
 
 
+class WebRTCManager:
+    def __init__(self):
+        self.pcs = set()
+        self.channels = set()
+        self.loop = None
+        self.thread = None
+        self._lock = threading.Lock()
+
+    def start(self):
+        with self._lock:
+            if self.thread is not None:
+                return
+            import asyncio
+            self.loop = asyncio.new_event_loop()
+            self.thread = threading.Thread(target=self._run_loop, daemon=True)
+            self.thread.start()
+
+    def _run_loop(self):
+        import asyncio
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_forever()
+
+    def run_coro(self, coro):
+        self.start()
+        import asyncio
+        return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
+
+    def add_channel(self, channel):
+        with self._lock:
+            self.channels.add(channel)
+
+    def remove_channel(self, channel):
+        with self._lock:
+            self.channels.discard(channel)
+
+    def broadcast_video(self, data):
+        with self._lock:
+            if not self.channels:
+                return
+            for channel in list(self.channels):
+                if channel.readyState == "open":
+                    self.loop.call_soon_threadsafe(channel.send, data)
+
+    def close_all(self):
+        with self._lock:
+            if self.loop and self.loop.is_running():
+                import asyncio
+                async def close_pcs():
+                    for pc in list(self.pcs):
+                        try:
+                            await pc.close()
+                        except:
+                            pass
+                    self.pcs.clear()
+                    self.channels.clear()
+                asyncio.run_coroutine_threadsafe(close_pcs(), self.loop).result()
+
+webrtc_mgr = WebRTCManager()
+
+
+@app.route('/api/webrtc/offer', methods=['POST'])
+@login_required
+def api_webrtc_offer():
+    from aiortc import RTCPeerConnection, RTCSessionDescription
+    import asyncio
+    
+    data = request.json or {}
+    sdp = data.get('sdp')
+    type_ = data.get('type')
+    
+    if not sdp or not type_:
+        return jsonify(ok=False, error='Thiếu SDP hoặc type'), 400
+        
+    async def create_pc_and_answer():
+        pc = RTCPeerConnection()
+        webrtc_mgr.pcs.add(pc)
+        
+        @pc.on("datachannel")
+        def on_datachannel(channel):
+            log.info(f"WebRTC DataChannel mở: {channel.label}")
+            if channel.label == "video":
+                webrtc_mgr.add_channel(channel)
+                
+                @channel.on("close")
+                def on_close():
+                    log.info("WebRTC DataChannel đóng")
+                    webrtc_mgr.remove_channel(channel)
+                    
+        @pc.on("iceconnectionstatechange")
+        async def on_iceconnectionstatechange():
+            log.info(f"WebRTC ICE state change: {pc.iceConnectionState}")
+            if pc.iceConnectionState in ("failed", "closed"):
+                webrtc_mgr.pcs.discard(pc)
+                try:
+                    await pc.close()
+                except:
+                    pass
+                    
+        offer = RTCSessionDescription(sdp=sdp, type=type_)
+        await pc.setRemoteDescription(offer)
+        answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        
+        while pc.iceGatheringState != "complete":
+            await asyncio.sleep(0.01)
+            
+        return {
+            'sdp': pc.localDescription.sdp,
+            'type': pc.localDescription.type
+        }
+        
+    try:
+        res = webrtc_mgr.run_coro(create_pc_and_answer())
+        return jsonify(ok=True, sdp=res['sdp'], type=res['type'])
+    except Exception as e:
+        log.error('Lỗi khởi tạo WebRTC: %s', e)
+        return jsonify(ok=False, error=str(e)), 500
+
+
 # ---- Free-form `adb shell` exec --------------------------------------------
 #
 # The authenticated owner of the deployment already has direct ADB access to
@@ -1509,6 +1629,7 @@ def audio_send_task():
 
 def send_video_data(data):
     message_queue.put(data)
+    webrtc_mgr.broadcast_video(data)
 
 
 def send_audio_data(data):
@@ -1677,6 +1798,10 @@ def handle_disconnect():
         scpy_ctx = None
         client_sid = None
     log.info('Socket disconnected, stopping scrcpy (had_ctx=%s)', ctx is not None)
+    try:
+        webrtc_mgr.close_all()
+    except Exception as e:
+        log.warning('Lỗi close_all WebRTC: %s', e)
     if ctx is not None:
         try:
             ctx.scrcpy_stop()

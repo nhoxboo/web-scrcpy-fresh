@@ -387,6 +387,13 @@
         <option value="0">Display 0 (Mặc định)</option>
       </select>
     </div>
+    <div class="tool-select-wrap" title="Giao thức truyền tải" style="display:flex;align-items:center;gap:6px;padding:0 8px;border-left:1px solid var(--line);height:38px;">
+      <i class="fa-solid fa-network-wired" style="color:#dbe1f3;font-size:0.9rem;"></i>
+      <select id="transportSelect">
+        <option value="websocket">TCP (WebSocket)</option>
+        <option value="webrtc">UDP (WebRTC)</option>
+      </select>
+    </div>
     <div class="tool-select-wrap" title="Chọn bộ giải mã video" style="display:flex;align-items:center;gap:6px;padding:0 8px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:38px;">
       <i class="fa-solid fa-code" style="color:#dbe1f3;font-size:0.9rem;"></i>
       <select id="decoderSelect">
@@ -671,6 +678,10 @@
     const canvasCtx = canvasElement ? canvasElement.getContext('2d') : null;
     let videoDecoder = null;
 
+    let useWebRtc = localStorage.getItem('transportMode') === 'webrtc';
+    let webrtcPc = null;
+    let webrtcChannel = null;
+
     const videoWrap = document.getElementById('videoWrap');
     const phoneShell = document.getElementById('phoneShell');
     const resizeHandle = document.getElementById('resizeHandle');
@@ -797,6 +808,68 @@
       });
       
       videoDecoder.configure(config);
+    }
+
+    function initWebRtcConnection() {
+      if (webrtcPc) {
+        try { webrtcPc.close(); } catch(e) {}
+      }
+      
+      webrtcPc = new RTCPeerConnection({
+        iceServers: []
+      });
+      
+      webrtcChannel = webrtcPc.createDataChannel('video', {
+        ordered: false,
+        maxRetransmits: 0
+      });
+      
+      webrtcChannel.binaryType = 'arraybuffer';
+      
+      webrtcChannel.onopen = () => {
+        st('Giao thức UDP (WebRTC) đã kết nối.');
+      };
+      
+      webrtcChannel.onclose = () => {
+        console.log('WebRTC DataChannel closed');
+      };
+      
+      webrtcChannel.onmessage = (event) => {
+        parser.appendData(new Uint8Array(event.data));
+      };
+      
+      webrtcPc.createOffer().then(offer => {
+        return webrtcPc.setLocalDescription(offer).then(() => {
+          return fetch('/api/webrtc/offer', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content,
+              'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content
+            },
+            body: JSON.stringify({
+              sdp: webrtcPc.localDescription.sdp,
+              type: webrtcPc.localDescription.type
+            })
+          });
+        });
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.ok) {
+          const answer = new RTCSessionDescription({
+            sdp: data.sdp,
+            type: data.type
+          });
+          return webrtcPc.setRemoteDescription(answer);
+        } else {
+          st('Lỗi WebRTC: ' + data.error);
+        }
+      })
+      .catch(err => {
+        console.error('WebRTC negotiation failed:', err);
+        st('Không thể kết nối UDP (WebRTC). Đang chạy bằng TCP...');
+      });
     }
 
     function feedWebCodecs(naluData, type) {
@@ -933,7 +1006,12 @@
       autoConnect:true,
       query: _socketQuery,
     });
-    socket.on('connect', ()=> st('Đã kết nối.'));
+    socket.on('connect', ()=> {
+      st('Đã kết nối.');
+      if (useWebRtc) {
+        initWebRtcConnection();
+      }
+    });
     socket.on('disconnect', (reason)=> st('Mất kết nối: '+reason));
     socket.on('connect_error', (err)=>{
       const msg = (err && (err.message || err.data)) || 'Không thể kết nối tới server.';
@@ -2403,6 +2481,21 @@
       });
     }
 
+    // ---- Transport Selection ------------------------------------------------
+    const transportSelect = document.getElementById('transportSelect');
+    if (transportSelect) {
+      transportSelect.value = useWebRtc ? 'webrtc' : 'websocket';
+      transportSelect.addEventListener('change', () => {
+        const selected = transportSelect.value;
+        const current = localStorage.getItem('transportMode') || 'websocket';
+        if (selected !== current) {
+          localStorage.setItem('transportMode', selected);
+          st('Đang đổi giao thức truyền tải, tải lại trang...');
+          setTimeout(() => location.reload(), 250);
+        }
+      });
+    }
+
     // ---- Gamepad UHID toggle ---------------------------------------------
     // Toolbar button toggles the localStorage flag and calls the input's
     // enable/disable. No reload needed — UHID_CREATE/DESTROY are sent over
@@ -2718,7 +2811,11 @@
       });
     }
 
-    socket.on('video_data', (data)=>{ parser.appendData(new Uint8Array(data)); });
+    socket.on('video_data', (data)=>{
+      if (!useWebRtc) {
+        parser.appendData(new Uint8Array(data));
+      }
+    });
     socket.on('connect', ()=>{
       st('WS connected, đang nhận video...');
       document.getElementById('forceKick').hidden = true;
