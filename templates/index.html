@@ -2587,7 +2587,11 @@
     if (decoderSelect) {
       if (!hasWebCodecs) {
         const opt = decoderSelect.querySelector('option[value="webcodecs"]');
-        if (opt) opt.disabled = true;
+        if (opt) {
+          opt.disabled = true;
+          opt.textContent = "WebCodecs (Cần HTTPS/Localhost)";
+        }
+        decoderSelect.title = "Trình duyệt không hỗ trợ WebCodecs hoặc cần chạy trên môi trường bảo mật (localhost hoặc HTTPS) để kích hoạt.";
       }
       decoderSelect.value = useWebCodecs ? 'webcodecs' : 'mse';
       decoderSelect.addEventListener('change', () => {
