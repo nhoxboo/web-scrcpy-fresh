@@ -1839,7 +1839,7 @@ def handle_client_ping(data):
 # --- ADB wireless keep-alive & auto-reconnect ---------------------------------
 def _adb_keepalive_loop() -> None:
     """Background loop to prevent ADB Wi-Fi connection timeouts and auto-reconnect saved devices."""
-    interval = int(os.environ.get('ADB_KEEPALIVE_INTERVAL', '30'))
+    interval = int(os.environ.get('ADB_KEEPALIVE_INTERVAL', '10'))
     log.info('ADB wireless keep-alive thread started. Interval: %d seconds.', interval)
     while True:
         try:

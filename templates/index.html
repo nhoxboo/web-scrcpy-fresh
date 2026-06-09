@@ -42,14 +42,15 @@
     }
     .btn:hover{border-color:var(--line-strong);background:rgba(255,255,255,.1);transform:translateY(-1px)}
     .toolbar{
-      display:flex;gap:8px;align-items:center;padding:10px 12px;
+      display:flex;gap:4px;align-items:center;padding:6px 8px;
       border-bottom:1px solid var(--line);
       background:rgba(7,9,26,.45);
       backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
       overflow-x:auto;touch-action:pan-x;position:relative;z-index:4;
+      flex-wrap:wrap;
     }
     .tool{
-      width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
+      width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
       border:1px solid var(--line);background:rgba(255,255,255,.04);
       cursor:pointer;transition:transform .15s var(--easing),border-color .2s var(--easing),background .2s var(--easing),color .2s var(--easing);
       flex:0 0 auto;color:#dbe1f3;
@@ -63,8 +64,8 @@
     }
     .tool-select-wrap select{
       background:rgba(255,255,255,.04);color:#dbe1f3;border:1px solid var(--line);
-      border-radius:8px;padding:4px 8px;font:inherit;font-size:.8rem;
-      outline:none;cursor:pointer;height:28px;
+      border-radius:8px;padding:2px 6px;font:inherit;font-size:.8rem;
+      outline:none;cursor:pointer;height:26px;
       transition:border-color .2s var(--easing),background .2s var(--easing);
     }
     .tool-select-wrap select:hover{
@@ -381,20 +382,20 @@
     <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
     <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
     <button class="tool" id="vdesktopMode" title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
-    <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:6px;padding:0 8px;border-left:1px solid var(--line);height:38px;">
+    <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
       <i class="fa-solid fa-tv" style="color:#dbe1f3;font-size:0.9rem;"></i>
       <select id="displaySelect">
         <option value="0">Display 0 (Mặc định)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Giao thức truyền tải" style="display:flex;align-items:center;gap:6px;padding:0 8px;border-left:1px solid var(--line);height:38px;">
+    <div class="tool-select-wrap" title="Giao thức truyền tải" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
       <i class="fa-solid fa-network-wired" style="color:#dbe1f3;font-size:0.9rem;"></i>
       <select id="transportSelect">
         <option value="websocket">TCP (WebSocket)</option>
         <option value="webrtc">UDP (WebRTC)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Chọn bộ giải mã video" style="display:flex;align-items:center;gap:6px;padding:0 8px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:38px;">
+    <div class="tool-select-wrap" title="Chọn bộ giải mã video" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:34px;">
       <i class="fa-solid fa-code" style="color:#dbe1f3;font-size:0.9rem;"></i>
       <select id="decoderSelect">
         <option value="mse">MSE (Mặc định)</option>
@@ -678,7 +679,7 @@
     const canvasCtx = canvasElement ? canvasElement.getContext('2d') : null;
     let videoDecoder = null;
 
-    let useWebRtc = localStorage.getItem('transportMode') === 'webrtc';
+    let useWebRtc = localStorage.getItem('transportMode') !== 'websocket';
     let webrtcPc = null;
     let webrtcChannel = null;
 
@@ -2286,6 +2287,43 @@
       const rtt = performance.now() - sentAt;
       _pingEwma = _pingEwma == null ? rtt : (_pingEwma * 0.7 + rtt * 0.3);
       if (_hudPing) _hudPing.textContent = Math.round(_pingEwma) + ' ms';
+
+      // --- Auto-Adaptive Bitrate (ABR) ---
+      // Dynamically lower bitrate to 2Mbps if ping is > 150ms, or raise back to 8Mbps if < 50ms
+      const STREAM_BITRATE_KEY = 'streamBitrateMbps';
+      const curBitrate = parseInt(localStorage.getItem(STREAM_BITRATE_KEY) || '8', 10) || 8;
+      let newBitrate = null;
+      if (_pingEwma > 150 && curBitrate > 2) {
+        newBitrate = 2;
+        st(`Mạng yếu (Ping ${_pingEwma.toFixed(0)}ms), đang tự động giảm bitrate xuống 2Mbps để chống lag...`);
+      } else if (_pingEwma < 50 && curBitrate <= 2 && (performance.now() - (window._abrLastDowngrade || 0) > 30000)) {
+        newBitrate = 8; // Restore default
+        st(`Mạng mượt trở lại, tự động khôi phục bitrate lên 8Mbps...`);
+      }
+
+      if (newBitrate !== null && (!window._abrLastTrigger || performance.now() - window._abrLastTrigger > 10000)) {
+        window._abrLastTrigger = performance.now();
+        if (newBitrate === 2) window._abrLastDowngrade = performance.now();
+        
+        // Save new bitrate
+        localStorage.setItem(STREAM_BITRATE_KEY, String(newBitrate));
+        
+        // Update UI sliders if they exist
+        const sqB = document.getElementById('sqBitrate');
+        const sqBNum = document.getElementById('sqBitrateNum');
+        if (sqB) sqB.value = newBitrate;
+        if (sqBNum) sqBNum.value = newBitrate;
+
+        // Apply via soft reconnect
+        socket.io.opts.query = {
+          ...socket.io.opts.query,
+          ...(newBitrate !== 8 ? { video_bit_rate: String(newBitrate * 1_000_000) } : {})
+        };
+        if (newBitrate === 8) delete socket.io.opts.query.video_bit_rate;
+        
+        try { socket.disconnect(); } catch (e) {}
+        setTimeout(() => { try { socket.connect(); } catch (e) {} }, 300);
+      }
     });
     // Toggle HUD with Ctrl+Shift+H so power users can flip it without
     // touching the toolbar.
@@ -2487,7 +2525,7 @@
       transportSelect.value = useWebRtc ? 'webrtc' : 'websocket';
       transportSelect.addEventListener('change', () => {
         const selected = transportSelect.value;
-        const current = localStorage.getItem('transportMode') || 'websocket';
+        const current = localStorage.getItem('transportMode') || 'webrtc';
         if (selected !== current) {
           localStorage.setItem('transportMode', selected);
           st('Đang đổi giao thức truyền tải, tải lại trang...');
@@ -2825,6 +2863,15 @@
       document.getElementById('forceKick').hidden = true;
     });
     socket.on('disconnect', ()=>st('WS disconnected, đang thử reconnect...'));
+
+    // --- Fix: clear video backlog when tab returns to foreground ---
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        const btn = document.getElementById('reconnect');
+        if (btn) btn.click();
+      }
+    });
+
     // Surface the force-kick CTA whenever the server rejects the socket
     // because another client holds the device. The button POSTs /api/session/kick
     // and reconnects after the previous session releases.

@@ -500,7 +500,7 @@ class Scrcpy:
                 f'com.genymobile.scrcpy.Server {SCRCPY_SERVER_VERSION} tunnel_forward=true {audio_arg}'
                 f'log_level=VERBOSE video_bit_rate={self.video_bit_rate} '
                 f'max_fps={self.max_fps} {display_arg}'
-                f'max_size={self.max_size}'
+                f'max_size={self.max_size} stay_awake=true'
             ),
         )
         self.android_process = subprocess.Popen(
