@@ -20,7 +20,7 @@ WINDOW MANAGER DISPLAYS (dumpsys window displays)
     assert displays[0]['id'] == 0
     assert "Built-in Screen" in displays[0]['name']
     assert displays[0]['info'] == "1080x2340"
-    
+
     assert displays[1]['id'] == 2
     assert "Virtual Display" in displays[1]['name']
     assert displays[1]['info'] == "1920x1080"
@@ -41,7 +41,7 @@ DISPLAY MANAGER (dumpsys display)
     assert displays[0]['id'] == 0
     assert "Built-in Screen" in displays[0]['name']
     assert displays[0]['info'] == "1080x2400"
-    
+
     assert displays[1]['id'] == 2
     assert "Virtual Display" in displays[1]['name']
     assert displays[1]['info'] == "1920x1080"
@@ -74,16 +74,19 @@ def test_api_adb_displays_requires_login(client):
 
 def test_api_adb_displays_success(client, csrf, default_credentials, app, monkeypatch):
     _login(client, csrf, default_credentials)
-    
+
     # Mock adb_shell
     def fake_shell(args, serial=None, timeout=15.0, adb_path=None):  # noqa: ARG001
         assert args == ['dumpsys', 'window', 'displays'] or args == ['dumpsys', 'display']
         if args == ['dumpsys', 'window', 'displays']:
-            return True, 'Display #0\nmDisplayId=0\nDisplayInfo{"Built-in Screen", real 1080 x 2400}'
+            return (
+                True,
+                'Display #0\nmDisplayId=0\nDisplayInfo{"Built-in Screen", real 1080 x 2400}',
+            )
         return False, 'error'
 
     monkeypatch.setattr(app, 'adb_shell', fake_shell)
-    
+
     r = client.get('/api/adb/displays')
     assert r.status_code == 200
     assert r.json['ok'] is True

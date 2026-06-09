@@ -287,8 +287,7 @@ def _validate_csrf() -> bool:
     # X-CSRF-Token/X-CSRFToken header (multipart upload from fetch / XMLHttpRequest where
     # adding form fields next to a binary file is awkward).
     received = (request.form.get('csrf_token') or '').strip() or (
-        request.headers.get('X-CSRF-Token') or
-        request.headers.get('X-CSRFToken') or ''
+        request.headers.get('X-CSRF-Token') or request.headers.get('X-CSRFToken') or ''
     ).strip()
     if not expected or not received:
         return False
@@ -1288,31 +1287,30 @@ def _parse_wm_density(out: str) -> dict:
 
 def parse_displays(output: str) -> list[dict]:
     import re
+
     displays = []
     found_ids = set()
     current_id = None
-    
+
     for line in (output or '').splitlines():
         line_stripped = line.strip()
-        
-        m_id = re.search(r'(?:Display\s+#|mDisplayId=|displayId=)(\d+)', line_stripped, re.IGNORECASE)
+
+        m_id = re.search(
+            r'(?:Display\s+#|mDisplayId=|displayId=)(\d+)', line_stripped, re.IGNORECASE
+        )
         if m_id:
             current_id = int(m_id.group(1))
             if current_id not in found_ids:
                 found_ids.add(current_id)
-                displays.append({
-                    'id': current_id,
-                    'name': f'Display {current_id}',
-                    'info': ''
-                })
-        
+                displays.append({'id': current_id, 'name': f'Display {current_id}', 'info': ''})
+
         if current_id is not None:
             display_entry = next((d for d in displays if d['id'] == current_id), None)
             if display_entry:
                 m_name = re.search(r'(?:DisplayInfo|DisplayDeviceInfo)\{"([^"]+)"', line_stripped)
                 if m_name:
                     display_entry['name'] = f"Display {current_id} ({m_name.group(1)})"
-                
+
                 m_res = re.search(r'real\s+(\d+\s*x\s*\d+)', line_stripped)
                 if m_res:
                     res_str = m_res.group(1).replace(' ', '')
@@ -1321,27 +1319,19 @@ def parse_displays(output: str) -> list[dict]:
                     m_res_generic = re.search(r'(\d+)\s*x\s*(\d+)', line_stripped)
                     if m_res_generic and not display_entry['info']:
                         display_entry['info'] = f"{m_res_generic.group(1)}x{m_res_generic.group(2)}"
-                        
+
     if not displays:
         for m in re.finditer(r'mDisplayId=(\d+)', output or ''):
             d_id = int(m.group(1))
             if d_id not in found_ids:
                 found_ids.add(d_id)
-                displays.append({
-                    'id': d_id,
-                    'name': f'Display {d_id}',
-                    'info': ''
-                })
-                
+                displays.append({'id': d_id, 'name': f'Display {d_id}', 'info': ''})
+
     displays.sort(key=lambda x: x['id'])
-    
+
     if not displays:
-        displays.append({
-            'id': 0,
-            'name': 'Display 0 (Mặc định)',
-            'info': ''
-        })
-        
+        displays.append({'id': 0, 'name': 'Display 0 (Mặc định)', 'info': ''})
+
     return displays
 
 
@@ -1352,7 +1342,7 @@ def api_adb_displays():
     ok, out = adb_shell(['dumpsys', 'window', 'displays'], serial=serial)
     if not ok:
         ok, out = adb_shell(['dumpsys', 'display'], serial=serial)
-    
+
     displays = parse_displays(out if ok else '')
     return jsonify(ok=True, displays=displays)
 
@@ -1370,18 +1360,21 @@ class WebRTCManager:
             if self.thread is not None:
                 return
             import asyncio
+
             self.loop = asyncio.new_event_loop()
             self.thread = threading.Thread(target=self._run_loop, daemon=True)
             self.thread.start()
 
     def _run_loop(self):
         import asyncio
+
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
     def run_coro(self, coro):
         self.start()
         import asyncio
+
         return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
 
     def add_channel(self, channel):
@@ -1404,15 +1397,18 @@ class WebRTCManager:
         with self._lock:
             if self.loop and self.loop.is_running():
                 import asyncio
+
                 async def close_pcs():
                     for pc in list(self.pcs):
                         try:
                             await pc.close()
-                        except:
+                        except Exception:
                             pass
                     self.pcs.clear()
                     self.channels.clear()
+
                 asyncio.run_coroutine_threadsafe(close_pcs(), self.loop).result()
+
 
 webrtc_mgr = WebRTCManager()
 
@@ -1420,31 +1416,32 @@ webrtc_mgr = WebRTCManager()
 @app.route('/api/webrtc/offer', methods=['POST'])
 @login_required
 def api_webrtc_offer():
-    from aiortc import RTCPeerConnection, RTCSessionDescription
     import asyncio
-    
+
+    from aiortc import RTCPeerConnection, RTCSessionDescription
+
     data = request.json or {}
     sdp = data.get('sdp')
     type_ = data.get('type')
-    
+
     if not sdp or not type_:
         return jsonify(ok=False, error='Thiếu SDP hoặc type'), 400
-        
+
     async def create_pc_and_answer():
         pc = RTCPeerConnection()
         webrtc_mgr.pcs.add(pc)
-        
+
         @pc.on("datachannel")
         def on_datachannel(channel):
             log.info(f"WebRTC DataChannel mở: {channel.label}")
             if channel.label == "video":
                 webrtc_mgr.add_channel(channel)
-                
+
                 @channel.on("close")
                 def on_close():
                     log.info("WebRTC DataChannel đóng")
                     webrtc_mgr.remove_channel(channel)
-                    
+
         @pc.on("iceconnectionstatechange")
         async def on_iceconnectionstatechange():
             log.info(f"WebRTC ICE state change: {pc.iceConnectionState}")
@@ -1452,22 +1449,19 @@ def api_webrtc_offer():
                 webrtc_mgr.pcs.discard(pc)
                 try:
                     await pc.close()
-                except:
+                except Exception:
                     pass
-                    
+
         offer = RTCSessionDescription(sdp=sdp, type=type_)
         await pc.setRemoteDescription(offer)
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
-        
+
         while pc.iceGatheringState != "complete":
             await asyncio.sleep(0.01)
-            
-        return {
-            'sdp': pc.localDescription.sdp,
-            'type': pc.localDescription.type
-        }
-        
+
+        return {'sdp': pc.localDescription.sdp, 'type': pc.localDescription.type}
+
     try:
         res = webrtc_mgr.run_coro(create_pc_and_answer())
         return jsonify(ok=True, sdp=res['sdp'], type=res['type'])

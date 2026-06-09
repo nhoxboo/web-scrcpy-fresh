@@ -30,31 +30,22 @@ def _post_csrf(client) -> str:
 def test_webrtc_offer_requires_login(client, csrf):
     # If we have a CSRF token but are not logged in, we should be redirected to login (302)
     r = client.post(
-        '/api/webrtc/offer',
-        json={'sdp': 'foo', 'type': 'offer'},
-        headers={'X-CSRF-Token': csrf}
+        '/api/webrtc/offer', json={'sdp': 'foo', 'type': 'offer'}, headers={'X-CSRF-Token': csrf}
     )
     assert r.status_code == 302  # redirects to login
 
 
 def test_webrtc_offer_rejects_missing_csrf(client):
     # Without CSRF token, it should reject with 400 Bad Request
-    r = client.post(
-        '/api/webrtc/offer',
-        json={'sdp': 'foo', 'type': 'offer'}
-    )
+    r = client.post('/api/webrtc/offer', json={'sdp': 'foo', 'type': 'offer'})
     assert r.status_code == 400
 
 
 def test_webrtc_offer_missing_params(client, csrf, default_credentials):
     _login(client, csrf, default_credentials)
     tok = _post_csrf(client)
-    
-    r = client.post(
-        '/api/webrtc/offer',
-        json={},
-        headers={'X-CSRF-Token': tok}
-    )
+
+    r = client.post('/api/webrtc/offer', json={}, headers={'X-CSRF-Token': tok})
     assert r.status_code == 400
     assert r.json['ok'] is False
     assert 'Thiếu SDP hoặc type' in r.json['error']
@@ -63,15 +54,15 @@ def test_webrtc_offer_missing_params(client, csrf, default_credentials):
 def test_webrtc_offer_success(client, csrf, default_credentials, app, monkeypatch):
     _login(client, csrf, default_credentials)
     tok = _post_csrf(client)
-    
+
     # Mock app.webrtc_mgr.run_coro to avoid actual RTCPeerConnection negotiation
     fake_answer = {'sdp': 'dummy_sdp_answer', 'type': 'answer'}
     monkeypatch.setattr(app.webrtc_mgr, 'run_coro', lambda coro: fake_answer)
-    
+
     r = client.post(
         '/api/webrtc/offer',
         json={'sdp': 'dummy_sdp_offer', 'type': 'offer'},
-        headers={'X-CSRF-Token': tok}
+        headers={'X-CSRF-Token': tok},
     )
     assert r.status_code == 200
     assert r.json['ok'] is True
@@ -82,14 +73,14 @@ def test_webrtc_offer_success(client, csrf, default_credentials, app, monkeypatc
 def test_webrtc_manager_channel_management(app):
     # Test WebRTCManager local channels/pcs sets
     mgr = app.WebRTCManager()
-    
+
     # Setup dummy mock channel
     mock_channel = MagicMock()
     mock_channel.label = "video"
     mock_channel.readyState = "open"
-    
+
     mgr.add_channel(mock_channel)
     assert mock_channel in mgr.channels
-    
+
     mgr.remove_channel(mock_channel)
     assert mock_channel not in mgr.channels
