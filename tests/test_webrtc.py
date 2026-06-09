@@ -57,7 +57,10 @@ def test_webrtc_offer_success(client, csrf, default_credentials, app, monkeypatc
 
     # Mock app.webrtc_mgr.run_coro to avoid actual RTCPeerConnection negotiation
     fake_answer = {'sdp': 'dummy_sdp_answer', 'type': 'answer'}
-    monkeypatch.setattr(app.webrtc_mgr, 'run_coro', lambda coro: fake_answer)
+    def fake_run_coro(coro):
+        coro.close()
+        return fake_answer
+    monkeypatch.setattr(app.webrtc_mgr, 'run_coro', fake_run_coro)
 
     r = client.post(
         '/api/webrtc/offer',
