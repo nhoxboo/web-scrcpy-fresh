@@ -1,20 +1,25 @@
-__pycache__
+# python
+__pycache__/
 *.pyc
-*.pyo
-.venv/
 venv/
-env/
 .env
-.env.*
-!.env.example
 
-# Secrets / runtime data (do NOT commit)
-auth.json
-secret.key
-audit.log
-audit.log.*
+# node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+static/dist/
+package-lock.json
 
-# IDE / OS
+# misc
+.DS_Store
 .idea/
 .vscode/
-.DS_Store
+
+# auth
+auth.json
+.oxlintrc.json
+
+# security/logs
+secret.key
+audit.log

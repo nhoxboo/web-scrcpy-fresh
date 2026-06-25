@@ -17,7 +17,7 @@ import shlex
 
 def _login(client, csrf, default_credentials):
     resp = client.post(
-        '/login',
+        '/api/login',
         data={
             'username': default_credentials['username'],
             'password': default_credentials['password'],
@@ -25,7 +25,7 @@ def _login(client, csrf, default_credentials):
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 302
+    assert resp.status_code == 200
 
 
 def _post_csrf(client):
