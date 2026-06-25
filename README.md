@@ -138,14 +138,20 @@ export ADB_PATH=/usr/bin/adb
 git clone https://github.com/nhoxboo/web-scrcpy-fresh-private.git
 cd web-scrcpy-fresh-private
 
-# Cài đặt dependencies tối thiểu
+# Cài đặt dependencies backend tối thiểu
 pip install -r requirements.txt
+
+# Cài đặt và build frontend React
+cd frontend
+npm install
+npm run build
+cd ..
 ```
 
 ### 2️⃣ Development setup (optional)
 
 ```bash
-# Cài đặt dev tools + testing
+# Cài đặt dev tools + testing backend
 pip install -r requirements-dev.txt
 
 # Thiết lập pre-commit hooks
@@ -275,7 +281,7 @@ sudo certbot --nginx -d remote.example.com
 
 ```
 web-scrcpy-fresh-private/
-├── app.py                          # Entry point chính (Flask app)
+├── app.py                          # Entry point chính (Flask app JSON APIs)
 ├── wsgi.py                         # WSGI entry point (gunicorn)
 ├── scrcpy.py                       # Logic tích hợp scrcpy + ADB commands
 ├── reset_password.py               # CLI reset password nếu quên
@@ -289,27 +295,29 @@ web-scrcpy-fresh-private/
 ├── .gitignore                      # Git ignore rules
 ├── .pre-commit-config.yaml         # Pre-commit hooks config
 │
-├── templates/                      # HTML templates
-│   ├── index.html                  # Main control interface
-│   ├── login.html                  # Login page
-│   ├── change_password.html        # Password change page
-│   └── ...
+├── frontend/                       # React Frontend (Vite)
+│   ├── src/
+│   │   ├── components/             # React components (Liquid Glass UI)
+│   │   ├── hooks/                  # React hooks cho scrcpy stream & input
+│   │   └── App.tsx                 # Routing chính
+│   ├── package.json
+│   └── vite.config.ts              # Build sang ../static/dist
 │
-├── static/                         # Static assets (JS, CSS, fonts)
+├── templates/                      # Flask HTML templates
+│   └── spa.html                    # Base template load React assets
+│
+├── static/                         # Static assets (JS, CSS, fonts, dist)
+│   ├── dist/                       # Output build của React
 │   ├── js/
-│   │   ├── main.js                 # Main client-side logic
-│   │   ├── video-stream.js         # Video streaming logic
-│   │   ├── touch-handler.js        # Multi-touch gesture handling
+│   │   ├── video_parser.js         # Xử lý H.264 video decoding
+│   │   ├── input.js                # Xử lý Scrcpy socket control
 │   │   └── ...
-│   ├── css/
-│   │   ├── style.css               # Main styles
-│   │   └── ...
-│   └── fonts/
+│   └── css/
+│       └── glass.css               # Style chung cho Liquid Glass
 │
 ├── tests/                          # Unit & integration tests
 │   ├── test_app.py
-│   ├── test_scrcpy.py
-│   └── ...
+│   └── test_scrcpy.py
 │
 └── .github/                        # GitHub Actions workflows (CI/CD)
     └── workflows/
@@ -319,23 +327,15 @@ web-scrcpy-fresh-private/
 
 | File | Mục đích |
 |------|---------|
-| **app.py** | Flask server, routes chính, WebSocket handling, authentication |
+| **app.py** | Flask server, JSON APIs (chạy authentication, controls) |
 | **scrcpy.py** | ADB + scrcpy binary integration, video streaming, device control |
 | **reset_password.py** | CLI để reset password khi quên |
 | **wsgi.py** | WSGI application wrapper cho gunicorn |
 
-### Thư mục templates
+### Frontend & UI
+Phiên bản mới nhất đã chuyển đổi toàn bộ frontend sang **ReactJS (Vite)** sử dụng thư viện `liquid-glass-react` mang lại hiệu ứng giao diện "Liquid Glass" đẹp mắt và mượt mà.
 
-- `index.html` — Giao diện chính với canvas, controls, settings
-- `login.html` — Form đăng nhập
-- `change_password.html` — Form đổi mật khẩu
-
-### Thư mục static
-
-- `js/main.js` — Logic client chính (kết nối WebSocket, event listeners)
-- `js/video-stream.js` — Xử lý H.264 video decoding, canvas rendering
-- `js/touch-handler.js` — Multi-touch gesture recognition & ADB input
-- `css/style.css` — Styling cho responsive UI
+Logic UI được module hoá trong thư mục `frontend/src/components/`, còn logic video stream và device input kết nối với backend được đóng gói vào các React hooks tại `frontend/src/hooks/`. Build frontend (`npm run build`) sẽ tự động bundle code JS/CSS vào `static/dist/` để Flask phục vụ qua template duy nhất là `spa.html`.
 
 ---
 
