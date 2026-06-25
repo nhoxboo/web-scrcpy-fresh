@@ -20,13 +20,11 @@ from functools import wraps
 from flask import (
     Flask,
     abort,
-    flash,
     jsonify,
     redirect,
     render_template,
     request,
     session,
-    url_for,
 )
 from flask_socketio import ConnectionRefusedError as SocketConnectionRefusedError
 from flask_socketio import SocketIO
@@ -266,7 +264,9 @@ def login_required(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
         if not _is_authed():
-            return redirect(url_for('login'))
+            if request.path.startswith('/api/'):
+                return jsonify(ok=False, error="Unauthorized"), 401
+            return redirect('/login')
         return view(*args, **kwargs)
 
     return wrapper
@@ -532,50 +532,55 @@ def _selected_device_label() -> str:
 
 
 @app.route('/')
-@login_required
-def index():
-    return render_template(
-        'index.html',
-        username=session.get('username', DEFAULT_USERNAME),
-        device_label=_selected_device_label(),
-        device_serial=_selected_serial() or '',
+@app.route('/devices')
+@app.route('/login')
+@app.route('/change-password')
+def serve_spa():
+    return render_template('spa.html', static_ver=_compute_static_ver())
+
+
+@app.route('/api/csrf', methods=['GET'])
+def api_csrf():
+    return jsonify(ok=True, csrf_token=_get_csrf_token())
+
+
+@app.route('/api/session', methods=['GET'])
+def api_session():
+    return jsonify(
+        {
+            'ok': True,
+            'authenticated': _is_authed(),
+            'username': session.get('username', DEFAULT_USERNAME),
+            'device_label': _selected_device_label(),
+            'device_serial': _selected_serial() or '',
+        }
     )
 
 
-@app.route('/devices', methods=['GET', 'POST'])
+@app.route('/api/devices/select', methods=['POST'])
 @login_required
-def devices():
-    if request.method == 'POST':
-        action = (request.form.get('action') or '').strip()
-        if action == 'clear':
-            session.pop('adb_serial', None)
-            _audit('device_cleared', user=session.get('username', '-'))
-            flash('Đã bỏ chọn thiết bị; sẽ dùng mặc định (env/CLI hoặc auto).')
-            return redirect(url_for('devices'))
+def api_devices_select():
+    action = (request.form.get('action') or '').strip()
+    if action == 'clear':
+        session.pop('adb_serial', None)
+        _audit('device_cleared', user=session.get('username', '-'))
+        return jsonify(
+            ok=True, message='Đã bỏ chọn thiết bị; sẽ dùng mặc định (env/CLI hoặc auto).'
+        )
 
-        serial = (request.form.get('serial') or '').strip()
-        if not serial:
-            flash('Vui lòng chọn một thiết bị.')
-        elif not is_valid_serial(serial):
-            flash('Serial không hợp lệ.')
+    serial = (request.form.get('serial') or '').strip()
+    if not serial:
+        return jsonify(ok=False, error='Vui lòng chọn một thiết bị.')
+    elif not is_valid_serial(serial):
+        return jsonify(ok=False, error='Serial không hợp lệ.')
+    else:
+        attached = {d['serial'] for d in list_adb_devices()}
+        if attached and serial not in attached:
+            return jsonify(ok=False, error='Thiết bị không còn kết nối, hãy refresh.')
         else:
-            attached = {d['serial'] for d in list_adb_devices()}
-            if attached and serial not in attached:
-                flash('Thiết bị không còn kết nối, hãy refresh.')
-            else:
-                session['adb_serial'] = serial
-                _audit('device_selected', user=session.get('username', '-'), serial=serial)
-                flash(f'Đã chọn thiết bị {serial}.')
-                return redirect(url_for('index'))
-
-    items = list_adb_devices()
-    return render_template(
-        'devices.html',
-        username=session.get('username', DEFAULT_USERNAME),
-        devices=items,
-        selected=_selected_serial() or '',
-        default_serial=adb_serial or '',
-    )
+            session['adb_serial'] = serial
+            _audit('device_selected', user=session.get('username', '-'), serial=serial)
+            return jsonify(ok=True, message=f'Đã chọn thiết bị {serial}.')
 
 
 @app.route('/api/devices')
@@ -588,87 +593,79 @@ def api_devices():
     }
 
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        ip = _client_ip()
-        if not _rate_limit_check(ip):
-            log.warning('Login rate-limited for ip=%s', ip)
-            _audit('login_rate_limited')
-            flash('Quá nhiều lần thử. Vui lòng đợi vài phút rồi thử lại.')
-            return render_template('login.html'), 429
-
-        username = (request.form.get('username') or '').strip()
-        password = request.form.get('password') or ''
-        auth = _load_auth()
-        if username == auth.get('username') and _verify_password(
-            auth.get('password', ''), password
-        ):
-            session.clear()
-            session.permanent = True
-            session['authenticated'] = True
-            session['username'] = username
-            _get_csrf_token()  # rotate token for the new session
-            _audit('login_success', user=username)
-            return redirect(url_for('index'))
-
-        _rate_limit_record(ip)
-        log.info('Failed login attempt user=%r ip=%s', username, ip)
-        _audit('login_failure', user=username)
-        flash('Sai tài khoản hoặc mật khẩu')
-    return render_template('login.html')
+# --- APK install / file push ----------------------------------------------------
 
 
-@app.route('/logout', methods=['POST'])
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    ip = _client_ip()
+    if not _rate_limit_check(ip):
+        log.warning('Login rate-limited for ip=%s', ip)
+        _audit('login_rate_limited')
+        return jsonify(ok=False, error='Quá nhiều lần thử. Vui lòng đợi vài phút rồi thử lại.'), 429
+
+    username = (request.form.get('username') or '').strip()
+    password = request.form.get('password') or ''
+    auth = _load_auth()
+    if username == auth.get('username') and _verify_password(auth.get('password', ''), password):
+        session.clear()
+        session.permanent = True
+        session['authenticated'] = True
+        session['username'] = username
+        _get_csrf_token()  # rotate token for the new session
+        _audit('login_success', user=username)
+        return jsonify(ok=True)
+
+    _rate_limit_record(ip)
+    log.info('Failed login attempt user=%r ip=%s', username, ip)
+    _audit('login_failure', user=username)
+    return jsonify(ok=False, error='Sai tài khoản hoặc mật khẩu'), 401
+
+
+@app.route('/api/logout', methods=['POST'])
+@app.route('/logout', methods=['POST'])  # maintain for compatibility
 def logout():
     _audit('logout', user=session.get('username', '-'))
     session.clear()
-    return redirect(url_for('login'))
+    return jsonify(ok=True)
 
 
-@app.route('/change-password', methods=['GET', 'POST'])
+@app.route('/api/change-password', methods=['POST'])
 @login_required
-def change_password():
-    if request.method == 'POST':
-        ip = _client_ip()
-        if not _change_pw_check(ip):
-            log.warning('change-password rate-limited for ip=%s', ip)
-            flash('Quá nhiều lần thử. Vui lòng đợi vài phút rồi thử lại.')
-            return render_template(
-                'change_password.html',
-                username=session.get('username', DEFAULT_USERNAME),
-            ), 429
+def api_change_password():
+    ip = _client_ip()
+    if not _change_pw_check(ip):
+        log.warning('change-password rate-limited for ip=%s', ip)
+        _audit('change_pw_rate_limited')
+        return jsonify(ok=False, error='Quá nhiều lần thử. Vui lòng đợi vài phút rồi thử lại.'), 429
 
-        current_password = request.form.get('current_password') or ''
-        new_username = (request.form.get('new_username') or '').strip() or session.get(
-            'username', DEFAULT_USERNAME
-        )
-        new_password = request.form.get('new_password') or ''
-        confirm_password = request.form.get('confirm_password') or ''
-
-        auth = _load_auth()
-        if not _verify_password(auth.get('password', ''), current_password):
-            _change_pw_record(ip)
-            _audit('change_password_failure', user=session.get('username', '-'))
-            flash('Mật khẩu hiện tại không đúng')
-        elif len(new_password) < MIN_PASSWORD_LEN:
-            flash(f'Mật khẩu mới tối thiểu {MIN_PASSWORD_LEN} ký tự')
-        elif new_password != confirm_password:
-            flash('Xác nhận mật khẩu mới không khớp')
-        else:
-            old_user = session.get('username', '-')
-            _save_auth(new_username, new_password)
-            session['username'] = new_username
-            _audit('change_password_success', old_user=old_user, new_user=new_username)
-            flash('Đổi thông tin đăng nhập thành công')
-            return redirect(url_for('index'))
-
-    return render_template(
-        'change_password.html', username=session.get('username', DEFAULT_USERNAME)
+    current_password = request.form.get('current_password') or ''
+    new_username = (request.form.get('new_username') or '').strip() or session.get(
+        'username', DEFAULT_USERNAME
     )
+    new_password = request.form.get('new_password') or ''
+    confirm_password = request.form.get('confirm_password') or ''
+
+    auth = _load_auth()
+    if not _verify_password(auth.get('password', ''), current_password):
+        _change_pw_record(ip)
+        _audit('change_password_failure', user=session.get('username', '-'))
+        return jsonify(ok=False, error='Mật khẩu hiện tại không đúng')
+    elif len(new_password) < MIN_PASSWORD_LEN:
+        return jsonify(ok=False, error=f'Mật khẩu mới tối thiểu {MIN_PASSWORD_LEN} ký tự')
+    elif new_password != confirm_password:
+        return jsonify(ok=False, error='Xác nhận mật khẩu mới không khớp')
+    else:
+        old_user = session.get('username', '-')
+        _save_auth(new_username, new_password)
+        session['username'] = new_username
+        _audit('change_password_success', old_user=old_user, new_user=new_username)
+        session.clear()
+        return jsonify(
+            ok=True, message='Đổi thông tin đăng nhập thành công. Vui lòng đăng nhập lại.'
+        )
 
 
-# --- APK install / file push ----------------------------------------------------
 _install_attempts: dict[str, deque] = {}
 _install_attempts_lock = threading.Lock()
 

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 def _login(client, csrf, default_credentials):
     resp = client.post(
-        '/login',
+        '/api/login',
         data={
             'username': default_credentials['username'],
             'password': default_credentials['password'],
@@ -16,7 +16,7 @@ def _login(client, csrf, default_credentials):
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 302
+    assert resp.status_code == 200
 
 
 def _post_csrf(client) -> str:
@@ -28,11 +28,11 @@ def _post_csrf(client) -> str:
 
 
 def test_webrtc_offer_requires_login(client, csrf):
-    # If we have a CSRF token but are not logged in, we should be redirected to login (302)
+    # If we have a CSRF token but are not logged in, we should be redirected to login (401)
     r = client.post(
         '/api/webrtc/offer', json={'sdp': 'foo', 'type': 'offer'}, headers={'X-CSRF-Token': csrf}
     )
-    assert r.status_code == 302  # redirects to login
+    assert r.status_code == 401  # unauthorized
 
 
 def test_webrtc_offer_rejects_missing_csrf(client):
