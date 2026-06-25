@@ -531,11 +531,11 @@ def _selected_device_label() -> str:
     return serial
 
 
-@app.route('/')
-@app.route('/devices')
-@app.route('/login')
-@app.route('/change-password')
-def serve_spa():
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_spa(path):
+    if path.startswith('api/') or path == 'healthz':
+        abort(404)
     return render_template('spa.html', static_ver=_compute_static_ver())
 
 
