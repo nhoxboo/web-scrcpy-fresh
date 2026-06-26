@@ -56,7 +56,7 @@ def test_parse_displays_fallback_empty():
 
 def _login(client, csrf, default_credentials):
     resp = client.post(
-        '/api/login',
+        '/login',
         data={
             'username': default_credentials['username'],
             'password': default_credentials['password'],
@@ -64,12 +64,12 @@ def _login(client, csrf, default_credentials):
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 302
 
 
 def test_api_adb_displays_requires_login(client):
     r = client.get('/api/adb/displays')
-    assert r.status_code == 401  # unauthorized
+    assert r.status_code == 302  # redirects to login
 
 
 def test_api_adb_displays_success(client, csrf, default_credentials, app, monkeypatch):
