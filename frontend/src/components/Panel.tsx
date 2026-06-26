@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
+import LiquidGlass from 'liquid-glass-react';
 import { useScrcpy } from '../hooks/useScrcpy';
 import { useDeviceInput } from '../hooks/useDeviceInput';
 
@@ -47,7 +47,7 @@ export default function Panel() {
 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div className="glass" style={{ padding: "20px 22px", zIndex: 30, display: "flex", alignItems: "center", gap: "12px", borderRadius: "14px" }}>
+      <LiquidGlass displacementScale={30} blurAmount={0.08} saturation={120} elasticity={0.1} cornerRadius={0} padding="10px 14px" style={{ zIndex: 10, display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
         <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <i className="fa-solid fa-mobile-screen-button" style={{ color: '#6aa6ff' }}></i>
           <span className="brand-grad" style={{ fontSize: '1rem' }}>Remote Android nhoxboo</span>
@@ -60,10 +60,10 @@ export default function Panel() {
         <div style={{ flex: 1 }}></div>
         <button className="glass-btn" onClick={() => navigate('/change-password')} style={{ padding: '6px 10px', fontSize: '.8rem' }}><i className="fa-solid fa-key"></i> Đổi mật khẩu</button>
         <button className="glass-btn" onClick={handleLogout} style={{ padding: '6px 10px', fontSize: '.8rem' }}><i className="fa-solid fa-right-from-bracket"></i> Đăng xuất</button>
-      </div>
+      </LiquidGlass>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div className="glass" style={{ padding: "16px", zIndex: 30, display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", width: "70px", justifyContent: "center", borderRadius: "14px" }}>
+        <LiquidGlass displacementScale={40} blurAmount={0.06} saturation={110} elasticity={0.15} cornerRadius={0} padding="12px 8px" style={{ width: '60px', display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center', overflowY: 'auto', borderRight: '1px solid rgba(255,255,255,0.1)', zIndex: 5 }}>
           <button className="tool" title="Power" onClick={doPower}><i className="fa-solid fa-power-off"></i></button>
           <button className="tool" title="Volume +" onClick={doVolUp}><i className="fa-solid fa-volume-high"></i></button>
           <button className="tool" title="Volume -" onClick={doVolDown}><i className="fa-solid fa-volume-low"></i></button>
@@ -73,7 +73,7 @@ export default function Panel() {
           <button className="tool" title="Recent" onClick={doRecent}><i className="fa-solid fa-layer-group"></i></button>
           <div style={{ width: '30px', height: '1px', background: 'rgba(255,255,255,0.1)', margin: '4px 0' }}></div>
           <button className="tool" title="Rotate" onClick={() => inputRef.current?.rotateDevice()}><i className="fa-solid fa-rotate"></i></button>
-        </div>
+        </LiquidGlass>
 
         <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', background: 'var(--bg-0)' }} id="videoWrap">
           <div className={`phone-shell ${deviceSize.width > deviceSize.height ? 'landscape' : ''}`} id="phoneShell" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(180deg,rgba(40,45,66,.7),rgba(20,24,40,.7))', border: '1px solid rgba(255,255,255,.12)', borderRadius: '38px', boxShadow: '0 30px 70px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.3)', padding: deviceSize.width > deviceSize.height ? '8px' : '18px 10px 14px 10px', maxWidth: '100%', maxHeight: '100%' }}>
@@ -83,10 +83,10 @@ export default function Panel() {
         </div>
       </div>
 
-      <div className="glass" style={{ padding: "10px 20px", display: "flex", alignItems: "center", fontSize: ".8rem", color: "#a8b3cf", zIndex: 30, borderRadius: "14px" }}>
+      <LiquidGlass displacementScale={20} blurAmount={0.06} saturation={110} elasticity={0.05} cornerRadius={0} padding="6px 14px" style={{ zIndex: 10, fontSize: '.78rem', color: '#cbd5ff', borderTop: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
         <span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#4ade80', marginRight: '6px', boxShadow: '0 0 12px #4ade80', animation: 'pulse 1.4s ease-in-out infinite' }}></span>
         <span>{status}</span>
-      </div>
+      </LiquidGlass>
     </div>
   );
 }
