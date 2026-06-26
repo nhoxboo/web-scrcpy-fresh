@@ -10,7 +10,7 @@ from __future__ import annotations
 
 def _login(client, csrf, default_credentials):
     resp = client.post(
-        '/api/login',
+        '/login',
         data={
             'username': default_credentials['username'],
             'password': default_credentials['password'],
@@ -18,7 +18,7 @@ def _login(client, csrf, default_credentials):
         },
         follow_redirects=False,
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 302
 
 
 def _post_csrf(client):
@@ -259,7 +259,7 @@ def test_wm_endpoint_requires_login(client, csrf):
     """Match the convention of other endpoints — must redirect or 401 when
     not authenticated. The CSRF guard runs first so we still attach a token."""
     r = client.post('/api/adb/wm', data={'op': 'get', 'csrf_token': csrf})
-    assert r.status_code == 401
+    assert r.status_code in (302, 401)
 
 
 def test_wm_set_size_uses_selected_serial(client, csrf, default_credentials, app, monkeypatch):

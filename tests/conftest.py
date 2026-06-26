@@ -161,15 +161,19 @@ def client(app):
     return app.app.test_client()
 
 
-def _csrf_token(client) -> str:
-    resp = client.get('/api/csrf')
-    assert resp.status_code == 200
-    return resp.json['csrf_token']
+def _csrf_token(html: bytes) -> str:
+    import re
+
+    m = re.search(rb'name="csrf_token" value="([^"]+)"', html)
+    assert m, 'csrf_token not found in response'
+    return m.group(1).decode()
 
 
 @pytest.fixture
 def csrf(client):
-    return _csrf_token(client)
+    resp = client.get('/login')
+    assert resp.status_code == 200
+    return _csrf_token(resp.data)
 
 
 @pytest.fixture
