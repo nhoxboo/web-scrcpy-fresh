@@ -138,8 +138,14 @@ export ADB_PATH=/usr/bin/adb
 git clone https://github.com/nhoxboo/web-scrcpy-fresh-private.git
 cd web-scrcpy-fresh-private
 
-# Cài đặt dependencies tối thiểu
+# Cài đặt dependencies tối thiểu (backend)
 pip install -r requirements.txt
+
+# Cài đặt và build giao diện (frontend)
+cd frontend
+npm install
+npm run build
+cd ..
 ```
 
 ### 2️⃣ Development setup (optional)
@@ -528,6 +534,19 @@ Dùng cho load balancer / uptime monitor.
 2. Kiểm tra cable (phải là data cable, không charge-only)
 3. Chạy lại `adb kill-server && adb devices`
 4. Kiểm tra ADB version: `adb version`
+
+### Giao diện chỉ hiện hình nền (không có nút bấm/video)
+
+**Triệu chứng:** Mở trang web chỉ thấy hình nền (background), không thấy giao diện UI để thao tác.
+
+**Giải pháp:**
+Giao diện React ở thư mục `frontend` chưa được build ra thư mục `static/dist`. Hãy chạy các lệnh sau để build giao diện:
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+```
 
 ### Port 8000 đã bị dùng
 
