@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import LiquidGlass from 'liquid-glass-react';
 
 export default function ChangePassword() {
   const [oldPassword, setOldPassword] = useState('');
@@ -74,15 +75,15 @@ export default function ChangePassword() {
         <span className="brand-grad" style={{ fontSize: '1.2rem' }}>Remote Android nhoxboo</span>
       </div>
 
-      <div className="glass"
-
-
-
-
-
-
-
-        style={{ padding: "30px 28px", borderRadius: "18px", width: '100%', maxWidth: '420px' }}
+      <LiquidGlass
+        displacementScale={64}
+        blurAmount={0.0625}
+        saturation={130}
+        aberrationIntensity={2}
+        elasticity={0.35}
+        cornerRadius={18}
+        padding="30px 28px"
+        style={{ width: '100%', maxWidth: '420px' }}
       >
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <h2 style={{ margin: '0 0 8px', fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
@@ -155,7 +156,7 @@ export default function ChangePassword() {
             </div>
           )}
         </form>
-      </div>
+      </LiquidGlass>
     </div>
   );
 }
