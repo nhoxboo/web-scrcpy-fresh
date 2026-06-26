@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import LiquidGlass from 'liquid-glass-react';
 
 export default function Devices() {
   const [devices, setDevices] = useState<{active: any[], saved: any[], current_selected: string}>({ active: [], saved: [], current_selected: '' });
@@ -79,13 +78,13 @@ export default function Devices() {
       )}
 
       <div style={{ width: '100%', maxWidth: '800px', display: 'grid', gap: '20px' }}>
-        <LiquidGlass
-          displacementScale={50}
-          blurAmount={0.0625}
-          saturation={120}
-          elasticity={0.2}
-          cornerRadius={18}
-          padding="24px"
+        <div className="glass"
+
+
+
+
+
+          style={{ padding: "20px", borderRadius: "14px" }}
         >
           <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px', color: '#e2e8f0' }}>
             <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 12px #4ade80', animation: 'pulse 1.4s ease-in-out infinite' }}></span>
@@ -132,16 +131,16 @@ export default function Devices() {
               })}
             </div>
           )}
-        </LiquidGlass>
+        </div>
 
         {devices.saved.length > 0 && (
-          <LiquidGlass
-            displacementScale={40}
-            blurAmount={0.0625}
-            saturation={110}
-            elasticity={0.2}
-            cornerRadius={18}
-            padding="24px"
+          <div className="glass"
+
+
+
+
+
+            style={{ padding: "20px", borderRadius: "14px" }}
           >
             <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px', color: '#e2e8f0' }}>
               <i className="fa-solid fa-clock-rotate-left" style={{ color: '#94a3b8' }}></i> Thiết bị Wi-Fi đã lưu (đang offline)
@@ -163,7 +162,7 @@ export default function Devices() {
                 );
               })}
             </div>
-          </LiquidGlass>
+          </div>
         )}
       </div>
     </div>

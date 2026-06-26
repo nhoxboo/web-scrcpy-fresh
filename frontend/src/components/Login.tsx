@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import LiquidGlass from 'liquid-glass-react';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -51,14 +50,14 @@ export default function Login() {
     <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: '24px' }}>
       <div style={{ width: 'min(94vw, 880px)', display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: '28px' }}>
 
-        <LiquidGlass
-          displacementScale={64}
-          blurAmount={0.0625}
-          saturation={130}
-          aberrationIntensity={2}
-          elasticity={0.35}
-          cornerRadius={18}
-          padding="38px 34px"
+        <div className="glass"
+
+
+
+
+
+          style={{ borderRadius: "18px", padding: "38px 34px" }}
+
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 12px', borderRadius: '999px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', fontSize: '.78rem', color: '#a8b3cf', width: 'fit-content' }}>
@@ -76,16 +75,16 @@ export default function Login() {
               <li style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#d2d8eb' }}><i className="fa-solid fa-display" style={{ width: '28px', height: '28px', display: 'grid', placeItems: 'center', borderRadius: '9px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#6aa6ff' }}></i> Samsung DeX desktop mirroring</li>
             </ul>
           </div>
-        </LiquidGlass>
+        </div>
 
-        <LiquidGlass
-          displacementScale={64}
-          blurAmount={0.0625}
-          saturation={130}
-          aberrationIntensity={2}
-          elasticity={0.35}
-          cornerRadius={18}
-          padding="30px 28px"
+        <div className="glass"
+
+
+
+
+
+          style={{ borderRadius: "18px", padding: "38px 34px" }}
+
         >
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <h2 style={{ margin: '0 0 6px', fontSize: '1.18rem', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 600 }}>
@@ -134,7 +133,7 @@ export default function Login() {
               © Remote Android nhoxboo · scrcpy 3.3.4
             </div>
           </form>
-        </LiquidGlass>
+        </div>
       </div>
     </div>
   );

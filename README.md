@@ -138,14 +138,8 @@ export ADB_PATH=/usr/bin/adb
 git clone https://github.com/nhoxboo/web-scrcpy-fresh-private.git
 cd web-scrcpy-fresh-private
 
-# Cài đặt dependencies tối thiểu (backend)
+# Cài đặt dependencies tối thiểu
 pip install -r requirements.txt
-
-# Cài đặt và build giao diện (frontend)
-cd frontend
-npm install
-npm run build
-cd ..
 ```
 
 ### 2️⃣ Development setup (optional)
@@ -535,19 +529,6 @@ Dùng cho load balancer / uptime monitor.
 3. Chạy lại `adb kill-server && adb devices`
 4. Kiểm tra ADB version: `adb version`
 
-### Giao diện chỉ hiện hình nền (không có nút bấm/video)
-
-**Triệu chứng:** Mở trang web chỉ thấy hình nền (background), không thấy giao diện UI để thao tác.
-
-**Giải pháp:**
-Giao diện React ở thư mục `frontend` chưa được build ra thư mục `static/dist`. Hãy chạy các lệnh sau để build giao diện:
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-```
-
 ### Port 8000 đã bị dùng
 
 **Triệu chứng:** `Address already in use`
@@ -665,3 +646,26 @@ Dự án này kế thừa license từ scrcpy gốc.
 ---
 
 **Happy hacking! 🚀**
+
+## Hướng dẫn cập nhật và sửa lỗi giao diện
+
+### Khắc phục lỗi màn hình trắng sau khi deploy
+Nếu sau khi deploy web chỉ hiển thị màn hình trắng (hoặc chỉ có background mà không có form đăng nhập/giao diện):
+1. **Nguyên nhân:** Mã nguồn frontend (React) chưa được build hoặc thư mục chứa các file đã build (`static/dist/`) bị bỏ qua bởi cấu hình `.gitignore`.
+2. **Khắc phục:**
+   - Xóa dòng `static/dist/` trong file `.gitignore` (nếu có).
+   - Di chuyển vào thư mục frontend và cài đặt dependencies:
+     ```bash
+     cd frontend
+     npm install
+     ```
+   - Chạy lệnh build để tạo các file tĩnh (HTML, CSS, JS):
+     ```bash
+     npm run build
+     ```
+   - Các file sau khi build sẽ được tự động đưa vào thư mục `static/dist/`. Sau đó hãy commit và push những file này lên server.
+
+### Khắc phục lỗi vỡ giao diện (UI) do LiquidGlass
+Nếu giao diện đăng nhập và bảng điều khiển (Panel) bị vỡ, ẩn form, mất định dạng:
+1. **Nguyên nhân:** Thư viện `liquid-glass-react` đã inject các inline style (như `position: absolute`, `inset: 0`) gây xung đột với layout hiện hành của app.
+2. **Khắc phục:** Các component React (bao gồm `Login.tsx`, `Panel.tsx`, `Devices.tsx`, và `ChangePassword.tsx`) đã được gỡ bỏ thẻ `<LiquidGlass>` và thay thế bằng thẻ `<div className="glass">` đi kèm với style của file `glass.css` có sẵn trong dự án. Để áp dụng thay đổi này, hãy làm theo bước build frontend ở trên.
