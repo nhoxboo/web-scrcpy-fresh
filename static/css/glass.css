@@ -130,6 +130,14 @@ body::after {
     50%      { background-position: 100% 50%; }
 }
 
+/* Advanced panel animation classes */
+.qc-backdrop {
+    display: none;
+}
+.qc-backdrop.show {
+    display: flex;
+}
+
 /* Generic glass form controls. Pages can opt-in by using these classes. */
 .glass-input {
     width: 100%;

@@ -41,20 +41,39 @@
       font:inherit;font-size:.85rem;font-weight:500;
     }
     .btn:hover{border-color:var(--line-strong);background:rgba(255,255,255,.1);transform:translateY(-1px)}
+    .main-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+    .sidebar {
+      width: 54px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 10px;
+      border-right: 1px solid var(--line);
+      background: rgba(10, 12, 26, 0.45);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      overflow-y: auto;
+      z-index: 10;
+      scrollbar-width: none; /* Firefox */
+    }
+    .sidebar::-webkit-scrollbar { display: none; /* Safari and Chrome */ }
+
     .toolbar{
-      display:flex;gap:4px;align-items:center;padding:6px 8px;
-      border-bottom:1px solid var(--line);
-      background:rgba(7,9,26,.45);
-      backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
-      overflow-x:auto;touch-action:pan-x;position:relative;z-index:4;
-      flex-wrap:wrap;
+      display:flex;flex-direction:column;gap:6px;align-items:center;
+      position:relative;z-index:4;
     }
     .tool{
-      width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+      width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
       border:1px solid var(--line);background:rgba(255,255,255,.04);
-      cursor:pointer;transition:transform .15s var(--easing),border-color .2s var(--easing),background .2s var(--easing),color .2s var(--easing);
-      flex:0 0 auto;color:#dbe1f3;
+      cursor:pointer;transition:all .2s cubic-bezier(0.4, 0, 0.2, 1);
+      flex:0 0 auto;color:#dbe1f3;font-size:1.1rem;
       backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     .tool:hover{transform:translateY(-1px);border-color:var(--line-strong);color:var(--accent-1);background:rgba(106,166,255,.10)}
     .tool.active{
@@ -77,15 +96,14 @@
     .video-wrap{flex:1 1 auto;min-height:0;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;padding:14px;overflow:hidden;touch-action:none}
     .phone-shell{
       position:relative;display:flex;align-items:center;justify-content:center;
-      background:linear-gradient(180deg,rgba(40,45,66,.7),rgba(20,24,40,.7));
-      border:1px solid rgba(255,255,255,.12);
-      border-radius:38px;
-      box-shadow:0 30px 70px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.3);
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-      max-width:100%;max-height:100%;padding:18px 10px 14px 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:24px;
+      box-shadow:0 40px 100px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.1),inset 0 -1px 0 rgba(0,0,0,.4);
+      backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);
+      max-width:100%;max-height:100%;padding:12px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .phone-shell::before{content:'';position:absolute;top:8px;left:50%;transform:translateX(-50%);width:96px;height:18px;border-radius:12px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.10)}
-    .phone-shell::after{content:'';position:absolute;top:14px;left:50%;transform:translateX(-50%);width:34px;height:5px;border-radius:6px;background:rgba(255,255,255,.12)}
     /* image-rendering: keep edges crisp on integer-scaled HiDPI screens.
        'auto' lets the browser bilinearly smooth at non-integer ratios so
        text doesn't look jagged when the video is shrunk to fit the viewport. */
@@ -100,17 +118,14 @@
     /* In fullscreen, let the video fill the screen instead of keeping the shrunk inline size. */
     video:fullscreen,video:-webkit-full-screen,canvas#playerCanvas:fullscreen,canvas#playerCanvas:-webkit-full-screen{width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;border-radius:0;border:0;background:#000;object-fit:contain}
     .phone-shell:fullscreen,.phone-shell:-webkit-full-screen{width:100vw!important;height:100vh!important;padding:0;border:0;border-radius:0;background:#000}
-    .phone-shell:fullscreen::before,.phone-shell:fullscreen::after,.phone-shell:-webkit-full-screen::before,.phone-shell:-webkit-full-screen::after{display:none}
     /* Landscape (post-rotation): drop the portrait-only notch + camera dot,
        and use a thinner symmetric frame so the shell looks like a phone in
        landscape orientation rather than a wide video stuffed into a portrait. */
-    .phone-shell.landscape{padding:8px;border-radius:22px}
-    .phone-shell.landscape::before,.phone-shell.landscape::after{display:none}
+    .phone-shell.landscape{padding:12px;border-radius:24px}
     /* Virtual Desktop / external display: drop the phone shell entirely.
        Desktop-style UIs render landscape and the rounded "phone" frame
        around them makes no sense. */
-    .phone-shell.desktop-mode{padding:0;border-radius:8px;border-color:#4b5563}
-    .phone-shell.desktop-mode::before,.phone-shell.desktop-mode::after{display:none}
+    .phone-shell.desktop-mode{padding:0;border-radius:8px;border-color:#4b5563; box-shadow:0 20px 50px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.1),inset 0 -1px 0 rgba(0,0,0,.3);}
     /* When pointer lock is engaged for UHID mouse, give the user a clear
        hint that their mouse is captured (and how to release it). */
     .phone-shell.desktop-mode.locked{outline:2px solid #38bdf8}
@@ -223,7 +238,14 @@
     .qc-backdrop{position:fixed;inset:0;background:rgba(5,7,16,.55);backdrop-filter:blur(2px);
       -webkit-backdrop-filter:blur(2px);z-index:50;display:none;align-items:flex-start;justify-content:center;
       padding:80px 16px}
-    .qc-backdrop.show{display:flex}
+    #advancedPanel {
+      transform: translateX(-100%);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 9;
+    }
+    #advancedPanel.show {
+      transform: translateX(0);
+    }
     .qc-panel{
       width:min(560px,100%);max-height:80vh;overflow:auto;padding:18px 20px;
       background:rgba(20,22,38,.78);backdrop-filter:blur(22px) saturate(160%);
@@ -370,34 +392,57 @@
     </form>
   </div>
 
-  <div class="toolbar">
-    <button class="tool" id="rotate" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
-    <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
-    <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
-    <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
-    <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
-      <i class="fa-solid fa-tv" style="color:#dbe1f3;font-size:0.9rem;"></i>
-      <select id="displaySelect">
-        <option value="0">Display 0 (Mặc định)</option>
-      </select>
+  <div class="main-layout">
+    <div class="sidebar">
+      <div class="toolbar">
+        <button class="tool" id="rotate" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
+        <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
+        <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
+        <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
+        <div style="height: 12px;"></div>
+        <button class="tool" id="reconnect" title="Kết nối lại"><i class="fa-solid fa-plug-circle-bolt"></i></button>
+        <button class="tool" id="advancedToggle" title="Công cụ nâng cao" onclick="document.getElementById('advancedPanel').classList.toggle('show')"><i class="fa-solid fa-toolbox"></i></button>
+      </div>
     </div>
-    <div class="tool-select-wrap" title="Giao thức truyền tải" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
-      <i class="fa-solid fa-network-wired" style="color:#dbe1f3;font-size:0.9rem;"></i>
-      <select id="transportSelect">
-        <option value="websocket">TCP (WebSocket)</option>
-        <option value="webrtc">UDP (WebRTC)</option>
-      </select>
+
+    <!-- Advanced Panel (Hidden by default, slides out from sidebar) -->
+    <div id="advancedPanel" class="qc-backdrop" style="position: absolute; left: 55px; top: 0; bottom: 0; right: auto; width: 340px; align-items: stretch; padding: 12px; pointer-events: none; background: transparent;">
+      <div class="qc-panel" style="pointer-events: auto; width: 100%; height: 100%; display: flex; flex-direction: column; overflow-y: auto;">
+        <div class="qc-row" style="margin-bottom: 16px;">
+          <h3 style="margin: 0;"><i class="fa-solid fa-toolbox"></i> Công cụ nâng cao</h3>
+          <button type="button" onclick="document.getElementById('advancedPanel').classList.remove('show')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="qc-section-title" style="margin-top: 0;"><i class="fa-solid fa-network-wired"></i> Giải mã video</div>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+          <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;">
+            <i class="fa-solid fa-tv" style="color:#dbe1f3;font-size:0.9rem;"></i>
+            <select id="displaySelect" style="width:100%; border:none; background:transparent;">
+              <option value="0">Display 0 (Mặc định)</option>
+            </select>
+          </div>
+          <div class="tool-select-wrap" title="Giao thức truyền tải" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;display:none;">
+            <i class="fa-solid fa-network-wired" style="color:#dbe1f3;font-size:0.9rem;"></i>
+            <select id="transportSelect" style="width:100%; border:none; background:transparent;">
+              <option value="websocket">TCP (WebSocket)</option>
+              <option value="webrtc">UDP (WebRTC)</option>
+            </select>
+          </div>
+          <div class="tool-select-wrap" title="Chọn bộ giải mã video" style="display:flex;align-items:center;gap:4px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;">
+            <i class="fa-solid fa-code" style="color:#dbe1f3;font-size:0.9rem;"></i>
+            <select id="decoderSelect" style="width:100%; border:none; background:transparent;">
+              <option value="mse">MSE (Mặc định)</option>
+              <option value="webcodecs">WebCodecs (Trễ thấp)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="qc-section-title"><i class="fa-solid fa-bolt"></i> Chức năng nhanh</div>
+        <div class="qc-grid" style="grid-template-columns: 1fr 1fr;">
+          <button class="qc-btn" id="hudToggle" title="HUD: hiển thị FPS / Mbps / Ping"><i class="fa-solid fa-gauge-high"></i><span>Hiện HUD</span></button>
+        </div>
+      </div>
     </div>
-    <div class="tool-select-wrap" title="Chọn bộ giải mã video" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:34px;">
-      <i class="fa-solid fa-code" style="color:#dbe1f3;font-size:0.9rem;"></i>
-      <select id="decoderSelect">
-        <option value="mse">MSE (Mặc định)</option>
-        <option value="webcodecs">WebCodecs (Trễ thấp)</option>
-      </select>
-    </div>
-    <button class="tool" id="reconnect" title="Kết nối lại"><i class="fa-solid fa-plug-circle-bolt"></i></button>
-    <button class="tool" id="hudToggle" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
-  </div>
 
   <div class="video-wrap" id="videoWrap">
     <div class="phone-mockup" id="phoneMockup">
@@ -519,7 +564,7 @@
   </div>
 
   <!-- Quick Controls overlay -->
-  <div class="qc-backdrop" id="qcBackdrop">
+  <div class="qc-backdrop" id="qcBackdrop" style="display: none;">
     <div class="qc-panel" role="dialog" aria-modal="true" aria-labelledby="qcTitle">
       <div class="qc-row">
         <h3 id="qcTitle"><i class="fa-solid fa-sliders"></i> Quick Controls</h3>
@@ -627,6 +672,7 @@
       <div class="qc-out" id="qcOut"></div>
     </div>
   </div>
+  </div><!-- /main-layout -->
 
   <script src="/static/js/jmuxer.min.js?v={{ static_ver }}"></script>
   <script>
@@ -1227,12 +1273,12 @@
       const qcBackdrop = document.getElementById('qcBackdrop');
       const qcClose = document.getElementById('qcClose');
       const qcOut = document.getElementById('qcOut');
-      const showQc = (v)=>{ qcBackdrop.classList.toggle('show', v); if (v) qcOut.textContent=''; };
+      const showQc = (v)=>{ qcBackdrop.style.display = v ? 'flex' : 'none'; if (v) qcOut.textContent=''; };
       qcBtn.onclick = ()=> showQc(true);
       qcClose.onclick = ()=> showQc(false);
       qcBackdrop.addEventListener('click', (e)=>{ if (e.target === qcBackdrop) showQc(false); });
       document.addEventListener('keydown', (e)=>{
-        if (e.key === 'Escape' && qcBackdrop.classList.contains('show')) showQc(false);
+        if (e.key === 'Escape' && qcBackdrop.style.display !== 'none') showQc(false);
       });
       const _qcCsrf = document.querySelector('meta[name="csrf-token"]').content;
       // Shared dispatcher: any button with `data-act` POSTs /api/quick,
@@ -1273,7 +1319,7 @@
           btn.removeAttribute('disabled');
         }
       }
-      qcBackdrop.querySelectorAll('.qc-btn').forEach(btn => {
+      document.querySelectorAll('.qc-btn').forEach(btn => {
         btn.addEventListener('click', ()=> runControlBtn(btn, (_s, text)=>{ qcOut.textContent = text; }));
       });
 
@@ -1315,7 +1361,7 @@
       const wmH = document.getElementById('wmH');
       const wmD = document.getElementById('wmD');
       const wmInfo = document.getElementById('wmInfo');
-      const wmAllBtns = qcBackdrop.querySelectorAll('.wm-act');
+      const wmAllBtns = document.querySelectorAll('.wm-act');
       const _wmFmt = (label, parsed)=>{
         if (!parsed) return `${label}: -`;
         const phys = parsed.physical || '-';
@@ -1401,7 +1447,7 @@
         if (!confirm('Reset cả wm size và wm density về mặc định?')) return;
         _wmRun({ op: 'reset_all' }, 'wm reset all');
       });
-      qcBackdrop.querySelectorAll('.wm-preset').forEach(p => {
+      document.querySelectorAll('.wm-preset').forEach(p => {
         p.addEventListener('click', ()=>{
           wmW.value = p.dataset.w || '';
           wmH.value = p.dataset.h || '';
@@ -1465,7 +1511,7 @@
         _sqInit();
         _sqApply();
       });
-      qcBackdrop.querySelectorAll('.sq-preset').forEach(p => {
+      document.querySelectorAll('.sq-preset').forEach(p => {
         p.addEventListener('click', () => {
           const m = parseInt(p.dataset.mbps, 10) || 8;
           const f = parseInt(p.dataset.fps, 10) || 60;
