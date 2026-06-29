@@ -138,7 +138,7 @@
       Sau khi pair lần đầu, lần sau chỉ cần <strong>Connect</strong> tới <code>IP:cổng debug</code>
       (cổng debug khác cổng pair, lấy ở cùng mục <em>Wireless debugging</em>).
     </p>
-    
+
     <!-- Saved WiFi Devices Section -->
     <div id="savedDevicesContainer" style="margin-top:16px; display:none">
       <strong style="font-size:.92rem;display:block;margin-bottom:8px">Thiết bị đã lưu</strong>
@@ -202,7 +202,7 @@
   const _csrf = '{{ csrf_token() }}';
   const savedDevicesContainer = document.getElementById('savedDevicesContainer');
   const savedDevicesList = document.getElementById('savedDevicesList');
-  
+
   // Load saved devices on page load
   const loadSavedDevices = async () => {
     try {
@@ -213,39 +213,39 @@
         j.devices.forEach(d => {
           const div = document.createElement('div');
           div.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:8px';
-          
+
           const meta = document.createElement('div');
           meta.style.cssText = 'flex:1;min-width:0';
-          
+
           const target = document.createElement('div');
           target.style.cssText = 'font-size:.9rem;word-break:break-all';
           target.textContent = d.target;
-          
+
           const name = document.createElement('div');
           name.style.cssText = 'font-size:.8rem;color:var(--muted)';
           name.textContent = d.name;
-          
+
           meta.appendChild(target);
           meta.appendChild(name);
-          
+
           const actions = document.createElement('div');
           actions.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap';
-          
+
           const connectBtn = document.createElement('button');
           connectBtn.className = 'glass-btn';
           connectBtn.style.cssText = 'padding:4px 8px;font-size:.8rem';
           connectBtn.innerHTML = '<i class="fa-solid fa-plug"></i> Kết nối';
           connectBtn.addEventListener('click', (e) => { e.preventDefault(); connectSaved(d.id, d.host, d.port); });
-          
+
           const deleteBtn = document.createElement('button');
           deleteBtn.className = 'glass-btn danger';
           deleteBtn.style.cssText = 'padding:4px 8px;font-size:.8rem';
           deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
           deleteBtn.addEventListener('click', (e) => { e.preventDefault(); deleteSaved(d.id); });
-          
+
           actions.appendChild(connectBtn);
           actions.appendChild(deleteBtn);
-          
+
           div.appendChild(meta);
           div.appendChild(actions);
           savedDevicesList.appendChild(div);
@@ -256,7 +256,7 @@
       console.log('Failed to load saved devices:', e);
     }
   };
-  
+
   const connectSaved = async (deviceId, host, port) => {
     const form = document.getElementById('connForm');
     form.host.value = host;
@@ -264,11 +264,11 @@
     form.device_id.value = deviceId;
     wirePost('/api/adb/connect', form);
   };
-  
+
   const deleteSaved = async (deviceId) => {
     if (!confirm('Bạn chắc chắn muốn xóa thiết bị này?')) return;
     try {
-      const r = await fetch(`/api/saved-wifi-devices/${deviceId}`, { 
+      const r = await fetch(`/api/saved-wifi-devices/${deviceId}`, {
         method:'DELETE',
         credentials:'same-origin',
         headers:{ 'Content-Type': 'application/json' }
@@ -284,7 +284,7 @@
       wireOut.textContent = '✖ ' + (e.message || 'Xóa thất bại');
     }
   };
-  
+
   const wirePost = async (url, form) => {
     wireOut.textContent = `→ POST ${url}...`;
     const fd = new FormData(form);
@@ -301,7 +301,7 @@
       wireOut.textContent = '✖ ' + (e && e.message || String(e));
     }
   };
-  
+
   document.getElementById('pairForm').addEventListener('submit', (e)=>{
     e.preventDefault();
     wirePost('/api/adb/pair', e.target);
@@ -310,7 +310,7 @@
     e.preventDefault();
     wirePost('/api/adb/connect', e.target);
   });
-  
+
   // Load saved devices when page loads
   loadSavedDevices();
 </script>

@@ -19,6 +19,7 @@ from functools import wraps
 
 from flask import (
     Flask,
+    Response,
     abort,
     flash,
     jsonify,
@@ -48,6 +49,7 @@ from scrcpy import (
     is_valid_serial,
     list_adb_devices,
 )
+from uxplay import UxPlayManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1411,6 +1413,7 @@ class WebRTCManager:
 
 
 webrtc_mgr = WebRTCManager()
+uxplay_mgr = UxPlayManager()
 
 
 @app.route('/api/webrtc/offer', methods=['POST'])
@@ -1571,6 +1574,30 @@ def _too_large(_e):
     if request.path.startswith('/api/'):
         return jsonify(ok=False, error='File vượt quá giới hạn upload.'), 413
     return ('File quá lớn.', 413)
+
+
+@app.route('/ios')
+@login_required
+def ios_devices():
+    # Start uxplay if not running
+    uxplay_mgr.start()
+    return render_template(
+        'ios_index.html',
+        username=session.get('username', DEFAULT_USERNAME),
+        device_label='AirPlay iOS',
+    )
+
+
+@app.route('/api/stream/ios')
+@login_required
+def stream_ios():
+    # Start uxplay if not running
+    uxplay_mgr.start()
+
+    def generate():
+        yield from uxplay_mgr.get_video_stream()
+
+    return Response(generate(), mimetype='application/octet-stream')
 
 
 @app.route('/healthz')
