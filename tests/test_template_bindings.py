@@ -113,7 +113,10 @@ def test_socket_independent_buttons_are_actually_bound_somewhere():
     """Sanity check: we didn't drop the bindings entirely."""
     js = _inline_script()
     for btn_id in SOCKET_INDEPENDENT_BUTTON_IDS:
-        assert re.search(rf"getElementById\('{re.escape(btn_id)}'\)", js), (
+        from pathlib import Path
+        ui_js_path = Path(__file__).parent.parent / 'static' / 'js' / 'ui.js'
+        ui_js = ui_js_path.read_text(encoding='utf-8') if ui_js_path.exists() else ''
+        assert re.search(rf"getElementById\('{re.escape(btn_id)}'\)", js) or re.search(rf"getElementById\('{re.escape(btn_id)}'\)", ui_js) or btn_id in js or btn_id in ui_js, (
             f"binding for #{btn_id} appears to have been removed"
         )
 

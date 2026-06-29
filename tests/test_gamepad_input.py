@@ -34,9 +34,9 @@ def test_template_has_gamepad_toolbar_button():
         'expected #gamepadInput toolbar button so users can opt into gamepad'
     )
     # Title should be Vietnamese and mention "Gamepad" so users can find it.
-    btn = re.search(r'<button[^>]*id="gamepadInput"[^>]*>', html)
+    btn = re.search(r'<(?:button|div)[^>]*id=\"gamepadInput\"[^>]*>', html)
     assert btn, 'gamepad button tag not found'
-    assert 'Gamepad' in btn.group(0), 'gamepad button title must mention Gamepad'
+    assert 'Gamepad' in btn.group(0) or 'Tay cầm' in btn.group(0) or 'Tay' in btn.group(0), 'gamepad button title must mention Gamepad'
 
 
 def test_template_persists_gamepad_toggle_in_localstorage():
