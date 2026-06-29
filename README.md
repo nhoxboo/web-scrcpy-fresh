@@ -25,7 +25,7 @@
 ## ✨ Tính năng nổi bật
 
 ### Điều khiển từ xa
-- ✅ **Stream video realtime** từ Android qua trình duyệt
+- ✅ **Stream video realtime** từ Android và iOS (thông qua AirPlay) qua trình duyệt
 - ✅ **Multi-touch gestures**: pinch-to-zoom, 2-3 ngón chạm (Pointer Events)
 - ✅ **Mouse/Keyboard control**: điều khiển chuột và bàn phím mượt mà
 - ✅ **Pointer Lock (UHID mouse)**: giảm độ trễ trong gaming
@@ -57,8 +57,9 @@
 ### Bắt buộc
 - **OS**: Windows, macOS, hoặc Linux
 - **Python**: 3.10, 3.11, hoặc 3.12 (theo CI matrix)
-- **ADB**: Android Debug Bridge (xem hướng dẫn [tại đây](#-cài-đặt-adb-bắt-buộc))
-- **Android device**: đã bật USB Debugging
+- **ADB**: Android Debug Bridge (xem hướng dẫn [tại đây](#-cài-đặt-adb-bắt-buộc)) (dành cho Android)
+- **Android device**: đã bật USB Debugging hoặc **iOS device** (iPhone/iPad) hỗ trợ AirPlay.
+- **UxPlay**: Yêu cầu cài đặt `uxplay` nếu sử dụng chức năng điều khiển iOS (AirPlay stream).
 
 ### Tùy chọn
 - **gunicorn** (cho production)
@@ -247,7 +248,7 @@ gunicorn --worker-class eventlet -w 1 --bind 127.0.0.1:8000 wsgi:app
 server {
     listen 443 ssl http2;
     server_name remote.example.com;
-    
+
     ssl_certificate     /etc/letsencrypt/live/remote.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/remote.example.com/privkey.pem;
 

@@ -362,6 +362,7 @@
       <span class="pill" title="Chưa chọn thiết bị (đang dùng default)"><i class="fa-solid fa-mobile-screen"></i> auto</span>
     {% endif %}
     <a class="btn" href="/devices" title="Chọn thiết bị khác"><i class="fa-solid fa-shuffle"></i> Đổi máy</a>
+    <a class="btn" href="/ios" title="Điều khiển iOS qua AirPlay"><i class="fa-brands fa-apple"></i> Thiết bị iOS</a>
     <div class="sp"></div>
     <a class="btn" href="/change-password"><i class="fa-solid fa-key"></i> Đổi mật khẩu</a>
     <form method="post" action="/logout" style="display:inline;margin:0">
@@ -785,13 +786,13 @@
         try { videoDecoder.close(); } catch(e) {}
         videoDecoder = null;
       }
-      
+
       const config = {
         codec: codecString || 'avc1.64002a',
         avc: { format: 'annexb' },
         optimizeForLatency: true
       };
-      
+
       videoDecoder = new VideoDecoder({
         output: (frame) => {
           if (canvasElement.width !== frame.displayWidth || canvasElement.height !== frame.displayHeight) {
@@ -807,7 +808,7 @@
           st('Lỗi bộ giải mã WebCodecs: ' + err.message);
         }
       });
-      
+
       videoDecoder.configure(config);
     }
 
@@ -815,30 +816,30 @@
       if (webrtcPc) {
         try { webrtcPc.close(); } catch(e) {}
       }
-      
+
       webrtcPc = new RTCPeerConnection({
         iceServers: []
       });
-      
+
       webrtcChannel = webrtcPc.createDataChannel('video', {
         ordered: false,
         maxRetransmits: 0
       });
-      
+
       webrtcChannel.binaryType = 'arraybuffer';
-      
+
       webrtcChannel.onopen = () => {
         st('Giao thức UDP (WebRTC) đã kết nối.');
       };
-      
+
       webrtcChannel.onclose = () => {
         console.log('WebRTC DataChannel closed');
       };
-      
+
       webrtcChannel.onmessage = (event) => {
         parser.appendData(new Uint8Array(event.data));
       };
-      
+
       webrtcPc.createOffer().then(offer => {
         return webrtcPc.setLocalDescription(offer).then(() => {
           return fetch('/api/webrtc/offer', {
@@ -2304,10 +2305,10 @@
       if (newBitrate !== null && (!window._abrLastTrigger || performance.now() - window._abrLastTrigger > 10000)) {
         window._abrLastTrigger = performance.now();
         if (newBitrate === 2) window._abrLastDowngrade = performance.now();
-        
+
         // Save new bitrate
         localStorage.setItem(STREAM_BITRATE_KEY, String(newBitrate));
-        
+
         // Update UI sliders if they exist
         const sqB = document.getElementById('sqBitrate');
         const sqBNum = document.getElementById('sqBitrateNum');
@@ -2320,7 +2321,7 @@
           ...(newBitrate !== 8 ? { video_bit_rate: String(newBitrate * 1_000_000) } : {})
         };
         if (newBitrate === 8) delete socket.io.opts.query.video_bit_rate;
-        
+
         try { socket.disconnect(); } catch (e) {}
         setTimeout(() => { try { socket.connect(); } catch (e) {} }, 300);
       }
