@@ -402,7 +402,7 @@
   <div class="video-wrap" id="videoWrap">
     <div class="phone-mockup" id="phoneMockup">
       <div class="phone-shell" id="phoneShell">
-        <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
+        <img id="player" src="/api/stream/ios_mjpeg" style="width: 100%; height: 100%; object-fit: contain;">
         <canvas id="playerCanvas" style="display:none;"></canvas>
         <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
         <!-- Physical side keys (right edge of the phone frame). All three call
@@ -669,8 +669,14 @@
     let macroStartAt = 0;
     try{ macroEvents = JSON.parse(localStorage.getItem(MACRO_KEY)||'[]'); }catch{ macroEvents = []; }
 
+
+    setTimeout(() => {
+        fitVideoToViewport();
+    }, 1000);
+
     function fitVideoToViewport() {
-      if (!videoWrap || !videoElement || !phoneShell || !deviceW || !deviceH) return;
+      if (!videoWrap || !videoElement || !phoneShell) return;
+      if (!deviceW || !deviceH) { deviceW = 1080; deviceH = 1920; }
       // In fullscreen the CSS rule takes over (width/height 100vw/100vh). Don't
       // fight it with inline styles or the video will stay small.
       if (document.fullscreenElement || document.webkitFullscreenElement) return;
@@ -1029,6 +1035,114 @@
     // device unplugged, ...). Without this split, a rejected connection
     // froze the entire toolbar including the Reconnect button — exactly
     // the button the user needed to recover.
+
+    // iOS control via WDA custom script
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    const playerImg = document.getElementById('player');
+    const csrfTokenX = document.querySelector('meta[name="csrf-token"]').content;
+
+    function getImgCoords(e) {
+        const rect = playerImg.getBoundingClientRect();
+        const imgRatio = playerImg.naturalWidth / playerImg.naturalHeight;
+        const rectRatio = rect.width / rect.height;
+        let renderedWidth = rect.width;
+        let renderedHeight = rect.height;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        if (imgRatio > rectRatio) {
+            renderedHeight = rect.width / imgRatio;
+            offsetY = (rect.height - renderedHeight) / 2;
+        } else {
+            renderedWidth = rect.height * imgRatio;
+            offsetX = (rect.width - renderedWidth) / 2;
+        }
+
+        let x = (e.clientX - rect.left - offsetX) / renderedWidth;
+        let y = (e.clientY - rect.top - offsetY) / renderedHeight;
+
+        x = Math.max(0, Math.min(1, x));
+        y = Math.max(0, Math.min(1, y));
+        return {x, y};
+    }
+
+    playerImg.addEventListener('pointerdown', (e) => {
+        isDragging = false;
+        const coords = getImgCoords(e);
+        dragStartX = coords.x;
+        dragStartY = coords.y;
+    });
+
+    playerImg.addEventListener('pointermove', (e) => {
+        if(e.buttons > 0) isDragging = true;
+    });
+
+    playerImg.addEventListener('pointerup', async (e) => {
+        const coords = getImgCoords(e);
+        const endX = coords.x;
+        const endY = coords.y;
+
+        let endpoint = '/api/ios/click';
+        let payload = { disX: dragStartX, disY: dragStartY };
+
+        if (isDragging && (Math.abs(endX - dragStartX) > 0.01 || Math.abs(endY - dragStartY) > 0.01)) {
+            endpoint = '/api/ios/drag';
+            payload.toX = endX;
+            payload.toY = endY;
+        }
+
+        try {
+            await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfTokenX },
+                body: JSON.stringify(payload)
+            });
+        } catch(err) {
+            console.error('iOS control error:', err);
+        }
+    });
+
+    const keyTapIOS = async (endpoint, data={}) => {
+        try {
+            await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfTokenX },
+                body: JSON.stringify(data)
+            });
+        } catch(err) {
+            console.error('iOS control error:', err);
+        }
+    };
+
+    // Override the buttons
+    if (document.getElementById('home')) document.getElementById('home').onclick = () => keyTapIOS('/api/ios/home');
+    if (document.getElementById('back')) document.getElementById('back').onclick = () => keyTapIOS('/api/ios/home');
+    if (document.getElementById('power')) document.getElementById('power').onclick = () => keyTapIOS('/api/ios/lock');
+    if (document.getElementById('rotate')) document.getElementById('rotate').onclick = () => keyTapIOS('/api/ios/rotation');
+
+    // Override keyboard typing
+    const kbCaptureIOS = document.getElementById('kbCapture');
+    if (kbCaptureIOS) {
+      kbCaptureIOS.addEventListener('keydown', (e) => {
+          if (e.key === 'Backspace') {
+              keyTapIOS('/api/ios/backspace');
+              e.preventDefault();
+          } else if (e.key === 'Enter') {
+              keyTapIOS('/api/ios/enter');
+              e.preventDefault();
+          }
+      });
+      kbCaptureIOS.addEventListener('input', (e) => {
+          const text = e.data != null ? e.data : kbCaptureIOS.value;
+          if (text) {
+              keyTapIOS('/api/ios/send', {text: text});
+          }
+          kbCaptureIOS.value = '';
+      });
+    }
+
     function attachInput(width, height) {
       input = new ScrcpyInput(sendControl, videoElement, width, height, false, {
         useUhid: uhidOn,
@@ -2879,36 +2993,3 @@
   </script>
 </body>
 </html>
-<script>
-  // Modify the script to fetch video stream from /api/stream/ios using fetch API and pump into parser
-  const streamUrl = '/api/stream/ios';
-
-  async function pumpVideo() {
-    try {
-      const response = await fetch(streamUrl);
-      if (!response.body) {
-        throw new Error('ReadableStream not yet supported in this browser.');
-      }
-
-      const reader = response.body.getReader();
-      st('Đã kết nối stream H.264 qua HTTP');
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        if (value) {
-            if (!useWebRtc) {
-                parser.appendData(new Uint8Array(value));
-            }
-        }
-      }
-    } catch (e) {
-      console.error(e);
-      st('Mất kết nối stream');
-    }
-  }
-
-  // Start pump
-  pumpVideo();
-</script>

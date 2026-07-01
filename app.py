@@ -50,6 +50,7 @@ from scrcpy import (
     list_adb_devices,
 )
 from uxplay import UxPlayManager
+from wda_manager import WDAManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1414,6 +1415,7 @@ class WebRTCManager:
 
 webrtc_mgr = WebRTCManager()
 uxplay_mgr = UxPlayManager()
+wda_mgr = WDAManager()
 
 
 @app.route('/api/webrtc/offer', methods=['POST'])
@@ -1579,25 +1581,154 @@ def _too_large(_e):
 @app.route('/ios')
 @login_required
 def ios_devices():
-    # Start uxplay if not running
-    uxplay_mgr.start()
+    # Start wda proxy if not running
+    wda_mgr.start()
     return render_template(
         'ios_index.html',
         username=session.get('username', DEFAULT_USERNAME),
-        device_label='AirPlay iOS',
+        device_label='WDA iOS',
     )
 
 
-@app.route('/api/stream/ios')
+@app.route('/api/stream/ios_mjpeg')
 @login_required
-def stream_ios():
-    # Start uxplay if not running
-    uxplay_mgr.start()
+def stream_ios_mjpeg():
+    # Start wda proxy if not running
+    wda_mgr.start()
+
+    # We can just redirect to the local relay port or proxy it
+    import requests
 
     def generate():
-        yield from uxplay_mgr.get_video_stream()
+        url = f"http://127.0.0.1:{wda_mgr.mjpeg_port}"
+        try:
+            with requests.get(url, stream=True, timeout=10) as r:
+                yield from r.iter_content(chunk_size=4096)
+        except Exception as e:
+            log.error("Failed to proxy mjpeg: %s", e)
 
-    return Response(generate(), mimetype='application/octet-stream')
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=--BoundaryString')
+
+
+@app.route('/api/ios/click', methods=['POST'])
+@login_required
+def ios_click():
+    data = request.json or {}
+    disX = float(data.get('disX', 0))
+    disY = float(data.get('disY', 0))
+
+    client = wda_mgr.get_client()
+    if client:
+        try:
+            client.click(disX, disY)
+            return jsonify(ok=True)
+        except Exception as e:
+            return jsonify(ok=False, error=str(e))
+    return jsonify(ok=False, error="WDA not started")
+
+
+@app.route('/api/ios/drag', methods=['POST'])
+@login_required
+def ios_drag():
+    data = request.json or {}
+    disX = float(data.get('disX', 0))
+    disY = float(data.get('disY', 0))
+    toX = float(data.get('toX', 0))
+    toY = float(data.get('toY', 0))
+
+    client = wda_mgr.get_client()
+    if client:
+        try:
+            client.swipe(x1=disX, y1=disY, x2=toX, y2=toY, duration=0.1)
+            return jsonify(ok=True)
+        except Exception as e:
+            return jsonify(ok=False, error=str(e))
+    return jsonify(ok=False, error="WDA not started")
+
+
+@app.route('/api/ios/home', methods=['POST'])
+@login_required
+def ios_home():
+    client = wda_mgr.get_client()
+    if client:
+        try:
+            client.home()
+            return jsonify(ok=True)
+        except Exception as e:
+            return jsonify(ok=False, error=str(e))
+    return jsonify(ok=False, error="WDA not started")
+
+
+@app.route('/api/ios/lock', methods=['POST'])
+@login_required
+def ios_lock():
+    client = wda_mgr.get_client()
+    if client:
+        try:
+            client.lock()
+            return jsonify(ok=True)
+        except Exception as e:
+            return jsonify(ok=False, error=str(e))
+    return jsonify(ok=False, error="WDA not started")
+
+
+@app.route('/api/ios/send', methods=['POST'])
+@login_required
+def ios_send():
+    data = request.json or {}
+    text = data.get('text', '')
+
+    client = wda_mgr.get_client()
+    if client:
+        try:
+            client.send_keys(text)
+            return jsonify(ok=True)
+        except Exception as e:
+            return jsonify(ok=False, error=str(e))
+    return jsonify(ok=False, error="WDA not started")
+
+
+@app.route('/api/ios/backspace', methods=['POST'])
+@login_required
+def ios_backspace():
+    client = wda_mgr.get_client()
+    if client:
+        try:
+            client.send_keys('\b')
+            return jsonify(ok=True)
+        except Exception as e:
+            return jsonify(ok=False, error=str(e))
+    return jsonify(ok=False, error="WDA not started")
+
+
+@app.route('/api/ios/enter', methods=['POST'])
+@login_required
+def ios_enter():
+    client = wda_mgr.get_client()
+    if client:
+        try:
+            client.send_keys('\n')
+            return jsonify(ok=True)
+        except Exception as e:
+            return jsonify(ok=False, error=str(e))
+    return jsonify(ok=False, error="WDA not started")
+
+
+@app.route('/api/ios/rotation', methods=['POST'])
+@login_required
+def ios_rotation():
+    client = wda_mgr.get_client()
+    if client:
+        try:
+            orientation = client.orientation
+            if orientation == 'PORTRAIT':
+                client.orientation = 'LANDSCAPE'
+            else:
+                client.orientation = 'PORTRAIT'
+            return jsonify(ok=True)
+        except Exception as e:
+            return jsonify(ok=False, error=str(e))
+    return jsonify(ok=False, error="WDA not started")
 
 
 @app.route('/healthz')
