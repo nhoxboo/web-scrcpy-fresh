@@ -2,3 +2,5 @@
 pytest>=7.4,<9.0
 ruff>=0.5,<1.0
 pre-commit>=3.5,<5.0
+tidevice>=0.12.0
+facebook-wda>=1.4.6
