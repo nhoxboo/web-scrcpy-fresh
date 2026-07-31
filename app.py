@@ -2161,4 +2161,10 @@ if __name__ == '__main__':
             bind,
             bar,
         )
-    socketio.run(app, host=args.host, port=args.port, allow_unsafe_werkzeug=True)
+    socketio.run(
+        app,
+        host=args.host,
+        port=args.port,
+        allow_unsafe_werkzeug=True,
+        use_reloader=False,
+    )
