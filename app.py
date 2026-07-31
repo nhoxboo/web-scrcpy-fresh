@@ -1863,6 +1863,36 @@ def handle_connect(auth=None):
                 log.warning('Invalid max_fps from client: %r', req_fps)
         # Per-session pick (set via /devices) wins over env/CLI default.
         chosen_serial = _selected_serial()
+        # Clean up stale sessions: sessions whose socket is no longer alive in
+        # the engineio manager (browser lost connection / auto-reconnect race)
+        # but which still hold a scpy_ctx. Without this, a dead session keeps
+        # the device lock forever and every new client gets refused with
+        # "Thiết bị này đang được sử dụng bởi client khác" -> "đang kết nối".
+        stale = []
+        try:
+            mgr = socketio.server.eio
+        except Exception:  # noqa: BLE001
+            mgr = None
+        for other_sid, s in list(scpy_sessions.items()):
+            if other_sid == sid or not s.get('scpy_ctx'):
+                continue
+            alive = False
+            try:
+                if mgr is not None:
+                    alive = mgr._get_socket(other_sid) is not None
+            except Exception:  # noqa: BLE001
+                alive = False
+            if not alive:
+                stale.append(other_sid)
+        if stale:
+            log.info('Cleaning up %d stale session(s) holding device %s', len(stale), chosen_serial)
+            for other_sid in stale:
+                s = scpy_sessions.pop(other_sid, None)
+                if s and s.get('scpy_ctx'):
+                    try:
+                        s['scpy_ctx'].scrcpy_stop()
+                    except Exception as e:  # noqa: BLE001
+                        log.warning('scrcpy_stop for stale session %s failed: %s', other_sid, e)
         for other_sid, s in scpy_sessions.items():
             if s.get('scpy_ctx') and s['scpy_ctx'].serial == chosen_serial and other_sid != sid:
                 raise SocketConnectionRefusedError(f'Thiết bị này đang được sử dụng bởi client khác. Vui lòng Kick để chiếm quyền.')
