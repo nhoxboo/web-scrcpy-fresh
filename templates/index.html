@@ -19,15 +19,9 @@
      * /static/css/glass.css and are loaded before this block. The styles
      * below shape the panel-specific surfaces (top bar, toolbar, phone
      * shell, status bar, zoom controls) on top of those tokens. */
-    body{margin:0;height:100dvh;display:flex;flex-direction:column;color:var(--txt);overflow:hidden}
-    .top{
-      display:flex;align-items:center;gap:10px;padding:10px 14px;
-      border-bottom:1px solid var(--line);
-      background:rgba(10,12,26,.55);
-      backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
-      flex-wrap:wrap;position:relative;z-index:5;
-    }
-    .top::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent)}
+    body{margin:0;height:100dvh;display:flex;flex-direction:row;color:var(--txt);overflow:hidden;background:#05070e}
+    .top{display:flex;flex-direction:column;gap:12px;}
+    
     .brand{font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
     .brand .name{font-size:1rem}
     .sp{flex:1}
@@ -41,14 +35,7 @@
       font:inherit;font-size:.85rem;font-weight:500;
     }
     .btn:hover{border-color:var(--line-strong);background:rgba(255,255,255,.1);transform:translateY(-1px)}
-    .toolbar{
-      display:flex;gap:4px;align-items:center;padding:6px 8px;
-      border-bottom:1px solid var(--line);
-      background:rgba(7,9,26,.45);
-      backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
-      overflow-x:auto;touch-action:pan-x;position:relative;z-index:4;
-      flex-wrap:wrap;
-    }
+    .toolbar{display:flex; flex-wrap: wrap; gap:8px;}
     .tool{
       width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
       border:1px solid var(--line);background:rgba(255,255,255,.04);
@@ -334,11 +321,11 @@
       white-space:nowrap;overflow:auto;
     }
     @media (max-width: 768px){
-      .top{padding:8px 10px;gap:8px}
+      .top{display:flex;flex-direction:column;gap:12px;}
       .brand .name{font-size:.92rem}
       .pill{font-size:.7rem;padding:3px 8px}
       .btn{padding:6px 10px;font-size:.78rem}
-      .toolbar{padding:8px;gap:6px}
+      .toolbar{display:flex; flex-wrap: wrap; gap:8px;}
       .tool{width:36px;height:36px}
       .status{font-size:.74rem;padding:5px 10px}
       .phone-shell{border-radius:28px;padding:14px 8px 10px 8px}
@@ -350,6 +337,8 @@
   </style>
 </head>
 <body>
+  <div class="sidebar" style="width:280px; flex-shrink:0; display:flex; flex-direction:column; background:rgba(10,12,26,0.65); border-right:1px solid var(--line); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); z-index:10; box-shadow: 5px 0 25px rgba(0,0,0,0.5); overflow-y:auto; overflow-x:hidden;">
+    <div class="sidebar-inner" style="padding: 16px; display:flex; flex-direction:column; gap:16px;">
   <div class="top">
     <div class="brand">
       <i class="fa-solid fa-mobile-screen-button" style="color:var(--accent-1)"></i>
@@ -427,8 +416,24 @@
     <button class="tool" id="screenOffToggle" title="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)"><i class="fa-solid fa-lightbulb"></i></button>
   </div>
 
-  <div class="video-wrap" id="videoWrap">
+      </div>
+  </div> <!-- sidebar -->
+  <div class="main-content" style="flex:1; position:relative; display:flex; flex-direction:column;">
+    
+    <div id="dropZone" style="position:absolute; inset:0; z-index:100; background:rgba(16, 185, 129, 0.2); backdrop-filter:blur(4px); display:none; align-items:center; justify-content:center; flex-direction:column; color:#fff; border: 4px dashed #10b981; border-radius: 20px; margin: 20px; pointer-events:none;">
+      <i class="fa-solid fa-cloud-arrow-up" style="font-size:4rem; margin-bottom:16px; color:#34d399"></i>
+      <h2 style="font-family:sans-serif; margin:0">Thả file để Push / Cài đặt APK</h2>
+    </div>
+    
+    <div class="video-wrap" id="videoWrap">
     <div class="phone-mockup" id="phoneMockup">
+      
+    <div id="keymapOverlay" style="position:absolute; inset:0; z-index:90; display:none; pointer-events:auto;">
+       <div style="position:absolute; top: 10px; left: 50%; transform: translateX(-50%); background:rgba(0,0,0,0.8); color:#fbbf24; padding:8px 16px; border-radius:20px; font-family:sans-serif; font-size:0.85rem; font-weight:bold; border:1px solid #fbbf24; box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+         <i class="fa-solid fa-pen-ruler"></i> CHẾ ĐỘ GÁN PHÍM: Click vào màn hình để thêm phím. Bấm "Gán phím" lần nữa để lưu.
+       </div>
+    </div>
+    
       <div class="phone-shell" id="phoneShell">
         <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
         <canvas id="playerCanvas" style="display:none;"></canvas>
@@ -2869,7 +2874,8 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         const btn = document.getElementById('reconnect');
-        if (btn) btn.click();
+        // Do not force reconnect on tab switch to avoid reloading the page
+        // if (btn) btn.click();
       }
     });
 
@@ -2909,5 +2915,6 @@
     document.addEventListener('fullscreenchange', fitVideoToViewport);
     window.addEventListener('beforeunload', ()=>socket.disconnect());
   </script>
+  </div>
 </body>
 </html>

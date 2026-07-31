@@ -119,12 +119,8 @@ def _audit(event: str, **fields) -> None:
 
 # --- shared scrcpy session state -------------------------------------------------
 _state_lock = threading.Lock()
-scpy_ctx = None
-client_sid = None
-message_queue = queue.Queue()
-# Separate queue + emit task for audio so a slow audio consumer can't stall
-# the video pipeline (the browser handles them through different MSE buffers).
-audio_message_queue = queue.Queue()
+# Multi-device state mapping: sid -> { "scpy_ctx": Scrcpy, "video_q": queue.Queue, "audio_q": queue.Queue, "tasks": [] }
+scpy_sessions = {}
 video_bit_rate = os.environ.get('SCRCPY_VIDEO_BIT_RATE', '10000000')
 max_fps = os.environ.get('SCRCPY_MAX_FPS', '60')
 max_size = os.environ.get('SCRCPY_MAX_SIZE', '1080').strip() or '1080'
@@ -150,15 +146,14 @@ def _shutdown_scrcpy() -> None:
     the process is killed (SIGTERM from gunicorn, crash) that path doesn't fire
     and the adb shell subprocess + local port forward would leak.
     """
-    global scpy_ctx, client_sid
+    global scpy_sessions
     with _state_lock:
-        ctx = scpy_ctx
-        scpy_ctx = None
-        client_sid = None
-    if ctx is not None:
+        ctxs = [s['scpy_ctx'] for s in scpy_sessions.values() if s.get('scpy_ctx')]
+        scpy_sessions.clear()
+    for ctx in ctxs:
         try:
             ctx.scrcpy_stop()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             log.warning('scrcpy_stop during shutdown failed: %s', e)
 
 
@@ -1540,7 +1535,8 @@ def api_session_status():
     are authenticated as the same user (single-account deployment).
     """
     with _state_lock:
-        active = scpy_ctx is not None
+        # Simplification: active if this session is streaming
+        active = any(s.get('scpy_ctx') and s['scpy_ctx'].serial == _selected_serial() for s in scpy_sessions.values())
     return jsonify(ok=True, active=active)
 
 
@@ -1555,15 +1551,21 @@ def api_session_kick():
     client_sid; the kicker then reconnects normally.
     """
     with _state_lock:
-        sid = client_sid
-    _audit('session_kick', target_sid=bool(sid))
-    if not sid:
+        # Disconnect all clients watching this device
+        sids = [
+            sid
+            for sid, s in scpy_sessions.items()
+            if s.get('scpy_ctx') and s['scpy_ctx'].serial == _selected_serial()
+        ]
+        target_sid = sids[0] if sids else None
+    _audit('session_kick', target_sid=bool(target_sid))
+    if not target_sid:
         return jsonify(ok=True, kicked=False)
     # flask_socketio's high-level disconnect() only works inside a socket
     # handler; from an HTTP route we have to drop down to the underlying
     # python-socketio Server. Tests stub this attribute directly.
     try:
-        socketio.server.disconnect(sid)
+        socketio.server.disconnect(target_sid)
     except Exception as exc:  # noqa: BLE001
         log.warning('socketio.server.disconnect failed: %s', exc)
         return jsonify(ok=False, error=str(exc)), 500
@@ -1738,70 +1740,58 @@ def healthz():
     Does not require auth and does not touch scrcpy / device state.
     """
     with _state_lock:
-        has_client = client_sid is not None
+        has_client = len(scpy_sessions) > 0
     return jsonify(status='ok', has_client=has_client), 200
 
 
 # --- socket.io handlers ----------------------------------------------------------
-def video_send_task():
-    global client_sid
+def video_send_task(sid, q):
     while True:
         with _state_lock:
-            active = client_sid
-        if active is None:
-            break
+            if sid not in scpy_sessions: break
         try:
-            message = message_queue.get(timeout=0.05)
-            socketio.emit('video_data', message, to=active)
+            message = q.get(timeout=0.05)
+            socketio.emit('video_data', message, to=sid)
         except queue.Empty:
             pass
-        except Exception as e:  # noqa: BLE001 - background task shouldn't crash
+        except Exception as e:
             log.error('Error sending video data: %s', e)
         socketio.sleep(0)
-    log.info('video_send_task stopped')
+    log.info(f'video_send_task stopped for {sid}')
 
 
-def audio_send_task():
-    global client_sid
+def audio_send_task(sid, q):
     while True:
         with _state_lock:
-            active = client_sid
-        if active is None:
-            break
+            if sid not in scpy_sessions: break
         try:
-            message = audio_message_queue.get(timeout=0.05)
-            socketio.emit('audio_data', message, to=active)
+            message = q.get(timeout=0.05)
+            socketio.emit('audio_data', message, to=sid)
         except queue.Empty:
             pass
-        except Exception as e:  # noqa: BLE001 - background task shouldn't crash
+        except Exception as e:
             log.error('Error sending audio data: %s', e)
         socketio.sleep(0)
-    log.info('audio_send_task stopped')
+    log.info(f'audio_send_task stopped for {sid}')
 
 
-def send_video_data(data):
-    message_queue.put(data)
-    webrtc_mgr.broadcast_video(data)
+# Managed via closures in handle_connect instead
 
-
-def send_audio_data(data):
-    audio_message_queue.put(data)
 
 
 @socketio.on('connect')
 def handle_connect(auth=None):
-    global scpy_ctx, client_sid
+    global scpy_sessions
     if not _is_authed():
         log.info('Reject socket: unauthenticated sid=%s', request.sid)
         raise SocketConnectionRefusedError('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.')
 
     with _state_lock:
-        if scpy_ctx is not None:
-            log.info('Reject socket: another client already connected (sid=%s)', request.sid)
-            raise SocketConnectionRefusedError(
-                'Đã có client khác đang điều khiển thiết bị. Vui lòng thử lại sau.'
-            )
-        client_sid = request.sid
+        sid = request.sid
+        # Multi-device enabled!
+        vq = queue.Queue()
+        aq = queue.Queue()
+        scpy_sessions[sid] = {'scpy_ctx': None, 'video_q': vq, 'audio_q': aq, 'tasks': []}
         # Per-connection display_id from socket query (?display_id=2 for DeX),
         # falling back to the server-wide default. Validated as an int 0..99.
         req_disp = request.args.get('display_id') if request.args else None
@@ -1873,7 +1863,10 @@ def handle_connect(auth=None):
                 log.warning('Invalid max_fps from client: %r', req_fps)
         # Per-session pick (set via /devices) wins over env/CLI default.
         chosen_serial = _selected_serial()
-        scpy_ctx = Scrcpy(
+        for other_sid, s in scpy_sessions.items():
+            if s.get('scpy_ctx') and s['scpy_ctx'].serial == chosen_serial and other_sid != sid:
+                raise SocketConnectionRefusedError(f'Thiết bị này đang được sử dụng bởi client khác. Vui lòng Kick để chiếm quyền.')
+        ctx = Scrcpy(
             serial=chosen_serial,
             display_id=chosen_disp,
             max_size=max_size,
@@ -1897,74 +1890,63 @@ def handle_connect(auth=None):
             except Exception as exc:  # noqa: BLE001
                 log.warning('emit device_clipboard failed: %s', exc)
 
-        scpy_ctx.device_message_callback = _on_device_message
+        ctx.device_message_callback = _on_device_message
 
     try:
-        # Drain any leftover bytes from the previous session before the new
-        # encoder starts pushing — otherwise the new VideoParser/AudioParser
-        # instances on the browser side would consume stale frames first
-        # (mid-NALU bytes parsed as the 64-byte device name + 12-byte size
-        # header → garbage `Screen <huge>x<negative>` and a permanently
-        # out-of-sync stream; stale AAC frames as the first audio).
-        for q in (message_queue, audio_message_queue):
-            try:
-                while True:
-                    q.get_nowait()
-            except queue.Empty:
-                pass
-        scpy_ctx.scrcpy_start(
-            send_video_data,
+        with _state_lock:
+            scpy_sessions[sid]['scpy_ctx'] = ctx
+            vq = scpy_sessions[sid]['video_q']
+            aq = scpy_sessions[sid]['audio_q']
+
+        def _send_video(data):
+            vq.put(data)
+            webrtc_mgr.broadcast_video(data)
+
+        def _send_audio(data):
+            aq.put(data)
+
+        ctx.scrcpy_start(
+            _send_video,
             chosen_bit_rate,
             max_fps=chosen_max_fps,
-            audio_callback=send_audio_data if chosen_audio else None,
+            audio_callback=_send_audio if chosen_audio else None,
         )
-    except RuntimeError as e:
-        log.warning('scrcpy_start refused: %s', e)
-        with _state_lock:
-            client_sid = None
-            scpy_ctx = None
-        raise SocketConnectionRefusedError(
-            'Không thể khởi động scrcpy: ' + str(e) + '. Kiểm tra adb/USB Debugging.'
-        ) from e
     except Exception as e:  # noqa: BLE001
         log.exception('scrcpy_start failed: %s', e)
         with _state_lock:
-            client_sid = None
-            scpy_ctx = None
-        raise SocketConnectionRefusedError(
-            'Lỗi khởi động scrcpy trên server. Xem log để biết thêm.'
-        ) from e
+            if sid in scpy_sessions:
+                del scpy_sessions[sid]
+        raise SocketConnectionRefusedError(f'Lỗi khởi động scrcpy: {e}') from e
 
-    socketio.start_background_task(video_send_task)
+    t1 = socketio.start_background_task(video_send_task, sid, vq)
+    with _state_lock:
+        if sid in scpy_sessions: scpy_sessions[sid]['tasks'].append(t1)
     if chosen_audio:
-        socketio.start_background_task(audio_send_task)
+        t2 = socketio.start_background_task(audio_send_task, sid, aq)
+        with _state_lock:
+            if sid in scpy_sessions: scpy_sessions[sid]['tasks'].append(t2)
     log.info('Socket connected sid=%s audio=%s', request.sid, chosen_audio)
     return True
 
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    global scpy_ctx, client_sid
+    sid = request.sid
     with _state_lock:
-        ctx = scpy_ctx
-        scpy_ctx = None
-        client_sid = None
-    log.info('Socket disconnected, stopping scrcpy (had_ctx=%s)', ctx is not None)
-    try:
-        webrtc_mgr.close_all()
-    except Exception as e:
-        log.warning('Lỗi close_all WebRTC: %s', e)
-    if ctx is not None:
+        s = scpy_sessions.pop(sid, None)
+    if s and s.get('scpy_ctx'):
+        log.info(f'Client {sid} disconnected, tearing down scrcpy session')
         try:
-            ctx.scrcpy_stop()
+            s['scpy_ctx'].scrcpy_stop()
         except Exception as e:  # noqa: BLE001
             log.warning('scrcpy_stop raised: %s', e)
 
 
 @socketio.on('control_data')
 def handle_control_data(data):
+    sid = request.sid
     with _state_lock:
-        ctx = scpy_ctx
+        ctx = scpy_sessions.get(sid, {}).get('scpy_ctx')
     if ctx is not None:
         try:
             ctx.scrcpy_send_control(data)

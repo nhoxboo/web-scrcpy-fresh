@@ -41,7 +41,7 @@ def _resolve_adb_path() -> str:
 
 
 ADB_PATH = _resolve_adb_path()
-SCRCPY_SERVER_PATH = os.path.join(os.path.dirname(__file__), 'scrcpy-server')
+SCRCPY_SERVER_PATH = os.path.join(os.path.dirname(__file__), 'scrcpy-server', 'scrcpy-server.jar')
 DEVICE_SERVER_PATH = '/data/local/tmp/scrcpy-server.jar'
 # Must match the BuildConfig.VERSION_NAME baked into the jar at SCRCPY_SERVER_PATH;
 # Server.main() rejects the connection on a string mismatch (see Options.parse).
