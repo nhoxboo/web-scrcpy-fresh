@@ -1018,6 +1018,7 @@
     const socket = io({
       reconnection:true,
       autoConnect:true,
+      transports:['polling'],
       query: _socketQuery,
     });
     socket.on('connect', ()=> {
