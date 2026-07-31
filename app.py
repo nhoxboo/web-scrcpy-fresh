@@ -1940,6 +1940,13 @@ def handle_disconnect():
             s['scpy_ctx'].scrcpy_stop()
         except Exception as e:  # noqa: BLE001
             log.warning('scrcpy_stop raised: %s', e)
+    # Dọn các WebRTC channel của phiên này (aiortc quản lý per-PC; khi PC
+    # đóng thì channel tự close, nhưng đảm bảo không còn channel treo nào
+    # nhận broadcast từ session mới).
+    try:
+        webrtc_mgr.close_all()
+    except Exception as e:  # noqa: BLE001
+        log.warning('Lỗi close_all WebRTC: %s', e)
 
 
 @socketio.on('control_data')

@@ -685,7 +685,7 @@
     const canvasCtx = canvasElement ? canvasElement.getContext('2d') : null;
     let videoDecoder = null;
 
-    let useWebRtc = localStorage.getItem('transportMode') !== 'websocket';
+    let useWebRtc = localStorage.getItem('transportMode') === 'webrtc';
     let webrtcPc = null;
     let webrtcChannel = null;
 
@@ -875,7 +875,14 @@
       })
       .catch(err => {
         console.error('WebRTC negotiation failed:', err);
-        st('Không thể kết nối UDP (WebRTC). Đang chạy bằng TCP...');
+        st('WebRTC thất bại — chuyển sang TCP (WebSocket).');
+        // Thực sự fallback: tắt cờ WebRTC để `video_data` từ socket.io
+        // được xử lý qua parser (trước đây chỉ hiện thông báo mà vẫn
+        // chặn video_data vì useWebRtc còn true).
+        useWebRtc = false;
+        try { if (webrtcPc) webrtcPc.close(); } catch(_e){}
+        webrtcPc = null;
+        webrtcChannel = null;
       });
     }
 
