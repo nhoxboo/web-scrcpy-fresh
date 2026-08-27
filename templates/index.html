@@ -64,15 +64,21 @@
     .video-wrap{flex:1 1 auto;min-height:0;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;padding:14px;overflow:hidden;touch-action:none}
     .phone-shell{
       position:relative;display:flex;align-items:center;justify-content:center;
-      background:linear-gradient(180deg,rgba(40,45,66,.7),rgba(20,24,40,.7));
-      border:1px solid rgba(255,255,255,.12);
-      border-radius:38px;
-      box-shadow:0 30px 70px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.3);
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-      max-width:100%;max-height:100%;padding:18px 10px 14px 10px;
+      background:linear-gradient(145deg, rgba(30,34,50,.85), rgba(15,18,30,.95));
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius:42px;
+      box-shadow: 
+        0 40px 100px rgba(0,0,0,0.65), 
+        inset 0 2px 4px rgba(255,255,255,0.2), 
+        inset 0 -2px 10px rgba(0,0,0,0.5),
+        0 0 0 1px rgba(0,0,0,0.8),
+        0 0 30px rgba(106, 166, 255, 0.15);
+      backdrop-filter:blur(16px) saturate(150%);-webkit-backdrop-filter:blur(16px) saturate(150%);
+      max-width:100%;max-height:100%;padding:16px 12px 16px 12px;
+      transition: transform 0.3s cubic-bezier(.2,.8,.2,1);
     }
-    .phone-shell::before{content:'';position:absolute;top:8px;left:50%;transform:translateX(-50%);width:96px;height:18px;border-radius:12px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.10)}
-    .phone-shell::after{content:'';position:absolute;top:14px;left:50%;transform:translateX(-50%);width:34px;height:5px;border-radius:6px;background:rgba(255,255,255,.12)}
+    .phone-shell::before{content:'';position:absolute;top:8px;left:50%;transform:translateX(-50%);width:96px;height:24px;border-radius:12px;background:rgba(5,7,16,.9);border:1px solid rgba(255,255,255,.08);box-shadow:inset 0 -1px 2px rgba(255,255,255,0.1);z-index:20;}
+    .phone-shell::after{content:'';position:absolute;top:15px;left:calc(50% + 28px);width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 3px 3px, rgba(106, 166, 255, 0.4), #000 70%);box-shadow:inset 0 1px 2px rgba(0,0,0,0.8);z-index:21;}
     /* image-rendering: keep edges crisp on integer-scaled HiDPI screens.
        'auto' lets the browser bilinearly smooth at non-integer ratios so
        text doesn't look jagged when the video is shrunk to fit the viewport. */
@@ -120,23 +126,35 @@
     .side-key-gap{height:22px;flex:0 0 auto}
     .side-key{
       appearance:none;-webkit-appearance:none;
-      width:15px;padding:0;
-      border:1px solid rgba(255,255,255,.16);
-      border-radius:3px 7px 7px 3px;
-      background:linear-gradient(90deg,rgba(72,80,108,.95) 0%,rgba(40,46,68,.95) 55%,rgba(26,30,50,.95) 100%);
-      box-shadow:2px 2px 6px rgba(0,0,0,.55),inset 1px 0 0 rgba(255,255,255,.18),inset -1px 0 0 rgba(0,0,0,.4);
-      color:rgba(255,255,255,.78);cursor:pointer;
+      width:14px;padding:0;
+      border:1px solid rgba(255,255,255,.2);
+      border-left:none;
+      border-radius:2px 8px 8px 2px;
+      background:linear-gradient(90deg,rgba(90,95,115,1) 0%,rgba(55,62,85,1) 50%,rgba(30,35,55,1) 100%);
+      box-shadow:
+        3px 4px 10px rgba(0,0,0,0.6),
+        inset 1px 1px 1px rgba(255,255,255,0.3),
+        inset -1px -1px 2px rgba(0,0,0,0.5);
+      color:rgba(255,255,255,.8);cursor:pointer;
       display:flex;align-items:center;justify-content:center;
-      transition:transform .08s ease,box-shadow .12s ease,background .12s ease,color .12s ease;
-      position:relative;font-size:.58rem;
+      transition:transform 0.15s cubic-bezier(.2,.8,.2,1), box-shadow 0.15s ease, filter 0.15s ease;
+      position:relative;font-size:.55rem;
+      z-index: 10;
     }
-    .side-key i{pointer-events:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
-    .side-key-power{height:36px}
-    .side-key-volup{height:42px}
-    .side-key-voldown{height:42px}
-    .side-key:hover{color:#fff;box-shadow:3px 2px 8px rgba(96,165,250,.45),inset 1px 0 0 rgba(255,255,255,.28),inset -1px 0 0 rgba(0,0,0,.4)}
-    .side-key:active{transform:translateX(2px);box-shadow:1px 1px 3px rgba(0,0,0,.55),inset 1px 0 0 rgba(255,255,255,.08)}
-    .side-key:focus-visible{outline:2px solid rgba(96,165,250,.7);outline-offset:2px}
+    .side-key i{pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+    .side-key-power{height:44px}
+    .side-key-volup{height:52px}
+    .side-key-voldown{height:52px}
+    .side-key:hover{
+      color:#fff;
+      filter: brightness(1.2);
+      box-shadow:4px 5px 12px rgba(106,166,255,0.4),inset 1px 1px 1px rgba(255,255,255,0.4),inset -1px -1px 2px rgba(0,0,0,0.5);
+    }
+    .side-key:active{
+      transform:translateX(3px);
+      box-shadow:1px 2px 4px rgba(0,0,0,0.8),inset 1px 1px 1px rgba(255,255,255,0.1);
+      filter: brightness(0.9);
+    }
     .side-key[disabled]{opacity:.45;cursor:not-allowed}
     /* Briefly flash when a sendevent succeeds/fails so the user gets visual
        feedback even when the QC output bar isn't visible. */
@@ -146,20 +164,23 @@
        phone-shell inside .phone-mockup. Uses Pixel-launcher-ish glyphs:
        ◁ ○ □ via Font Awesome icons (rotated play, circle, square). */
     .phone-nav-bar{
-      display:flex;align-items:center;justify-content:center;gap:42px;
-      padding:8px 22px;border-radius:18px;
-      background:linear-gradient(180deg,rgba(30,34,52,.85),rgba(15,18,30,.9));
-      border:1px solid rgba(255,255,255,.10);
-      box-shadow:0 6px 18px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);
-      backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+      display:flex;align-items:center;justify-content:center;gap:36px;
+      padding:10px 28px;border-radius:999px;
+      background: rgba(20, 24, 40, 0.65);
+      border:1px solid rgba(255,255,255,.15);
+      box-shadow:
+        0 12px 32px rgba(0,0,0,.6),
+        inset 0 1px 1px rgba(255,255,255,.2);
+      backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);
+      margin-top: 4px;
     }
     .nav-key{
       appearance:none;-webkit-appearance:none;
-      width:38px;height:38px;padding:0;border-radius:10px;
-      background:transparent;border:1px solid transparent;
+      width:44px;height:44px;padding:0;border-radius:50%;
+      background:rgba(255,255,255,0.03);border:1px solid transparent;
       color:rgba(230,235,250,.85);cursor:pointer;
-      display:flex;align-items:center;justify-content:center;font-size:.92rem;
-      transition:transform .08s ease,background .12s ease,color .12s ease,border-color .12s ease;
+      display:flex;align-items:center;justify-content:center;font-size:1.1rem;
+      transition:transform 0.2s cubic-bezier(.2,.8,.2,1), background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
     }
     .nav-key i{pointer-events:none}
     /* Pure-CSS Android nav glyphs: triangle (back), circle (home), square
@@ -172,15 +193,19 @@
       border-right:11px solid currentColor;
     }
     .nav-home .nav-glyph{
-      width:13px;height:13px;border-radius:50%;
+      width:14px;height:14px;border-radius:50%;
       border:2px solid currentColor;
     }
     .nav-recent .nav-glyph{
-      width:13px;height:13px;border-radius:3px;
+      width:14px;height:14px;border-radius:3px;
       border:2px solid currentColor;
     }
-    .nav-key:hover{background:rgba(96,165,250,.16);color:#fff;border-color:rgba(96,165,250,.30)}
-    .nav-key:active{transform:scale(.92)}
+    .nav-key:hover{
+      background:rgba(255,255,255,0.1);color:#fff;
+      box-shadow: 0 0 15px rgba(106, 166, 255, 0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+      transform: translateY(-2px);
+    }
+    .nav-key:active{transform:scale(.92) translateY(0);}
     .nav-key:focus-visible{outline:2px solid rgba(96,165,250,.7);outline-offset:2px}
     .nav-key[disabled]{opacity:.45;cursor:not-allowed}
     .nav-key.flash-ok{background:rgba(34,197,94,.30);color:#fff;border-color:rgba(34,197,94,.55)}
@@ -332,12 +357,89 @@
       .phone-shell::before{top:6px;width:74px;height:14px}
       .phone-shell::after{top:10px;width:26px;height:4px}
     }
+    /* ---------- Mobile layout (≤768px) ----------
+     * Sidebar (`.sidebar`) is moved into a left-edge drawer that the user opens
+     * with a hamburger. The drawer lives in normal flow with `position:fixed`,
+     * translated off-screen by default. The `.main-content` becomes full-width
+     * because the sidebar is no longer in the flex row. The hamburger button
+     * (`.menuToggle`) and the backdrop (`.sidebar-backdrop`) are hidden by
+     * default and shown only below the breakpoint.
+     *
+     * Without this the sidebar's hard-coded inline `width:280px` + flex-row
+     * `body` gives a 360px viewport an unavoidable horizontal scroll
+     * (evidence: previous `scrollWidth=628 innerWidth=360`).
+     */
+    .sidebar-backdrop{display:none}
+    .menuToggle{display:none}
+    @media (max-width: 768px){
+      body{flex-direction:column}
+      .menuToggle{
+        display:grid;place-items:center;
+        position:fixed;top:10px;left:10px;z-index:60;
+        width:44px;height:44px;border-radius:12px;
+        border:1px solid var(--line);background:rgba(10,12,26,.7);
+        color:#fff;font-size:1.1rem;cursor:pointer;
+        backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+      }
+      .menuToggle:active{transform:scale(.95)}
+      .sidebar{
+        position:fixed;top:0;bottom:0;left:0;z-index:50;
+        width:min(82vw, 320px)!important;
+        height:100dvh;height:100vh;
+        transform:translateX(-105%);
+        transition:transform .25s var(--easing);
+        box-shadow:6px 0 24px rgba(0,0,0,.5);
+      }
+      body.sidebar-open .sidebar{transform:translateX(0)}
+      .sidebar-backdrop{
+        display:block;position:fixed;inset:0;z-index:40;
+        background:rgba(0,0,0,.55);
+        opacity:0;pointer-events:none;
+        transition:opacity .2s ease;
+      }
+      body.sidebar-open .sidebar-backdrop{opacity:1;pointer-events:auto}
+      .main-content{width:100%;flex:1 1 auto;min-width:0}
+      /* Tool bar reflow: tighter, scrollable horizontally on narrow screens
+         so 15+ tools stay accessible without overlapping the video. */
+      .toolbar{
+        display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;
+        scrollbar-width:thin;padding:0 2px 4px;
+        -webkit-overflow-scrolling:touch;
+      }
+      .tool{flex:0 0 auto}
+      .tool-select-wrap{flex:0 0 auto}
+      .uhid-speed{flex:0 0 auto}
+      /* Phone shell resizes more aggressively; the side keys protrude on the
+         right edge of the shell, which at <420px would overflow the visible
+         area, so we tuck them INSIDE the bezel on small screens. */
+      .phone-side-keys{right:6px;top:14%}
+      .side-key{width:18px}
+      .side-key-volup{height:54px}
+      .side-key-voldown{height:54px}
+      .side-key-power{height:46px}
+      .nav-key{width:46px;height:46px}
+      .toolbar > .tool{width:40px;height:40px}
+    }
+    /* Tablet portrait tweak (≤900px but >768px): still row layout but sidebar
+     * shrinks, toolbar wraps, side keys stay on the bezel. */
+    @media (min-width: 769px) and (max-width: 1100px){
+      .sidebar{width:230px!important}
+    }
     .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;box-shadow:0 0 12px var(--ok);animation:pulse 1.4s ease-in-out infinite}
     @keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
   </style>
 </head>
 <body>
-  <div class="sidebar" style="width:280px; flex-shrink:0; display:flex; flex-direction:column; background:rgba(10,12,26,0.65); border-right:1px solid var(--line); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); z-index:10; box-shadow: 5px 0 25px rgba(0,0,0,0.5); overflow-y:auto; overflow-x:hidden;">
+  <!-- Backdrop + hamburger: only visible on mobile (see @media max-width:768px).
+       The button toggles body.sidebar-open, which slides the sidebar in from
+       off-screen and fades the backdrop over the main content. Escape and
+       backdrop-click both close the drawer; the open/close handler is wired
+       in the inline <script> below. -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+  <button class="menuToggle" id="menuToggle" type="button" aria-label="Mở menu" aria-controls="sidebar" aria-expanded="false">
+    <i class="fa-solid fa-bars"></i>
+  </button>
+  <div class="sidebar" id="sidebar" style="width:280px; flex-shrink:0; display:flex; flex-direction:column; background:rgba(10,12,26,0.65); border-right:1px solid var(--line); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); z-index:10; box-shadow: 5px 0 25px rgba(0,0,0,0.5); overflow-y:auto; overflow-x:hidden;">
     <div class="sidebar-inner" style="padding: 16px; display:flex; flex-direction:column; gap:16px;">
   <div class="top">
     <div class="brand">
@@ -663,6 +765,43 @@
 
   <script src="/static/js/jmuxer.min.js?v={{ static_ver }}"></script>
   <script>
+    // --- Sidebar drawer (mobile) ---
+    // The @media query below 769px moves the sidebar off-screen and shows a
+    // hamburger button. We toggle body.sidebar-open to slide it in. The
+    // backdrop catches outside clicks, Escape closes, and any navigation link
+    // inside the sidebar auto-closes so the user sees the new page (otherwise
+    // navigating on mobile leaves the drawer covering the content).
+    const _menuBtn = document.getElementById('menuToggle');
+    const _sidebar = document.getElementById('sidebar');
+    const _backdrop = document.getElementById('sidebarBackdrop');
+    function _setSidebar(open) {
+      document.body.classList.toggle('sidebar-open', open);
+      if (_menuBtn) _menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (_backdrop) _backdrop.setAttribute('aria-hidden', open ? 'false' : 'true');
+    }
+    if (_menuBtn) _menuBtn.addEventListener('click', () => {
+      _setSidebar(!document.body.classList.contains('sidebar-open'));
+    });
+    if (_backdrop) _backdrop.addEventListener('click', () => _setSidebar(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
+        _setSidebar(false);
+      }
+    });
+    // Auto-close when the user navigates: any <a> inside the sidebar.
+    if (_sidebar) {
+      _sidebar.querySelectorAll('a[href]').forEach((a) => {
+        a.addEventListener('click', () => _setSidebar(false));
+      });
+    }
+    // Watch viewport changes: if the user rotates from mobile to desktop, the
+    // drawer state would otherwise be stuck "open" but invisible (the sidebar
+    // is back in normal flow) — force-close to keep the ARIA state honest.
+    const _mql = window.matchMedia('(min-width: 769px)');
+    const _mqlHandler = (e) => { if (e.matches) _setSidebar(false); };
+    if (_mql.addEventListener) _mql.addEventListener('change', _mqlHandler);
+    else if (_mql.addListener) _mql.addListener(_mqlHandler);
+
     const st = (m)=>document.getElementById('status').innerHTML = `<span class='dot'></span>${m}`;
     const MACRO_KEY = 'beso_macro_v1';
     const HOTKEY_KEY = 'beso_hotkeys_v1';
@@ -1018,7 +1157,7 @@
     const socket = io({
       reconnection:true,
       autoConnect:true,
-      transports:['polling'],
+      transports:['polling', 'websocket'],
       query: _socketQuery,
     });
     socket.on('connect', ()=> {
@@ -1109,6 +1248,17 @@
       if (uhidOn) {
         st('Real mouse/keyboard (UHID). Click màn hình để khoá chuột, ESC để thoát.');
       }
+      // Publish a bridge for static/js/input.js's keymap feature. It lives in a
+      // separate file and cannot see these locals, so without this the mapped
+      // keys have no way to reach the control socket. Kept minimal on purpose:
+      // the send function, the ScrcpyInput instance (for message encoding), and
+      // the device's real pixel size (keymap positions are normalised 0..1).
+      window.scrcpyBridge = {
+        send: sendControl,
+        input: input,
+        deviceWidth: width,
+        deviceHeight: height,
+      };
     }
 
     // UHID + pointer-lock listeners. We attach them once at top level

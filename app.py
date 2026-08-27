@@ -362,6 +362,12 @@ app.config.update(
 if os.environ.get('TRUST_PROXY') == '1':
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+# async_mode MUST stay None so python-socketio auto-selects eventlet (greenlet
+# concurrency). Do NOT set 'threading': with Werkzeug's dev server it throws
+# `AssertionError: write() before start_response` as soon as socket.io polling
+# and websocket requests interleave, which to a remote client looks exactly
+# like "đang kết nối" forever. Commit f6bc2cb already reverted one such attempt;
+# a second one was found uncommitted in the working tree on 2026-08-27.
 socketio = SocketIO(app, async_mode=None)
 
 
