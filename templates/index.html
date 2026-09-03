@@ -383,7 +383,7 @@
       }
       .menuToggle:active{transform:scale(.95)}
       .sidebar{
-        position:fixed;top:0;bottom:0;left:0;z-index:50;
+        position:fixed;top:0;bottom:0;left:0;z-index:60!important;
         width:min(82vw, 320px)!important;
         height:100dvh;height:100vh;
         transform:translateX(-105%);
@@ -1343,8 +1343,9 @@
       };
 
       const doPower = ()=>{
+        if(!input){ st('Input chưa sẵn sàng'); return; }
         input.screen_on_off(0);
-        setTimeout(()=>input.screen_on_off(1), 80);
+        setTimeout(()=>input && input.screen_on_off(1), 80);
         st('Đã gửi Power');
       };
       const doVolDown = ()=>keyTap(25,'voldown');
