@@ -3043,6 +3043,12 @@
     socket.on('connect_error', (e)=>{
       const msg = e?.message || 'unknown';
       st('WS lỗi: ' + msg);
+      // Surface a pairing/authorization hint when the phone rejects ADB.
+      if (msg.includes('UNAUTHORIZED') || msg.includes('unauthorized')) {
+        setTimeout(()=>{
+          st('Điện thoại chưa cấp quyền. Trên máy Android → Developer options → Wireless debugging → Pair device with pairing code, rồi chạy adb pair &lt;IP:port> &lt;code> trên PC.');
+        }, 100);
+      }
       const isLocked = msg.includes('client khác');
       document.getElementById('forceKick').hidden = !isLocked;
     });

@@ -672,11 +672,22 @@ class Scrcpy:
         log.info('adb devices output: %s', result.stdout.strip())
         if self.serial:
             # Require the requested serial to be present and online.
-            online = [
-                line.split('\t', 1)[0].strip()
-                for line in result.stdout.splitlines()
-                if '\tdevice' in line
-            ]
+            # Capture both 'device' and 'unauthorized' so we can give a clear
+            # hint when the phone is reachable but hasn't accepted the RSA key.
+            online = []
+            unauthorized = []
+            for line in result.stdout.splitlines():
+                if '\tdevice' in line:
+                    online.append(line.split('\t', 1)[0].strip())
+                elif '\tunauthorized' in line:
+                    unauthorized.append(line.split('\t', 1)[0].strip())
+            if self.serial in unauthorized:
+                self.stop = True
+                raise RuntimeError(
+                    f'ADB serial {self.serial!r} is UNAUTHORIZED. '
+                    'On the Android device, accept the "Allow USB debugging" prompt, '
+                    'or in Developer options > Wireless debugging tap "Pair device with pairing code".'
+                )
             if self.serial not in online:
                 self.stop = True
                 raise RuntimeError(f'ADB serial {self.serial!r} not online (found: {online})')
