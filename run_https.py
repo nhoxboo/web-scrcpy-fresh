@@ -6,7 +6,6 @@ Redirects HTTP requests to HTTPS and provides SSL support.
 
 import argparse
 import os
-import ssl
 import sys
 from pathlib import Path
 
@@ -62,9 +61,8 @@ if __name__ == '__main__':
     # Setup HTTPS redirect
     setup_https_redirect()
 
-    # Create SSL context
-    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    ssl_context.load_cert_chain(str(cert_path), str(key_path))
+    # Eventlet receives certificate paths directly; passing an ssl_context is
+    # forwarded to eventlet.wsgi.server and fails before the port can bind.
 
     print('Starting Web Scrcpy HTTPS')
     print(f'  HTTPS: {args.host}:{args.https_port} (cert: {cert_path})')
@@ -76,7 +74,8 @@ if __name__ == '__main__':
         app,
         host=args.host,
         port=args.https_port,
-        ssl_context=ssl_context,
+        certfile=str(cert_path),
+        keyfile=str(key_path),
         debug=False,
         allow_unsafe_werkzeug=True,
     )

@@ -6,7 +6,6 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 # Import original app
-import ssl
 
 from flask import redirect, request
 
@@ -41,9 +40,8 @@ if __name__ == '__main__':
 
     app = create_https_app()
 
-    # Setup SSL context
-    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    ssl_context.load_cert_chain(args.ssl_cert, args.ssl_key)
+    # Eventlet receives certificate paths directly; passing an ssl_context is
+    # forwarded to eventlet.wsgi.server and fails before the port can bind.
 
     print(f"Starting Web Scrcpy HTTPS on {args.host}:{args.https_port} (cert: {args.ssl_cert})")
     print(f"HTTP redirect on {args.host}:{args.port} -> HTTPS:{args.https_port}")
@@ -53,7 +51,8 @@ if __name__ == '__main__':
         app,
         host=args.host,
         port=args.https_port,
-        ssl_context=ssl_context,
+        certfile=args.ssl_cert,
+        keyfile=args.ssl_key,
         debug=False,
         allow_unsafe_werkzeug=True,
     )
