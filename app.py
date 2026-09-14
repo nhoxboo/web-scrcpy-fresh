@@ -1542,7 +1542,10 @@ def api_session_status():
     """
     with _state_lock:
         # Simplification: active if this session is streaming
-        active = any(s.get('scpy_ctx') and s['scpy_ctx'].serial == _selected_serial() for s in scpy_sessions.values())
+        active = any(
+            s.get('scpy_ctx') and s['scpy_ctx'].serial == _selected_serial()
+            for s in scpy_sessions.values()
+        )
     return jsonify(ok=True, active=active)
 
 
@@ -1754,7 +1757,8 @@ def healthz():
 def video_send_task(sid, q):
     while True:
         with _state_lock:
-            if sid not in scpy_sessions: break
+            if sid not in scpy_sessions:
+                break
         try:
             message = q.get(timeout=0.05)
             socketio.emit('video_data', message, to=sid)
@@ -1769,7 +1773,8 @@ def video_send_task(sid, q):
 def audio_send_task(sid, q):
     while True:
         with _state_lock:
-            if sid not in scpy_sessions: break
+            if sid not in scpy_sessions:
+                break
         try:
             message = q.get(timeout=0.05)
             socketio.emit('audio_data', message, to=sid)
@@ -1782,7 +1787,6 @@ def audio_send_task(sid, q):
 
 
 # Managed via closures in handle_connect instead
-
 
 
 @socketio.on('connect')
@@ -1901,7 +1905,9 @@ def handle_connect(auth=None):
                         log.warning('scrcpy_stop for stale session %s failed: %s', other_sid, e)
         for other_sid, s in scpy_sessions.items():
             if s.get('scpy_ctx') and s['scpy_ctx'].serial == chosen_serial and other_sid != sid:
-                raise SocketConnectionRefusedError(f'Thiết bị này đang được sử dụng bởi client khác. Vui lòng Kick để chiếm quyền.')
+                raise SocketConnectionRefusedError(
+                    'Thiết bị này đang được sử dụng bởi client khác. Vui lòng Kick để chiếm quyền.'
+                )
         ctx = Scrcpy(
             serial=chosen_serial,
             display_id=chosen_disp,
@@ -1956,11 +1962,13 @@ def handle_connect(auth=None):
 
     t1 = socketio.start_background_task(video_send_task, sid, vq)
     with _state_lock:
-        if sid in scpy_sessions: scpy_sessions[sid]['tasks'].append(t1)
+        if sid in scpy_sessions:
+            scpy_sessions[sid]['tasks'].append(t1)
     if chosen_audio:
         t2 = socketio.start_background_task(audio_send_task, sid, aq)
         with _state_lock:
-            if sid in scpy_sessions: scpy_sessions[sid]['tasks'].append(t2)
+            if sid in scpy_sessions:
+                scpy_sessions[sid]['tasks'].append(t2)
     log.info('Socket connected sid=%s audio=%s', request.sid, chosen_audio)
     return True
 

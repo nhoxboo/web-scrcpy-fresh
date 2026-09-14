@@ -6,7 +6,7 @@ INDEX_HTML = os.path.join(BASE_DIR, "templates", "index.html")
 MAIN_JS = os.path.join(BASE_DIR, "static", "js", "input.js")
 
 def patch_index_html():
-    with open(INDEX_HTML, "r", encoding="utf-8") as f:
+    with open(INDEX_HTML, encoding="utf-8") as f:
         content = f.read()
 
     # Change body layout to row
@@ -65,7 +65,7 @@ def patch_index_html():
     print("Patched index.html")
 
 def patch_main_js():
-    with open(MAIN_JS, "r", encoding="utf-8") as f:
+    with open(MAIN_JS, encoding="utf-8") as f:
         content = f.read()
 
     addon = """
