@@ -592,6 +592,51 @@ def api_devices():
     }
 
 
+def _parse_battery_facts(output: str) -> dict[str, int | str | None]:
+    """Extract only safe, operator-useful values from ``dumpsys battery``."""
+    facts: dict[str, int | str | None] = {'battery_percent': None, 'battery_status': None}
+    status_names = {2: 'charging', 3: 'discharging', 4: 'not_charging', 5: 'full'}
+    for raw_line in output.splitlines():
+        key, separator, value = raw_line.partition(':')
+        if not separator:
+            continue
+        value = value.strip()
+        if key.strip() == 'level' and value.isdigit():
+            level = int(value)
+            if 0 <= level <= 100:
+                facts['battery_percent'] = level
+        elif key.strip() == 'status' and value.isdigit():
+            facts['battery_status'] = status_names.get(int(value))
+    return facts
+
+
+def _safe_adb_property(name: str, serial: str) -> str | None:
+    ok, output = adb_shell(['getprop', name], serial=serial, timeout=10)
+    if not ok:
+        return None
+    value = output.strip()
+    return value[:120] if value else None
+
+
+@app.route('/api/devices/<serial>/facts')
+@login_required
+def api_device_facts(serial: str):
+    if not is_valid_serial(serial) or serial != _selected_serial():
+        return jsonify(ok=False, error='Thiết bị không phải thiết bị đang chọn.'), 400
+
+    facts = {
+        'model': _safe_adb_property('ro.product.model', serial),
+        'android_version': _safe_adb_property('ro.build.version.release', serial),
+        'battery_percent': None,
+        'battery_status': None,
+    }
+    battery_ok, battery_output = adb_shell(['dumpsys', 'battery'], serial=serial, timeout=10)
+    if battery_ok:
+        facts.update(_parse_battery_facts(battery_output))
+    available = any(value is not None for value in facts.values())
+    return jsonify(ok=True, available=available, facts=facts)
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':

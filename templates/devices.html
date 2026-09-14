@@ -194,7 +194,14 @@
     </div>
     <pre id="wireOut" style="margin-top:12px;font-size:.78rem;color:var(--muted);background:rgba(0,0,0,.25);padding:10px 12px;border-radius:8px;min-height:1.6em;white-space:pre-wrap;word-break:break-all"></pre>
   </section>
+  {% if selected %}
+    <section class="surface-card device-facts" id="deviceFacts" data-serial="{{ selected }}" aria-live="polite">
+      <h2>Thông tin thiết bị</h2>
+      <p class="muted">Đang tải thông tin thiết bị…</p>
+    </section>
+  {% endif %}
 </div>
+<script src="/static/js/device-manager.js?v={{ static_ver }}"></script>
 <script>
   // Tiny helper: POST a form via fetch and pipe the JSON result into #wireOut.
   // The page reloads on success so the new TCP/IP serial shows up in the
