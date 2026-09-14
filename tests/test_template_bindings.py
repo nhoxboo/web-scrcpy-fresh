@@ -18,7 +18,23 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-INDEX_HTML = Path(__file__).resolve().parent.parent / "templates" / "index.html"
+ROOT = Path(__file__).resolve().parent.parent
+INDEX_HTML = ROOT / "templates" / "index.html"
+
+
+def test_shared_light_shell_stylesheet_is_loaded_by_account_and_device_pages():
+    for filename in ('login.html', 'change_password.html', 'devices.html'):
+        text = (ROOT / 'templates' / filename).read_text(encoding='utf-8')
+        assert '/static/css/app-shell.css?v={{ static_ver }}' in text
+
+
+def test_app_shell_defines_white_blue_tokens_and_navy_sidebar():
+    text = (ROOT / 'static' / 'css' / 'app-shell.css').read_text(encoding='utf-8')
+    assert '--surface-page: #F8FAFC' in text
+    assert '--action-primary: #0369A1' in text
+    assert '--sidebar-bg: #1E293B' in text
+    assert '@media (prefers-reduced-motion: reduce)' in text
+
 
 # Buttons whose handlers MUST work without an active scrcpy connection — i.e.
 # they should be bound at top level, not inside a function that only runs on

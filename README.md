@@ -193,28 +193,25 @@ Set `DISABLE_DEV_BANNER=1` để ẩn cảnh báo nếu dev local có chủ ý:
 DISABLE_DEV_BANNER=1 python app.py
 ```
 
-### Production mode (gunicorn + eventlet) — KHUYẾN NGHỊ
+### Windows (khuyến nghị)
 
-#### Option 1: Direct gunicorn
+Windows dùng eventlet trực tiếp qua Flask-SocketIO. Chạy bằng Python runtime đã cài dependencies:
 
 ```bash
-pip install -r requirements-prod.txt
+python app.py --port 8000
+```
 
-# Generate secret key
-export FLASK_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+> Không dùng gunicorn trên Windows. Trước khi public Internet, bắt buộc dùng HTTPS qua reverse proxy/certificate manager và đổi mật khẩu mặc định.
 
-# Chạy (1 worker bắt buộc)
+### Linux / container
+
+Trên Linux đã được kiểm thử với eventlet, có thể dùng gunicorn một worker:
+
+```bash
 gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:8000 wsgi:app
 ```
 
-#### Option 2: Dùng honcho (read Procfile)
-
-```bash
-pip install honcho
-honcho start
-```
-
-> **⚠️ BẮTER 1 WORKER**: State scrcpy session là per-process. Nhiều worker sẽ tranh nhau device. Để scale, đặt sau reverse proxy (nginx/Caddy) và lock device per container.
+> **Một worker bắt buộc**: state scrcpy session là per-process. Nhiều worker sẽ tranh nhau device.
 
 ### HTTPS & Reverse proxy (khuyến nghị nếu public)
 

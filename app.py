@@ -362,6 +362,12 @@ app.config.update(
 if os.environ.get('TRUST_PROXY') == '1':
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+# async_mode MUST stay None so python-socketio auto-selects eventlet (greenlet
+# concurrency). Do NOT set 'threading': with Werkzeug's dev server it throws
+# `AssertionError: write() before start_response` as soon as socket.io polling
+# and websocket requests interleave, which to a remote client looks exactly
+# like "đang kết nối" forever. Commit f6bc2cb already reverted one such attempt;
+# a second one was found uncommitted in the working tree on 2026-08-27.
 socketio = SocketIO(app, async_mode=None)
 
 
@@ -584,6 +590,51 @@ def api_devices():
         'selected': _selected_serial() or '',
         'default': adb_serial or '',
     }
+
+
+def _parse_battery_facts(output: str) -> dict[str, int | str | None]:
+    """Extract only safe, operator-useful values from ``dumpsys battery``."""
+    facts: dict[str, int | str | None] = {'battery_percent': None, 'battery_status': None}
+    status_names = {2: 'charging', 3: 'discharging', 4: 'not_charging', 5: 'full'}
+    for raw_line in output.splitlines():
+        key, separator, value = raw_line.partition(':')
+        if not separator:
+            continue
+        value = value.strip()
+        if key.strip() == 'level' and value.isdigit():
+            level = int(value)
+            if 0 <= level <= 100:
+                facts['battery_percent'] = level
+        elif key.strip() == 'status' and value.isdigit():
+            facts['battery_status'] = status_names.get(int(value))
+    return facts
+
+
+def _safe_adb_property(name: str, serial: str) -> str | None:
+    ok, output = adb_shell(['getprop', name], serial=serial, timeout=10)
+    if not ok:
+        return None
+    value = output.strip()
+    return value[:120] if value else None
+
+
+@app.route('/api/devices/<serial>/facts')
+@login_required
+def api_device_facts(serial: str):
+    if not is_valid_serial(serial) or serial != _selected_serial():
+        return jsonify(ok=False, error='Thiết bị không phải thiết bị đang chọn.'), 400
+
+    facts = {
+        'model': _safe_adb_property('ro.product.model', serial),
+        'android_version': _safe_adb_property('ro.build.version.release', serial),
+        'battery_percent': None,
+        'battery_status': None,
+    }
+    battery_ok, battery_output = adb_shell(['dumpsys', 'battery'], serial=serial, timeout=10)
+    if battery_ok:
+        facts.update(_parse_battery_facts(battery_output))
+    available = any(value is not None for value in facts.values())
+    return jsonify(ok=True, available=available, facts=facts)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -1536,7 +1587,10 @@ def api_session_status():
     """
     with _state_lock:
         # Simplification: active if this session is streaming
-        active = any(s.get('scpy_ctx') and s['scpy_ctx'].serial == _selected_serial() for s in scpy_sessions.values())
+        active = any(
+            s.get('scpy_ctx') and s['scpy_ctx'].serial == _selected_serial()
+            for s in scpy_sessions.values()
+        )
     return jsonify(ok=True, active=active)
 
 
@@ -1748,7 +1802,8 @@ def healthz():
 def video_send_task(sid, q):
     while True:
         with _state_lock:
-            if sid not in scpy_sessions: break
+            if sid not in scpy_sessions:
+                break
         try:
             message = q.get(timeout=0.05)
             socketio.emit('video_data', message, to=sid)
@@ -1763,7 +1818,8 @@ def video_send_task(sid, q):
 def audio_send_task(sid, q):
     while True:
         with _state_lock:
-            if sid not in scpy_sessions: break
+            if sid not in scpy_sessions:
+                break
         try:
             message = q.get(timeout=0.05)
             socketio.emit('audio_data', message, to=sid)
@@ -1776,7 +1832,6 @@ def audio_send_task(sid, q):
 
 
 # Managed via closures in handle_connect instead
-
 
 
 @socketio.on('connect')
@@ -1895,7 +1950,9 @@ def handle_connect(auth=None):
                         log.warning('scrcpy_stop for stale session %s failed: %s', other_sid, e)
         for other_sid, s in scpy_sessions.items():
             if s.get('scpy_ctx') and s['scpy_ctx'].serial == chosen_serial and other_sid != sid:
-                raise SocketConnectionRefusedError(f'Thiết bị này đang được sử dụng bởi client khác. Vui lòng Kick để chiếm quyền.')
+                raise SocketConnectionRefusedError(
+                    'Thiết bị này đang được sử dụng bởi client khác. Vui lòng Kick để chiếm quyền.'
+                )
         ctx = Scrcpy(
             serial=chosen_serial,
             display_id=chosen_disp,
@@ -1950,11 +2007,13 @@ def handle_connect(auth=None):
 
     t1 = socketio.start_background_task(video_send_task, sid, vq)
     with _state_lock:
-        if sid in scpy_sessions: scpy_sessions[sid]['tasks'].append(t1)
+        if sid in scpy_sessions:
+            scpy_sessions[sid]['tasks'].append(t1)
     if chosen_audio:
         t2 = socketio.start_background_task(audio_send_task, sid, aq)
         with _state_lock:
-            if sid in scpy_sessions: scpy_sessions[sid]['tasks'].append(t2)
+            if sid in scpy_sessions:
+                scpy_sessions[sid]['tasks'].append(t2)
     log.info('Socket connected sid=%s audio=%s', request.sid, chosen_audio)
     return True
 

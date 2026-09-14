@@ -1327,10 +1327,17 @@ if (mainContent && dropZone) {
 }
 
 // --- Keymapping ---
+// NOTE: every top-level `const`/`let` here shares the SAME global lexical scope
+// as the inline <script> in templates/index.html. A name declared in both files
+// is a hard SyntaxError ("Identifier 'x' has already been declared") that kills
+// the ENTIRE inline script block — no socket, no video, no controls. Keep every
+// binding in this file prefixed `km*` so it can never collide with the panel's
+// own variables. See the `hotkeyBtn` incident (fixed 2026-08-27).
 let keymapMode = false;
 let keymapNodes = JSON.parse(localStorage.getItem('scrcpy_keymaps') || '[]');
 const keymapOverlay = document.getElementById('keymapOverlay');
-const hotkeyBtn = document.getElementById('hotkeyConfig');
+const kmHotkeyBtn = document.getElementById('hotkeyConfig');
+
 
 function renderKeymaps() {
     if (!keymapOverlay) return;
@@ -1371,16 +1378,16 @@ function renderKeymaps() {
     });
 }
 
-if (hotkeyBtn && keymapOverlay) {
-    hotkeyBtn.addEventListener('click', () => {
+if (kmHotkeyBtn && keymapOverlay) {
+    kmHotkeyBtn.addEventListener('click', () => {
         keymapMode = !keymapMode;
         if (keymapMode) {
             keymapOverlay.style.display = 'block';
-            hotkeyBtn.classList.add('active');
+            kmHotkeyBtn.classList.add('active');
             renderKeymaps();
         } else {
             keymapOverlay.style.display = 'none';
-            hotkeyBtn.classList.remove('active');
+            kmHotkeyBtn.classList.remove('active');
             localStorage.setItem('scrcpy_keymaps', JSON.stringify(keymapNodes));
         }
     });
@@ -1399,44 +1406,72 @@ if (hotkeyBtn && keymapOverlay) {
     });
 }
 
+// Keymap playback bridge.
+//
+// The panel (templates/index.html) owns the live socket and the ScrcpyInput
+// instance; it publishes them as `window.scrcpyBridge` once the stream is up.
+// Earlier revisions of this block emitted a `touch_event` socket.io event with
+// a JSON payload — but the server has NO 'touch_event' handler (only
+// 'control_data', app.py:1982) and `window.socket` / `window.playerCanvas`
+// were never assigned anywhere, so every mapped key was silently dropped.
+// We now build a real scrcpy touch message and push it through the same
+// sendControl path the mouse uses.
+const KM_ACTION_DOWN = 0;
+const KM_ACTION_UP = 1;
+
+function kmSendTouch(node, action) {
+    const bridge = window.scrcpyBridge;
+    if (!bridge || !bridge.input || typeof bridge.send !== 'function') return false;
+    const w = bridge.deviceWidth, h = bridge.deviceHeight;
+    if (!w || !h) return false;
+    // node.x / node.y are normalised 0..1 positions captured over the video.
+    const x = Math.round(node.x * w);
+    const y = Math.round(node.y * h);
+    // pointerId: use a small positive id derived from the key so several mapped
+    // keys held at once are tracked as separate fingers (scrcpy allows 0..9).
+    const pid = (node.key.charCodeAt(0) % 8) + 1;
+    const pressure = action === KM_ACTION_DOWN ? 65535 : 0;
+    const buttons = action === KM_ACTION_DOWN ? 1 : 0;
+    const data = bridge.input.createTouchProtocolData(
+        action, x, y, w, h, /*actionButton*/ 1, buttons, pressure, pid);
+    bridge.send(data);
+    return true;
+}
+
+const kmHeld = new Set();
+
 document.addEventListener('keydown', (e) => {
     if (keymapMode) return;
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    
     const node = keymapNodes.find(n => n.key === e.key.toLowerCase());
-    if (node) {
+    if (!node) return;
+    // Ignore auto-repeat: holding a key must be ONE touch-down, not a stream of
+    // them, otherwise the device sees hundreds of taps per second.
+    if (kmHeld.has(node.key)) { e.preventDefault(); return; }
+    if (kmSendTouch(node, KM_ACTION_DOWN)) {
+        kmHeld.add(node.key);
         e.preventDefault();
-        if (window.socket && window.playerCanvas) {
-            const rect = window.playerCanvas.getBoundingClientRect();
-            window.socket.emit('touch_event', {
-                action: 0, 
-                pointer_id: e.keyCode,
-                x: node.x * window.playerCanvas.videoWidth,
-                y: node.y * window.playerCanvas.videoHeight,
-                width: window.playerCanvas.videoWidth,
-                height: window.playerCanvas.videoHeight
-            });
-        }
     }
 });
 
 document.addEventListener('keyup', (e) => {
     if (keymapMode) return;
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    
     const node = keymapNodes.find(n => n.key === e.key.toLowerCase());
-    if (node) {
-        e.preventDefault();
-        if (window.socket && window.playerCanvas) {
-            const rect = window.playerCanvas.getBoundingClientRect();
-            window.socket.emit('touch_event', {
-                action: 1, 
-                pointer_id: e.keyCode,
-                x: node.x * window.playerCanvas.videoWidth,
-                y: node.y * window.playerCanvas.videoHeight,
-                width: window.playerCanvas.videoWidth,
-                height: window.playerCanvas.videoHeight
-            });
-        }
+    if (!node) return;
+    if (!kmHeld.has(node.key)) return;
+    kmHeld.delete(node.key);
+    kmSendTouch(node, KM_ACTION_UP);
+    e.preventDefault();
+});
+
+// Releasing everything when the tab loses focus prevents a key from being
+// stuck "down" on the device after alt-tab.
+window.addEventListener('blur', () => {
+    for (const key of Array.from(kmHeld)) {
+        const node = keymapNodes.find(n => n.key === key);
+        kmHeld.delete(key);
+        if (node) kmSendTouch(node, KM_ACTION_UP);
     }
 });
+

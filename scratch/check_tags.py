@@ -1,11 +1,12 @@
 from html.parser import HTMLParser
 
+
 class MyHTMLParser(HTMLParser):
     def __init__(self):
         super().__init__()
         self.tags = []
         self.depths = {}
-        
+
     def handle_starttag(self, tag, attrs):
         if tag == "div":
             attrs_dict = dict(attrs)
@@ -21,5 +22,5 @@ class MyHTMLParser(HTMLParser):
                 self.tags.pop()
 
 parser = MyHTMLParser()
-with open("templates/index.html", "r", encoding="utf-8") as f:
+with open("templates/index.html", encoding="utf-8") as f:
     parser.feed(f.read())

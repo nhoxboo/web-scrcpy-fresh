@@ -4,6 +4,10 @@ target-version = "py310"
 extend-exclude = [
   ".venv",
   "static",
+  "patch_app.py",
+  "patch_ui.py",
+  "scratch",
+  "docs",
 ]
 
 [tool.ruff.lint]

@@ -3,7 +3,7 @@ import os
 BASE_DIR = r"C:\Users\Administrator\AppData\Local\hermes\workspace\web-scrcpy-fresh"
 APP_PY = os.path.join(BASE_DIR, "app.py")
 
-with open(APP_PY, "r", encoding="utf-8") as f:
+with open(APP_PY, encoding="utf-8") as f:
     content = f.read()
 
 # 1. Replace globals
