@@ -6,6 +6,8 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link href="/static/css/font-awesome.min.css?v={{ static_ver }}" rel="stylesheet">
   <link href="/static/css/glass.css?v={{ static_ver }}" rel="stylesheet">
+  <link href="/static/css/app-shell.css?v={{ static_ver }}" rel="stylesheet">
+  <link href="/static/css/android-console.css?v={{ static_ver }}" rel="stylesheet">
   <title>Remote Android nhoxboo — Panel</title>
   <script src="/static/js/socket.io.js?v={{ static_ver }}"></script>
   <script src="/static/js/input.js?v={{ static_ver }}"></script>
@@ -462,7 +464,7 @@
     </form>
   </div>
 
-  <div class="toolbar">
+  <div class="toolbar quick-dock" aria-label="Điều khiển nhanh">
     <button class="tool" id="power" title="Power"><i class="fa-solid fa-power-off"></i></button>
     <button class="tool" id="voldown" title="Volume -"><i class="fa-solid fa-volume-low"></i></button>
     <button class="tool" id="volup" title="Volume +"><i class="fa-solid fa-volume-high"></i></button>
@@ -589,6 +591,7 @@
     </div>
   </div>
 
+  <div id="connectionStatus" class="connection-status" data-tone="connecting" role="status" aria-live="polite">Đang chuẩn bị kết nối thiết bị…</div>
   <div id="status" class="status"><span class="dot"></span>Đang kết nối...</div>
 
   <!-- Force-kick: surfaced only when the socket is rejected because another
@@ -764,6 +767,7 @@
   </div>
 
   <script src="/static/js/jmuxer.min.js?v={{ static_ver }}"></script>
+  <script src="/static/js/console-ui.js?v={{ static_ver }}"></script>
   <script>
     // --- Sidebar drawer (mobile) ---
     // The @media query below 769px moves the sidebar off-screen and shows a
