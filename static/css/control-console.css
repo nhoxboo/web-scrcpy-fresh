@@ -1,0 +1,60 @@
+.console-shell {
+  display: grid;
+  min-height: 100dvh;
+  grid-template-columns: 264px minmax(0, 1fr);
+  background: var(--color-canvas);
+}
+
+.console-sidebar {
+  padding: 20px 12px;
+  background: var(--color-sidebar);
+  color: var(--color-sidebar-text);
+}
+
+.console-main {
+  min-width: 0;
+  background: var(--color-canvas);
+}
+
+.page-container {
+  width: min(100% - 64px, 1440px);
+  padding: 32px 0 48px;
+  margin: 0 auto;
+}
+
+.workflow-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.media-stage {
+  background: #0B1220;
+  color: var(--color-text-inverse);
+}
+
+@media (max-width: 1023px) {
+  .console-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .console-sidebar {
+    display: none;
+  }
+
+  .page-container {
+    width: min(100% - 48px, 1440px);
+    padding-top: 24px;
+  }
+}
+
+@media (max-width: 767px) {
+  .page-container {
+    width: min(100% - 32px, 1440px);
+    padding-top: 16px;
+  }
+
+  .workflow-grid {
+    grid-template-columns: 1fr;
+  }
+}
