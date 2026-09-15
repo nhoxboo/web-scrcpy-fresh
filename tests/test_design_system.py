@@ -87,3 +87,30 @@ def test_control_console_exposes_layout_contract_with_only_media_stage_raw_color
         assert selector in css
 
     assert re.findall(r"#[0-9A-Fa-f]{3,8}\b", css) == ["#0B1220"]
+
+
+def test_devices_page_uses_shared_console_styles_not_legacy_glass():
+    text = (ROOT / "templates" / "devices.html").read_text(encoding="utf-8")
+    assert '/static/css/control-console.css?v={{ static_ver }}' in text
+    assert '/static/css/glass.css?v={{ static_ver }}' not in text
+    assert 'background:rgba(255,255,255,.04)' not in text
+    assert 'color:#e5e7eb' not in text
+
+
+def test_devices_page_exposes_labeled_accessible_wifi_workflow():
+    text = (ROOT / "templates" / "devices.html").read_text(encoding="utf-8")
+    for marker in (
+        'class="workflow-card"',
+        'class="ui-label"',
+        'class="ui-input"',
+        'id="wireOut" role="status"',
+        'aria-live="polite"',
+        'class="fact-grid"',
+    ):
+        assert marker in text
+
+
+def test_device_facts_render_as_semantic_four_cell_grid():
+    text = (ROOT / "static/js/device-manager.js").read_text(encoding="utf-8")
+    assert "grid.className = 'fact-grid'" in text
+    assert "fact.className = 'data-fact'" in text
