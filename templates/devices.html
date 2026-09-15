@@ -108,7 +108,7 @@
     </section>
 
     <div class="workflow-grid" aria-label="Thiết lập kết nối Wi-Fi">
-      <section class="workflow-card" aria-labelledby="pair-title">
+      <section class="ui-card workflow-card" aria-labelledby="pair-title">
         <p class="step-kicker">Bước 1</p>
         <h3 id="pair-title">Pair lần đầu</h3>
         <p class="helper-text">Nhập thông tin từ mục Pair device with pairing code trên Android.</p>
@@ -122,7 +122,7 @@
           <button class="button-primary" type="submit"><i class="fa-solid fa-link" aria-hidden="true"></i> Pair thiết bị</button>
         </form>
       </section>
-      <section class="workflow-card" aria-labelledby="connect-title">
+      <section class="ui-card workflow-card" aria-labelledby="connect-title">
         <p class="step-kicker">Bước 2</p>
         <h3 id="connect-title">Kết nối thiết bị đã pair</h3>
         <p class="helper-text">Dùng cổng debug, không dùng cổng Pair ở bước 1.</p>
@@ -170,9 +170,12 @@
       const j = await r.json().catch(()=>({}));
       if (j.ok && j.devices && j.devices.length > 0) {
         savedDevicesList.replaceChildren();
-        const uniqueDevices = Array.from(
-          new Map(j.devices.map((device) => [device.target, device])).values(),
-        );
+        const seenTargets = new Set();
+        const uniqueDevices = j.devices.filter((device) => {
+          if (seenTargets.has(device.target)) return false;
+          seenTargets.add(device.target);
+          return true;
+        });
         uniqueDevices.forEach(d => {
           const row = document.createElement('article');
           row.className = 'saved-device-row';

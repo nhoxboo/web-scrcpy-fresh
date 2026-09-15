@@ -97,17 +97,84 @@ def test_devices_page_uses_shared_console_styles_not_legacy_glass():
     assert 'color:#e5e7eb' not in text
 
 
-def test_devices_page_exposes_labeled_accessible_wifi_workflow():
+def test_devices_page_preserves_accessible_wifi_workflow_contract():
     text = (ROOT / "templates" / "devices.html").read_text(encoding="utf-8")
+
     for marker in (
-        'class="workflow-card"',
+        'class="ui-card workflow-card"',
         'class="ui-label"',
         'class="ui-input"',
         'id="wireOut" role="status"',
         'aria-live="polite"',
         'class="fact-grid"',
+        'id="pairForm"',
+        'id="connForm"',
+        'id="savedDevicesContainer"',
+        'id="savedDevicesList"',
+        'id="deviceFacts"',
+        'name="csrf_token" value="{{ csrf_token() }}"',
+        'name="device_id" value=""',
+        'name="host"',
+        'name="port"',
+        'name="code"',
+        'name="save_device"',
+        'name="device_name"',
+        "new FormData(form)",
+        "fd.set('csrf_token', _csrf)",
+        "'/api/adb/pair'",
+        "'/api/adb/connect'",
+        "'/api/saved-wifi-devices'",
+        "`/api/saved-wifi-devices/${deviceId}`",
     ):
         assert marker in text
+
+    assert "style=" not in text
+    assert not re.search(r"#[0-9A-Fa-f]{3,8}\\b", text)
+
+
+def test_device_workflow_classes_have_semantic_shared_styles():
+    css = (ROOT / "static/css/control-console.css").read_text(encoding="utf-8")
+
+    for selector in (
+        ".page-header",
+        ".page-header-row",
+        ".page-actions",
+        ".device-list",
+        ".device-row",
+        ".device-row.is-selected",
+        ".saved-device-row",
+        ".workflow-card",
+        ".connection-form",
+        ".empty-state",
+        ".fact-grid",
+        ".wire-feedback",
+        '.wire-feedback[data-tone="info"]',
+        '.wire-feedback[data-tone="success"]',
+        '.wire-feedback[data-tone="danger"]',
+    ):
+        assert selector in css
+
+    assert not re.search(r"#[0-9A-Fa-f]{3,8}\\b", css.replace("#0B1220", ""))
+
+
+def test_saved_device_deduplication_retains_newest_api_record():
+    text = (ROOT / "templates" / "devices.html").read_text(encoding="utf-8")
+
+    assert "const seenTargets = new Set();" in text
+    assert "const uniqueDevices = j.devices.filter((device) => {" in text
+    assert "if (seenTargets.has(device.target)) return false;" in text
+    assert "seenTargets.add(device.target);" in text
+    assert "new Map(j.devices.map" not in text
+    assert "connectSaved(d.id, d.host, d.port)" in text
+    assert "deleteSaved(d.id)" in text
+
+
+def test_wire_feedback_exposes_all_visible_tones():
+    text = (ROOT / "templates" / "devices.html").read_text(encoding="utf-8")
+
+    assert "wireOut.dataset.tone = tone;" in text
+    for tone in ("'info'", "'success'", "'danger'"):
+        assert tone in text
 
 
 def test_device_facts_render_as_semantic_four_cell_grid():
