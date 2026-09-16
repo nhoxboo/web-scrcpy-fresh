@@ -242,6 +242,68 @@ def test_android_console_icon_only_controls_have_accessible_names():
     assert not missing_labels, missing_labels
 
 
+def _last_css_rule(css: str, selector: str) -> str:
+    rules = re.findall(rf"{re.escape(selector)}\s*\{{(?P<rules>[^}}]*)\}}", css, flags=re.DOTALL)
+    assert rules, f"missing CSS rule for {selector}"
+    return rules[-1]
+
+
+def test_android_console_final_compact_control_rules_keep_44px_targets():
+    css = (ROOT / "static" / "css" / "android-console.css").read_text(encoding="utf-8")
+
+    side_key = _last_css_rule(css, ".side-key")
+    assert "width: 44px" in side_key
+    assert "min-width: 44px" in side_key
+
+    resize_handle = _last_css_rule(css, ".resize-handle")
+    assert "min-width: 44px" in resize_handle
+    assert "min-height: 44px" in resize_handle
+
+    number_inputs = _last_css_rule(
+        css, '.wm-row input[type="number"],\n.sq-row input[type="number"]'
+    )
+    assert "width: 88px" in number_inputs
+    assert "min-height: 44px" in number_inputs
+
+    compact_actions = _last_css_rule(css, ".wm-act,\n.wm-preset,\n.sq-preset")
+    assert "min-width: 44px" in compact_actions
+    assert "min-height: 44px" in compact_actions
+
+
+def test_ios_console_icon_only_controls_have_accessible_names():
+    parser = _IconOnlyButtonParser()
+    parser.feed((ROOT / "templates" / "ios_index.html").read_text(encoding="utf-8"))
+
+    icon_only_buttons = [
+        *parser.icon_only_buttons,
+        *(
+            button
+            for button in parser.buttons
+            if "resize-handle" in button.get("class", "").split()
+        ),
+    ]
+    icon_only_ids = {button.get("id", "") for button in icon_only_buttons}
+    required_ids = {
+        "rotate",
+        "fullscreen",
+        "screenshot",
+        "recordToggle",
+        "reconnect",
+        "hudToggle",
+        "zoomOut",
+        "zoomReset",
+        "zoomIn",
+        "resizeHandle",
+    }
+    assert required_ids <= icon_only_ids
+    missing_labels = [
+        button.get("id", "unnamed icon-only button")
+        for button in icon_only_buttons
+        if not button.get("aria-label", "").strip()
+    ]
+    assert not missing_labels, missing_labels
+
+
 def test_android_console_mobile_sidebar_overrides_shared_hide_rule():
     css = (ROOT / "static" / "css" / "android-console.css").read_text(encoding="utf-8")
 

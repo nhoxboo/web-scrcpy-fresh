@@ -312,8 +312,8 @@ canvas#playerCanvas:-webkit-full-screen,
 }
 
 .side-key {
-  width: 18px;
-  min-width: 18px;
+  width: 44px;
+  min-width: 44px;
   border-radius: var(--radius-sm);
 }
 
@@ -409,8 +409,8 @@ canvas#playerCanvas:-webkit-full-screen,
   position: absolute;
   right: 10px;
   bottom: 10px;
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 44px;
+  min-height: 44px;
   z-index: 3;
   padding: 4px;
   cursor: nwse-resize;
@@ -554,7 +554,7 @@ canvas#playerCanvas:-webkit-full-screen,
 .wm-row input[type="number"],
 .sq-row input[type="number"] {
   width: 88px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 6px 8px;
 }
 
@@ -568,7 +568,8 @@ canvas#playerCanvas:-webkit-full-screen,
 .wm-act,
 .wm-preset,
 .sq-preset {
-  min-height: 40px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 8px 10px;
   font-size: 0.8125rem;
 }
