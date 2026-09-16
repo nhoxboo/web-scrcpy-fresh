@@ -4,9 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='dist/favicon.svg') }}">
   <link href="/static/css/font-awesome.min.css?v={{ static_ver }}" rel="stylesheet">
-  <link href="/static/css/glass.css?v={{ static_ver }}" rel="stylesheet">
+  <link href="/static/css/control-console.css?v={{ static_ver }}" rel="stylesheet">
   <link href="/static/css/app-shell.css?v={{ static_ver }}" rel="stylesheet">
+  <link href="/static/css/ios-console.css?v={{ static_ver }}" rel="stylesheet">
   <title>Remote iOS nhoxboo — Panel</title>
   <script src="/static/js/socket.io.js?v={{ static_ver }}"></script>
   <script src="/static/js/input.js?v={{ static_ver }}"></script>
@@ -14,350 +16,23 @@
   <script src="/static/js/h264-sps-parser.js?v={{ static_ver }}"></script>
   <script src="/static/js/video_parser.js?v={{ static_ver }}"></script>
   <script src="/static/js/audio_parser.js?v={{ static_ver }}"></script>
-  <style>
-    /* Liquid Glass overrides for the main panel. The shared design tokens
-     * (bg gradient, --glass-*, brand-grad, glass-btn, etc.) live in
-     * /static/css/glass.css and are loaded before this block. The styles
-     * below shape the panel-specific surfaces (top bar, toolbar, phone
-     * shell, status bar, zoom controls) on top of those tokens. */
-    body{margin:0;height:100dvh;display:flex;flex-direction:column;color:var(--txt);overflow:hidden}
-    .top{
-      display:flex;align-items:center;gap:10px;padding:10px 14px;
-      border-bottom:1px solid var(--line);
-      background:rgba(10,12,26,.55);
-      backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
-      flex-wrap:wrap;position:relative;z-index:5;
-    }
-    .top::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent)}
-    .brand{font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
-    .brand .name{font-size:1rem}
-    .sp{flex:1}
-    .pill{font-size:.76rem;color:var(--muted);padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid var(--line);display:inline-flex;align-items:center;gap:6px}
-    .btn{
-      display:inline-flex;align-items:center;gap:6px;
-      border:1px solid var(--line);background:var(--glass-bg-strong);color:var(--txt);
-      border-radius:12px;padding:7px 12px;cursor:pointer;white-space:nowrap;text-decoration:none;
-      transition:transform .15s var(--easing),border-color .2s var(--easing),background .2s var(--easing);
-      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-      font:inherit;font-size:.85rem;font-weight:500;
-    }
-    .btn:hover{border-color:var(--line-strong);background:rgba(255,255,255,.1);transform:translateY(-1px)}
-    .toolbar{
-      display:flex;gap:4px;align-items:center;padding:6px 8px;
-      border-bottom:1px solid var(--line);
-      background:rgba(7,9,26,.45);
-      backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
-      overflow-x:auto;touch-action:pan-x;position:relative;z-index:4;
-      flex-wrap:wrap;
-    }
-    .tool{
-      width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
-      border:1px solid var(--line);background:rgba(255,255,255,.04);
-      cursor:pointer;transition:transform .15s var(--easing),border-color .2s var(--easing),background .2s var(--easing),color .2s var(--easing);
-      flex:0 0 auto;color:#dbe1f3;
-      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    }
-    .tool:hover{transform:translateY(-1px);border-color:var(--line-strong);color:var(--accent-1);background:rgba(106,166,255,.10)}
-    .tool.active{
-      border-color:rgba(192,132,252,.55);color:#fff;
-      background:linear-gradient(135deg,rgba(106,166,255,.35),rgba(192,132,252,.35));
-      box-shadow:0 8px 24px rgba(192,132,252,.25),inset 0 1px 0 rgba(255,255,255,.25);
-    }
-    .tool-select-wrap select{
-      background:rgba(255,255,255,.04);color:#dbe1f3;border:1px solid var(--line);
-      border-radius:8px;padding:2px 6px;font:inherit;font-size:.8rem;
-      outline:none;cursor:pointer;height:26px;
-      transition:border-color .2s var(--easing),background .2s var(--easing);
-    }
-    .tool-select-wrap select:hover{
-      border-color:var(--line-strong);background:rgba(255,255,255,.08);
-    }
-    .tool-select-wrap select option{
-      background:#0f172a;color:#e2e8f0;
-    }
-    .video-wrap{flex:1 1 auto;min-height:0;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;padding:14px;overflow:hidden;touch-action:none}
-    .phone-shell{
-      position:relative;display:flex;align-items:center;justify-content:center;
-      background:linear-gradient(180deg,rgba(40,45,66,.7),rgba(20,24,40,.7));
-      border:1px solid rgba(255,255,255,.12);
-      border-radius:38px;
-      box-shadow:0 30px 70px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.12),inset 0 -1px 0 rgba(0,0,0,.3);
-      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-      max-width:100%;max-height:100%;padding:18px 10px 14px 10px;
-    }
-    .phone-shell::before{content:'';position:absolute;top:8px;left:50%;transform:translateX(-50%);width:96px;height:18px;border-radius:12px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.10)}
-    .phone-shell::after{content:'';position:absolute;top:14px;left:50%;transform:translateX(-50%);width:34px;height:5px;border-radius:6px;background:rgba(255,255,255,.12)}
-    /* image-rendering: keep edges crisp on integer-scaled HiDPI screens.
-       'auto' lets the browser bilinearly smooth at non-integer ratios so
-       text doesn't look jagged when the video is shrunk to fit the viewport. */
-    /* Disable native HTML5 drag-and-drop and text selection on the video.
-       Otherwise holding the left button and dragging triggers the browser's
-       built-in image drag (with the "forbidden" cursor since there's no
-       drop target), which steals mousemove events and makes touch-mode
-       drag feel sluggish. user-select:none also stops the browser from
-       starting a text selection that flashes on the page. */
-    video, canvas#playerCanvas {max-width:none;max-height:none;object-fit:contain;border-radius:20px;background:#000;touch-action:none;display:block;border:1px solid #1f2937;image-rendering:auto;image-rendering:-webkit-optimize-contrast;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
-    .phone-shell{user-select:none;-webkit-user-select:none}
-    /* In fullscreen, let the video fill the screen instead of keeping the shrunk inline size. */
-    video:fullscreen,video:-webkit-full-screen,canvas#playerCanvas:fullscreen,canvas#playerCanvas:-webkit-full-screen{width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;border-radius:0;border:0;background:#000;object-fit:contain}
-    .phone-shell:fullscreen,.phone-shell:-webkit-full-screen{width:100vw!important;height:100vh!important;padding:0;border:0;border-radius:0;background:#000}
-    .phone-shell:fullscreen::before,.phone-shell:fullscreen::after,.phone-shell:-webkit-full-screen::before,.phone-shell:-webkit-full-screen::after{display:none}
-    /* Landscape (post-rotation): drop the portrait-only notch + camera dot,
-       and use a thinner symmetric frame so the shell looks like a phone in
-       landscape orientation rather than a wide video stuffed into a portrait. */
-    .phone-shell.landscape{padding:8px;border-radius:22px}
-    .phone-shell.landscape::before,.phone-shell.landscape::after{display:none}
-    /* Virtual Desktop / external display: drop the phone shell entirely.
-       Desktop-style UIs render landscape and the rounded "phone" frame
-       around them makes no sense. */
-    .phone-shell.desktop-mode{padding:0;border-radius:8px;border-color:#4b5563}
-    .phone-shell.desktop-mode::before,.phone-shell.desktop-mode::after{display:none}
-    /* When pointer lock is engaged for UHID mouse, give the user a clear
-       hint that their mouse is captured (and how to release it). */
-    .phone-shell.desktop-mode.locked{outline:2px solid #38bdf8}
-    /* Phone mockup wrapper: vertical stack containing phone-shell + nav bar.
-       Lives inside .video-wrap; centering still inherited from .video-wrap's
-       flex layout. Width hugs the phone-shell so the side-keys can protrude
-       to the right without forcing the column wider than the video. */
-    .phone-mockup{
-      position:relative;display:flex;flex-direction:column;align-items:center;
-      gap:10px;max-width:100%;max-height:100%;
-    }
-    /* Physical side keys — power + volume up/down on the right edge.
-       Absolutely positioned against .phone-shell so they stick out a few
-       pixels past the bezel, mimicking a real Galaxy Z Fold side rail.
-       The .side-key-gap div separates power (top) from volume cluster. */
-    .phone-side-keys{
-      position:absolute;right:-9px;top:16%;
-      display:flex;flex-direction:column;gap:6px;z-index:6;pointer-events:auto;
-    }
-    .side-key-gap{height:22px;flex:0 0 auto}
-    .side-key{
-      appearance:none;-webkit-appearance:none;
-      width:15px;padding:0;
-      border:1px solid rgba(255,255,255,.16);
-      border-radius:3px 7px 7px 3px;
-      background:linear-gradient(90deg,rgba(72,80,108,.95) 0%,rgba(40,46,68,.95) 55%,rgba(26,30,50,.95) 100%);
-      box-shadow:2px 2px 6px rgba(0,0,0,.55),inset 1px 0 0 rgba(255,255,255,.18),inset -1px 0 0 rgba(0,0,0,.4);
-      color:rgba(255,255,255,.78);cursor:pointer;
-      display:flex;align-items:center;justify-content:center;
-      transition:transform .08s ease,box-shadow .12s ease,background .12s ease,color .12s ease;
-      position:relative;font-size:.58rem;
-    }
-    .side-key i{pointer-events:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
-    .side-key-power{height:36px}
-    .side-key-volup{height:42px}
-    .side-key-voldown{height:42px}
-    .side-key:hover{color:#fff;box-shadow:3px 2px 8px rgba(96,165,250,.45),inset 1px 0 0 rgba(255,255,255,.28),inset -1px 0 0 rgba(0,0,0,.4)}
-    .side-key:active{transform:translateX(2px);box-shadow:1px 1px 3px rgba(0,0,0,.55),inset 1px 0 0 rgba(255,255,255,.08)}
-    .side-key:focus-visible{outline:2px solid rgba(96,165,250,.7);outline-offset:2px}
-    .side-key[disabled]{opacity:.45;cursor:not-allowed}
-    /* Briefly flash when a sendevent succeeds/fails so the user gets visual
-       feedback even when the QC output bar isn't visible. */
-    .side-key.flash-ok{background:linear-gradient(90deg,rgba(34,197,94,.95),rgba(22,163,74,.95));color:#fff}
-    .side-key.flash-err{background:linear-gradient(90deg,rgba(239,68,68,.95),rgba(185,28,28,.95));color:#fff}
-    /* iOS-style soft nav bar — Back / Home / Recent.  Lives below the
-       phone-shell inside .phone-mockup. Uses Pixel-launcher-ish glyphs:
-       ◁ ○ □ via Font Awesome icons (rotated play, circle, square). */
-    .phone-nav-bar{
-      display:flex;align-items:center;justify-content:center;gap:42px;
-      padding:8px 22px;border-radius:18px;
-      background:linear-gradient(180deg,rgba(30,34,52,.85),rgba(15,18,30,.9));
-      border:1px solid rgba(255,255,255,.10);
-      box-shadow:0 6px 18px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08);
-      backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-    }
-    .nav-key{
-      appearance:none;-webkit-appearance:none;
-      width:38px;height:38px;padding:0;border-radius:10px;
-      background:transparent;border:1px solid transparent;
-      color:rgba(230,235,250,.85);cursor:pointer;
-      display:flex;align-items:center;justify-content:center;font-size:.92rem;
-      transition:transform .08s ease,background .12s ease,color .12s ease,border-color .12s ease;
-    }
-    .nav-key i{pointer-events:none}
-    /* Pure-CSS iOS nav glyphs: triangle (back), circle (home), square
-       (recent). Avoid Font Awesome's `fa-regular` variant — only the solid
-       webfont is bundled, so outlined icons render as missing glyphs. */
-    .nav-glyph{display:inline-block;pointer-events:none}
-    .nav-back .nav-glyph{
-      width:0;height:0;
-      border-top:7px solid transparent;border-bottom:7px solid transparent;
-      border-right:11px solid currentColor;
-    }
-    .nav-home .nav-glyph{
-      width:13px;height:13px;border-radius:50%;
-      border:2px solid currentColor;
-    }
-    .nav-recent .nav-glyph{
-      width:13px;height:13px;border-radius:3px;
-      border:2px solid currentColor;
-    }
-    .nav-key:hover{background:rgba(96,165,250,.16);color:#fff;border-color:rgba(96,165,250,.30)}
-    .nav-key:active{transform:scale(.92)}
-    .nav-key:focus-visible{outline:2px solid rgba(96,165,250,.7);outline-offset:2px}
-    .nav-key[disabled]{opacity:.45;cursor:not-allowed}
-    .nav-key.flash-ok{background:rgba(34,197,94,.30);color:#fff;border-color:rgba(34,197,94,.55)}
-    .nav-key.flash-err{background:rgba(239,68,68,.30);color:#fff;border-color:rgba(239,68,68,.55)}
-    /* Hide both control rows in fullscreen / desktop mode — they don't belong
-       on a desktop-like canvas, and they'd float weirdly outside the video. */
-    .phone-shell.desktop-mode .phone-side-keys,.phone-shell:fullscreen .phone-side-keys,
-    .phone-shell:-webkit-full-screen .phone-side-keys{display:none}
-    .phone-shell.desktop-mode ~ .phone-nav-bar{display:none}
-    /* In fullscreen the .phone-mockup wrapper still surrounds phone-shell;
-       hide the nav bar so it doesn't overlay the fullscreen video. */
-    .phone-mockup:fullscreen .phone-nav-bar,.phone-mockup:-webkit-full-screen .phone-nav-bar{display:none}
-    /* Inline UHID sensitivity slider on the toolbar. Hidden until UHID is
-       actually active so the toolbar isn't cluttered for users who don't
-       care about it. */
-    .uhid-speed{
-      display:none;align-items:center;gap:8px;padding:0 12px;color:#cfd6ed;font-size:.76rem;flex:0 0 auto;
-      border-left:1px solid var(--line);height:38px;
-    }
-    .uhid-speed.show{display:flex}
-    .uhid-speed input[type=range]{width:110px;accent-color:var(--accent-1)}
-    .uhid-speed .v{min-width:42px;text-align:right;font-variant-numeric:tabular-nums;color:var(--accent-1)}
-    .uhid-speed label{display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:var(--muted)}
-    .uhid-speed input[type=checkbox]{accent-color:var(--accent-2)}
-    /* Quick Controls overlay panel — opens from the toolbar. Floating glass
-       card, click outside to dismiss. Buttons map 1:1 to /api/quick actions. */
-    .qc-backdrop{position:fixed;inset:0;background:rgba(5,7,16,.55);backdrop-filter:blur(2px);
-      -webkit-backdrop-filter:blur(2px);z-index:50;display:none;align-items:flex-start;justify-content:center;
-      padding:80px 16px}
-    .qc-backdrop.show{display:flex}
-    .qc-panel{
-      width:min(560px,100%);max-height:80vh;overflow:auto;padding:18px 20px;
-      background:rgba(20,22,38,.78);backdrop-filter:blur(22px) saturate(160%);
-      -webkit-backdrop-filter:blur(22px) saturate(160%);border:1px solid var(--line);
-      border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.55);color:#e5e7eb;
-    }
-    .qc-panel h3{margin:0 0 4px;font-size:1.05rem;font-weight:600;display:flex;align-items:center;gap:8px}
-    .qc-panel .lead{margin:0 0 12px;color:var(--muted);font-size:.85rem}
-    .qc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
-    .qc-grid .qc-btn{
-      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
-      padding:12px 6px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);
-      color:#cfd6ed;cursor:pointer;font-size:.78rem;line-height:1.15;text-align:center;
-      transition:all .15s var(--easing,ease);
-    }
-    .qc-grid .qc-btn i{font-size:1.1rem}
-    .qc-grid .qc-btn:hover{border-color:var(--line-strong);background:rgba(255,255,255,.08);transform:translateY(-1px)}
-    .qc-grid .qc-btn.danger:hover{border-color:#fca5a5;background:rgba(239,68,68,.12);color:#fecaca}
-    .qc-grid .qc-btn[disabled]{opacity:.5;cursor:wait}
-    .qc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-    .qc-row button{padding:6px 12px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#e5e7eb;border-radius:10px;cursor:pointer}
-    .qc-out{margin-top:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;color:var(--muted);min-height:1.2em;word-break:break-all}
-    /* Resolution / DPI section inside Quick Controls. Inputs + presets +
-       action buttons. Designed to be compact so the whole panel still fits
-       within max-height:80vh on a phone. */
-    .qc-section-title{margin:14px 0 6px;font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-    .wm-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
-    .wm-row label{display:inline-flex;align-items:center;gap:6px;color:#cfd6ed;font-size:.82rem}
-    .wm-row input[type=number]{
-      width:78px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;
-      background:rgba(0,0,0,.25);color:#e5e7eb;font:inherit;font-size:.85rem;
-      font-variant-numeric:tabular-nums;text-align:right;
-    }
-    .wm-row input[type=number]:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.35)}
-    .wm-row .x{color:var(--muted)}
-    .wm-actions{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
-    .wm-actions .wm-act{
-      padding:6px 10px;border:1px solid var(--line);background:rgba(255,255,255,.05);
-      color:#e5e7eb;border-radius:10px;cursor:pointer;font:inherit;font-size:.78rem;
-      display:inline-flex;align-items:center;gap:5px;
-    }
-    .wm-actions .wm-act:hover{border-color:var(--line-strong);background:rgba(255,255,255,.1)}
-    .wm-actions .wm-act.primary{border-color:rgba(106,166,255,.45);color:#dbe7ff;background:rgba(106,166,255,.12)}
-    .wm-actions .wm-act.primary:hover{background:rgba(106,166,255,.22)}
-    .wm-actions .wm-act.warn{border-color:rgba(252,211,77,.45);color:#fde68a;background:rgba(252,211,77,.08)}
-    .wm-actions .wm-act[disabled]{opacity:.5;cursor:wait}
-    .wm-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
-    .wm-preset{
-      padding:5px 10px;border:1px dashed var(--line-strong);border-radius:999px;
-      background:rgba(255,255,255,.03);color:#cbd5ff;cursor:pointer;font:inherit;font-size:.74rem;
-    }
-    .wm-preset:hover{background:rgba(106,166,255,.15);border-style:solid}
-    /* Stream-quality row: each label hugs a range slider + a numeric input
-       so the user can scrub roughly or type an exact value. Preset chips
-       reuse .wm-preset styles via the .sq-preset class. */
-    .sq-row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:8px}
-    .sq-row label{display:inline-flex;align-items:center;gap:8px;color:#cfd6ed;font-size:.82rem}
-    .sq-row input[type=range]{accent-color:var(--brand,#6aa6ff);width:160px}
-    .sq-row input[type=number]{
-      width:60px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;
-      background:rgba(0,0,0,.25);color:#e5e7eb;font:inherit;font-size:.85rem;text-align:right;
-    }
-    .sq-row input[type=number]:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.35)}
-    .sq-preset{
-      padding:5px 10px;border:1px dashed var(--line-strong);border-radius:999px;
-      background:rgba(255,255,255,.03);color:#cbd5ff;cursor:pointer;font:inherit;font-size:.74rem;
-    }
-    .sq-preset:hover{background:rgba(106,166,255,.15);border-style:solid}
-    .wm-info{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.74rem;color:var(--muted);margin-top:4px;word-break:break-all}
-    .wm-hint{margin:6px 0 0;font-size:.72rem;color:var(--muted);line-height:1.35}
-    /* Free-form ADB shell exec — small terminal-style block. textarea grows
-       slightly, monospace output panel shows up to ~12 lines and scrolls. */
-    .adb-exec-row{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
-    .adb-exec-row textarea{
-      width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);
-      border-radius:8px;background:rgba(0,0,0,.32);color:#e5e7eb;
-      font:inherit;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;
-      resize:vertical;min-height:54px;
-    }
-    .adb-exec-row textarea:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.42)}
-    .adb-exec-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-    .adb-exec-out{
-      margin-top:4px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
-      background:rgba(0,0,0,.35);color:#e5e7eb;font-family:ui-monospace,Menlo,Consolas,monospace;
-      font-size:.74rem;line-height:1.35;white-space:pre-wrap;word-break:break-all;
-      max-height:200px;overflow:auto;
-    }
-    .adb-exec-out.err{color:#fecaca;border-color:rgba(252,165,165,.35);background:rgba(80,20,20,.35)}
-    .adb-exec-warn{color:#fde68a;font-size:.72rem;line-height:1.35;margin:4px 0 0}
-    .resize-handle{
-      position:absolute;right:10px;bottom:10px;width:20px;height:20px;border-radius:7px;
-      background:rgba(15,17,30,.65);border:1px solid var(--line-strong);
-      cursor:nwse-resize;display:grid;place-items:center;color:var(--accent-1);font-size:10px;
-      user-select:none;z-index:3;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    }
-    .zoom-bar{position:absolute;left:14px;bottom:14px;display:flex;gap:8px;z-index:6}
-    .zoom-btn{
-      width:38px;height:38px;border-radius:12px;border:1px solid var(--line);
-      background:rgba(15,17,30,.55);color:#dbe1f3;cursor:pointer;
-      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-      transition:transform .15s var(--easing),border-color .2s var(--easing),background .2s var(--easing);
-    }
-    .zoom-btn:hover{transform:translateY(-1px);border-color:var(--line-strong);background:rgba(106,166,255,.15)}
-    .status{
-      padding:6px 14px;border-top:1px solid var(--line);font-size:.78rem;color:#cbd5ff;
-      background:rgba(7,9,26,.55);
-      backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
-      white-space:nowrap;overflow:auto;
-    }
-    @media (max-width: 768px){
-      .top{padding:8px 10px;gap:8px}
-      .brand .name{font-size:.92rem}
-      .pill{font-size:.7rem;padding:3px 8px}
-      .btn{padding:6px 10px;font-size:.78rem}
-      .toolbar{padding:8px;gap:6px}
-      .tool{width:36px;height:36px}
-      .status{font-size:.74rem;padding:5px 10px}
-      .phone-shell{border-radius:28px;padding:14px 8px 10px 8px}
-      .phone-shell::before{top:6px;width:74px;height:14px}
-      .phone-shell::after{top:10px;width:26px;height:4px}
-    }
-    .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;box-shadow:0 0 12px var(--ok);animation:pulse 1.4s ease-in-out infinite}
-    @keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
-  </style>
 </head>
-<body>
-  <section class="surface-card" id="iosAvailability" role="status" aria-live="polite" style="margin:12px; padding:12px;">
-    <h2 style="margin:0; font-size:1rem;">Trạng thái iOS</h2>
-    <p class="muted" style="margin:4px 0 0;">WDA/AirPlay sẽ hiển thị trạng thái sau khi thiết bị sẵn sàng.</p>
-  </section>
+<body class="ios-console">
+  <main class="page-container">
+    <section class="ios-availability-card ui-card" id="iosAvailability" role="status" aria-live="polite">
+      <p class="eyebrow">REMOTE IOS</p>
+      <h1>Trạng thái iOS</h1>
+      <p class="helper-text">WDA/AirPlay sẽ hiển thị trạng thái khi thiết bị sẵn sàng.</p>
+      <ul>
+        <li>Thiết bị iOS đã sẵn sàng cho WDA hoặc AirPlay.</li>
+        <li>Máy chủ có thể truy cập dịch vụ tương ứng của thiết bị.</li>
+        <li>Chọn Thiết bị Android để quay lại bảng điều khiển Android.</li>
+      </ul>
+      <a class="button-secondary" href="/"><i class="fa-brands fa-android" aria-hidden="true"></i> Thiết bị Android</a>
+    </section>
   <div class="top">
     <div class="brand">
-      <i class="fa-solid fa-mobile-screen-button" style="color:var(--accent-1)"></i>
+      <i class="fa-solid fa-mobile-screen-button" aria-hidden="true"></i>
       <span class="name brand-grad">Remote iOS nhoxboo</span>
     </div>
     <span class="pill"><i class="fa-solid fa-user"></i> {{ username }}</span>
@@ -369,47 +44,47 @@
     <a class="btn" href="/" title="Điều khiển Android qua scrcpy"><i class="fa-brands fa-android"></i> Thiết bị Android</a>
     <div class="sp"></div>
     <a class="btn" href="/change-password"><i class="fa-solid fa-key"></i> Đổi mật khẩu</a>
-    <form method="post" action="/logout" style="display:inline;margin:0">
+    <form class="logout-form" method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn" type="submit"><i class="fa-solid fa-right-from-bracket"></i> Đăng xuất</button>
     </form>
   </div>
 
   <div class="toolbar">
-    <button class="tool" id="rotate" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
-    <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
-    <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
-    <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
-    <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
-      <i class="fa-solid fa-tv" style="color:#dbe1f3;font-size:0.9rem;"></i>
+    <button class="tool" id="rotate" title="Rotate" aria-label="Xoay màn hình"><i class="fa-solid fa-rotate"></i></button>
+    <button class="tool" id="fullscreen" title="Fullscreen" aria-label="Toàn màn hình"><i class="fa-solid fa-expand"></i></button>
+    <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)" aria-label="Chụp ảnh màn hình"><i class="fa-solid fa-camera"></i></button>
+    <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về" aria-label="Bắt đầu hoặc dừng ghi màn hình"><i class="fa-solid fa-circle"></i></button>
+    <div class="tool-select-wrap" title="Chọn màn hình hiển thị">
+      <i class="fa-solid fa-tv" aria-hidden="true"></i>
       <select id="displaySelect">
         <option value="0">Display 0 (Mặc định)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Giao thức truyền tải" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
-      <i class="fa-solid fa-network-wired" style="color:#dbe1f3;font-size:0.9rem;"></i>
+    <div class="tool-select-wrap" title="Giao thức truyền tải">
+      <i class="fa-solid fa-network-wired" aria-hidden="true"></i>
       <select id="transportSelect">
         <option value="websocket">TCP (WebSocket)</option>
         <option value="webrtc">UDP (WebRTC)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Chọn bộ giải mã video" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:34px;">
-      <i class="fa-solid fa-code" style="color:#dbe1f3;font-size:0.9rem;"></i>
+    <div class="tool-select-wrap tool-select-wrap--end" title="Chọn bộ giải mã video">
+      <i class="fa-solid fa-code" aria-hidden="true"></i>
       <select id="decoderSelect">
         <option value="mse">MSE (Mặc định)</option>
         <option value="webcodecs">WebCodecs (Trễ thấp)</option>
       </select>
     </div>
-    <button class="tool" id="reconnect" title="Kết nối lại"><i class="fa-solid fa-plug-circle-bolt"></i></button>
-    <button class="tool" id="hudToggle" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
+    <button class="tool" id="reconnect" title="Kết nối lại" aria-label="Kết nối lại thiết bị"><i class="fa-solid fa-plug-circle-bolt"></i></button>
+    <button class="tool" id="hudToggle" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)" aria-label="Bật hoặc tắt HUD hiệu năng"><i class="fa-solid fa-gauge-high"></i></button>
   </div>
 
   <div class="video-wrap" id="videoWrap">
     <div class="phone-mockup" id="phoneMockup">
       <div class="phone-shell" id="phoneShell">
-        <img id="player" src="/api/stream/ios_mjpeg" style="width: 100%; height: 100%; object-fit: contain;">
-        <canvas id="playerCanvas" style="display:none;"></canvas>
-        <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
+        <img class="ios-stream" id="player" src="/api/stream/ios_mjpeg">
+        <canvas class="ios-stream-canvas" id="playerCanvas"></canvas>
+        <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước" aria-label="Kéo để đổi kích thước màn hình">◢</button>
         <!-- Physical side keys (right edge of the phone frame). All three call
              /api/adb/sendevent → raw kernel input, so they work for both
              normal iOS volume AND Magisk customize.sh `getevent` prompts.
@@ -451,15 +126,15 @@
     -->
     <textarea id="kbCapture" autocomplete="off" autocorrect="off" autocapitalize="off"
               spellcheck="false" inputmode="text" aria-hidden="true"
-              style="position:fixed;bottom:-50px;opacity:0;width:1px;height:1px;border:0;padding:0;outline:none;pointer-events:none"></textarea>
+              class="keyboard-capture"></textarea>
     <div class="zoom-bar">
-      <button class="zoom-btn" id="zoomOut" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
-      <button class="zoom-btn" id="zoomReset" title="Mặc định"><i class="fa-solid fa-arrows-rotate"></i></button>
-      <button class="zoom-btn" id="zoomIn" title="Phóng to"><i class="fa-solid fa-plus"></i></button>
+      <button class="zoom-btn" id="zoomOut" title="Thu nhỏ" aria-label="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
+      <button class="zoom-btn" id="zoomReset" title="Mặc định" aria-label="Đặt lại mức thu phóng"><i class="fa-solid fa-arrows-rotate"></i></button>
+      <button class="zoom-btn" id="zoomIn" title="Phóng to" aria-label="Phóng to"><i class="fa-solid fa-plus"></i></button>
     </div>
   </div>
 
-  <div id="status" class="status"><span class="dot"></span>Đang kết nối...</div>
+  <div id="status" class="status" role="status" aria-live="polite">WDA/AirPlay sẽ hiển thị trạng thái khi thiết bị sẵn sàng.</div>
 
   <!-- Force-kick: surfaced only when the socket is rejected because another
        client holds the device lock. Lets the legitimate session owner take
@@ -623,7 +298,7 @@
         <div class="adb-exec-actions">
           <button class="wm-act primary" id="adbExecRun" type="button"><i class="fa-solid fa-play"></i>Chạy</button>
           <button class="wm-act" id="adbExecClear" type="button"><i class="fa-solid fa-broom"></i>Clear</button>
-          <span id="adbExecHint" style="font-size:.72rem;color:var(--muted)">Enter để chạy · Shift+Enter để xuống dòng</span>
+          <span class="keyboard-help" id="adbExecHint">Enter để chạy · Shift+Enter để xuống dòng</span>
         </div>
         <pre class="adb-exec-out" id="adbExecOut" hidden></pre>
         <p class="adb-exec-warn"><i class="fa-solid fa-triangle-exclamation"></i> Lệnh chạy trực tiếp trên thiết bị đã chọn (timeout 30s, output tối đa 100KB). Tránh lệnh phá hoại như <code>rm</code>, <code>reboot</code>… nếu chưa chắc.</p>
@@ -993,7 +668,7 @@
       query: _socketQuery,
     }); */
     socket.on('connect', ()=> {
-      st('Đã kết nối.');
+      st('WDA/AirPlay sẽ hiển thị trạng thái khi thiết bị sẵn sàng.');
       if (useWebRtc) {
         initWebRtcConnection();
       }
@@ -1715,7 +1390,7 @@
       // tears down jmuxer / MSE so the new stream's SPS/PPS isn't fed into
       // a stale decoder (same fix as the rotate path).
       document.getElementById('reconnect').onclick = ()=>{
-        st('Đang kết nối lại...');
+        st('WDA/AirPlay sẽ hiển thị trạng thái khi thiết bị sẵn sàng.');
         try { socket.disconnect(); } catch {}
         try { if (jmuxer) { jmuxer.destroy(); } } catch {}
         jmuxer = null;
@@ -2996,5 +2671,6 @@
     document.addEventListener('fullscreenchange', fitVideoToViewport);
     window.addEventListener('beforeunload', ()=>socket.disconnect());
   </script>
+  </main>
 </body>
 </html>

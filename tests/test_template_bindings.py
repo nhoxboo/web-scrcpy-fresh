@@ -30,9 +30,9 @@ def test_shared_light_shell_stylesheet_is_loaded_by_account_and_device_pages():
 
 def test_app_shell_defines_white_blue_tokens_and_navy_sidebar():
     text = (ROOT / 'static' / 'css' / 'app-shell.css').read_text(encoding='utf-8')
-    assert '--surface-page: #F8FAFC' in text
-    assert '--action-primary: #0369A1' in text
-    assert '--sidebar-bg: #1E293B' in text
+    assert '--color-canvas: #F6F9FC' in text
+    assert '--color-primary: #0B74DE' in text
+    assert '--color-sidebar: #163A5F' in text
     assert '@media (prefers-reduced-motion: reduce)' in text
 
 
@@ -163,3 +163,17 @@ def test_reconnect_handler_works_without_input():
         "reconnect handler dereferences input.* without a null check — "
         "would throw if the WS never connected"
     )
+
+
+def test_console_shell_keeps_critical_binding_targets():
+    """Styling changes must not remove remote-control DOM hook points."""
+    text = INDEX_HTML.read_text(encoding="utf-8")
+
+    for element_id in (
+        "sidebar",
+        "quickCtl",
+        "playerCanvas",
+        "connectionStatus",
+        *SOCKET_INDEPENDENT_BUTTON_IDS,
+    ):
+        assert f'id="{element_id}"' in text, element_id

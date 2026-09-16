@@ -9,6 +9,7 @@
     title.textContent = 'Thông tin thiết bị';
     factsRoot.append(title);
     const grid = document.createElement('dl');
+    grid.className = 'fact-grid';
     const entries = [
       ['Model', facts.model],
       ['Android', facts.android_version],
@@ -16,11 +17,14 @@
       ['Trạng thái pin', facts.battery_status],
     ];
     entries.forEach(([label, value]) => {
+      const fact = document.createElement('div');
+      fact.className = 'data-fact';
       const term = document.createElement('dt');
       term.textContent = label;
       const description = document.createElement('dd');
       description.textContent = value || 'Không có dữ liệu';
-      grid.append(term, description);
+      fact.append(term, description);
+      grid.append(fact);
     });
     factsRoot.append(grid);
     if (!available) {
