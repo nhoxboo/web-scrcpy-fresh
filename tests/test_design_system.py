@@ -270,6 +270,25 @@ def test_android_console_main_contains_drop_zone_overlay():
     assert re.search(r"\bposition:\s*relative", console_main_rule.group(1))
 
 
+def test_all_production_templates_link_the_tracked_svg_favicon_through_flask_static():
+    favicon = ROOT / "static" / "dist" / "favicon.svg"
+    assert favicon.is_file()
+
+    favicon_link = (
+        '<link rel="icon" type="image/svg+xml" '
+        'href="{{ url_for(\'static\', filename=\'dist/favicon.svg\') }}">'
+    )
+    for filename in (
+        "login.html",
+        "change_password.html",
+        "devices.html",
+        "index.html",
+        "ios_index.html",
+    ):
+        text = (ROOT / "templates" / filename).read_text(encoding="utf-8")
+        assert text.count(favicon_link) == 1, filename
+
+
 def test_all_production_templates_stop_loading_legacy_glass_css():
     for filename in (
         "login.html",
