@@ -1,4 +1,5 @@
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -193,11 +194,77 @@ def test_android_console_uses_shared_light_shell_but_keeps_media_stage_dark():
     assert 'background:#05070e' not in text
 
 
-def test_android_console_icon_only_controls_have_accessible_names():
-    text = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+class _IconOnlyButtonParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self._button: dict[str, str] | None = None
+        self._text: list[str] = []
+        self.buttons: list[dict[str, str]] = []
+        self.icon_only_buttons: list[dict[str, str]] = []
 
-    for control_id in ("reconnect", "quickCtl", "fullscreen", "screenshot"):
-        marker = f'id="{control_id}"'
-        start = text.index(marker)
-        opening_tag = text[text.rfind("<", 0, start) : text.find(">", start) + 1]
-        assert "aria-label=" in opening_tag, control_id
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "button":
+            self._button = {name: value or "" for name, value in attrs}
+            self.buttons.append(self._button)
+            self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._button is not None:
+            self._text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "button" and self._button is not None:
+            if not "".join(self._text).strip():
+                self.icon_only_buttons.append(self._button)
+            self._button = None
+            self._text = []
+
+
+def test_android_console_icon_only_controls_have_accessible_names():
+    parser = _IconOnlyButtonParser()
+    parser.feed((ROOT / "templates" / "index.html").read_text(encoding="utf-8"))
+
+    icon_only_buttons = [
+        *parser.icon_only_buttons,
+        *(
+            button
+            for button in parser.buttons
+            if "resize-handle" in button.get("class", "").split()
+        ),
+    ]
+    icon_only_ids = {button.get("id", "") for button in icon_only_buttons}
+    assert {"resizeHandle", "zoomOut", "zoomReset", "zoomIn"} <= icon_only_ids
+    missing_labels = [
+        button.get("id", "unnamed icon-only button")
+        for button in icon_only_buttons
+        if not button.get("aria-label", "").strip()
+    ]
+    assert not missing_labels, missing_labels
+
+
+def test_android_console_mobile_sidebar_overrides_shared_hide_rule():
+    css = (ROOT / "static" / "css" / "android-console.css").read_text(encoding="utf-8")
+
+    tablet_rule = re.search(
+        r"@media \(min-width: 769px\) and \(max-width: 1023px\)\s*\{.*?"
+        r"\.console-sidebar\s*\{[^}]*display:\s*block",
+        css,
+        flags=re.DOTALL,
+    )
+    mobile_rule = re.search(
+        r"@media \(max-width: 768px\)\s*\{.*?"
+        r"\.console-sidebar\s*\{[^}]*display:\s*block",
+        css,
+        flags=re.DOTALL,
+    )
+
+    assert tablet_rule, "tablet sidebar must remain rendered while the shared rule hides it"
+    assert mobile_rule, "mobile drawer sidebar must override the shared display:none rule"
+
+
+def test_android_console_main_contains_drop_zone_overlay():
+    css = (ROOT / "static" / "css" / "android-console.css").read_text(encoding="utf-8")
+    console_main_rule = re.search(r"\.console-main\s*\{([^}]*)\}", css, flags=re.DOTALL)
+
+    assert console_main_rule
+    assert re.search(r"\bposition:\s*relative", console_main_rule.group(1))
