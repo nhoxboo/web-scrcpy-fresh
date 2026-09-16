@@ -181,3 +181,23 @@ def test_device_facts_render_as_semantic_four_cell_grid():
     text = (ROOT / "static/js/device-manager.js").read_text(encoding="utf-8")
     assert "grid.className = 'fact-grid'" in text
     assert "fact.className = 'data-fact'" in text
+
+
+def test_android_console_uses_shared_light_shell_but_keeps_media_stage_dark():
+    text = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+
+    assert '/static/css/control-console.css?v={{ static_ver }}' in text
+    assert '/static/css/glass.css?v={{ static_ver }}' not in text
+    assert 'class="console-shell"' in text
+    assert 'class="media-stage"' in text
+    assert 'background:#05070e' not in text
+
+
+def test_android_console_icon_only_controls_have_accessible_names():
+    text = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+
+    for control_id in ("reconnect", "quickCtl", "fullscreen", "screenshot"):
+        marker = f'id="{control_id}"'
+        start = text.index(marker)
+        opening_tag = text[text.rfind("<", 0, start) : text.find(">", start) + 1]
+        assert "aria-label=" in opening_tag, control_id

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link href="/static/css/font-awesome.min.css?v={{ static_ver }}" rel="stylesheet">
-  <link href="/static/css/glass.css?v={{ static_ver }}" rel="stylesheet">
   <link href="/static/css/app-shell.css?v={{ static_ver }}" rel="stylesheet">
+  <link href="/static/css/control-console.css?v={{ static_ver }}" rel="stylesheet">
   <link href="/static/css/android-console.css?v={{ static_ver }}" rel="stylesheet">
   <title>Remote Android nhoxboo — Panel</title>
   <script src="/static/js/socket.io.js?v={{ static_ver }}"></script>
@@ -15,423 +15,8 @@
   <script src="/static/js/h264-sps-parser.js?v={{ static_ver }}"></script>
   <script src="/static/js/video_parser.js?v={{ static_ver }}"></script>
   <script src="/static/js/audio_parser.js?v={{ static_ver }}"></script>
-  <style>
-    /* Liquid Glass overrides for the main panel. The shared design tokens
-     * (bg gradient, --glass-*, brand-grad, glass-btn, etc.) live in
-     * /static/css/glass.css and are loaded before this block. The styles
-     * below shape the panel-specific surfaces (top bar, toolbar, phone
-     * shell, status bar, zoom controls) on top of those tokens. */
-    body{margin:0;height:100dvh;display:flex;flex-direction:row;color:var(--txt);overflow:hidden;background:#05070e}
-    .top{display:flex;flex-direction:column;gap:12px;}
-    
-    .brand{font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
-    .brand .name{font-size:1rem}
-    .sp{flex:1}
-    .pill{font-size:.76rem;color:var(--muted);padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid var(--line);display:inline-flex;align-items:center;gap:6px}
-    .btn{
-      display:inline-flex;align-items:center;gap:6px;
-      border:1px solid var(--line);background:var(--glass-bg-strong);color:var(--txt);
-      border-radius:12px;padding:7px 12px;cursor:pointer;white-space:nowrap;text-decoration:none;
-      transition:transform .15s var(--easing),border-color .2s var(--easing),background .2s var(--easing);
-      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-      font:inherit;font-size:.85rem;font-weight:500;
-    }
-    .btn:hover{border-color:var(--line-strong);background:rgba(255,255,255,.1);transform:translateY(-1px)}
-    .toolbar{display:flex; flex-wrap: wrap; gap:8px;}
-    .tool{
-      width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
-      border:1px solid var(--line);background:rgba(255,255,255,.04);
-      cursor:pointer;transition:transform .15s var(--easing),border-color .2s var(--easing),background .2s var(--easing),color .2s var(--easing);
-      flex:0 0 auto;color:#dbe1f3;
-      backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-    }
-    .tool:hover{transform:translateY(-1px);border-color:var(--line-strong);color:var(--accent-1);background:rgba(106,166,255,.10)}
-    .tool.active{
-      border-color:rgba(192,132,252,.55);color:#fff;
-      background:linear-gradient(135deg,rgba(106,166,255,.35),rgba(192,132,252,.35));
-      box-shadow:0 8px 24px rgba(192,132,252,.25),inset 0 1px 0 rgba(255,255,255,.25);
-    }
-    .tool-select-wrap select{
-      background:rgba(255,255,255,.04);color:#dbe1f3;border:1px solid var(--line);
-      border-radius:8px;padding:2px 6px;font:inherit;font-size:.8rem;
-      outline:none;cursor:pointer;height:26px;
-      transition:border-color .2s var(--easing),background .2s var(--easing);
-    }
-    .tool-select-wrap select:hover{
-      border-color:var(--line-strong);background:rgba(255,255,255,.08);
-    }
-    .tool-select-wrap select option{
-      background:#0f172a;color:#e2e8f0;
-    }
-    .video-wrap{flex:1 1 auto;min-height:0;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;padding:14px;overflow:hidden;touch-action:none}
-    .phone-shell{
-      position:relative;display:flex;align-items:center;justify-content:center;
-      background:linear-gradient(145deg, rgba(30,34,50,.85), rgba(15,18,30,.95));
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius:42px;
-      box-shadow: 
-        0 40px 100px rgba(0,0,0,0.65), 
-        inset 0 2px 4px rgba(255,255,255,0.2), 
-        inset 0 -2px 10px rgba(0,0,0,0.5),
-        0 0 0 1px rgba(0,0,0,0.8),
-        0 0 30px rgba(106, 166, 255, 0.15);
-      backdrop-filter:blur(16px) saturate(150%);-webkit-backdrop-filter:blur(16px) saturate(150%);
-      max-width:100%;max-height:100%;padding:16px 12px 16px 12px;
-      transition: transform 0.3s cubic-bezier(.2,.8,.2,1);
-    }
-    .phone-shell::before{content:'';position:absolute;top:8px;left:50%;transform:translateX(-50%);width:96px;height:24px;border-radius:12px;background:rgba(5,7,16,.9);border:1px solid rgba(255,255,255,.08);box-shadow:inset 0 -1px 2px rgba(255,255,255,0.1);z-index:20;}
-    .phone-shell::after{content:'';position:absolute;top:15px;left:calc(50% + 28px);width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 3px 3px, rgba(106, 166, 255, 0.4), #000 70%);box-shadow:inset 0 1px 2px rgba(0,0,0,0.8);z-index:21;}
-    /* image-rendering: keep edges crisp on integer-scaled HiDPI screens.
-       'auto' lets the browser bilinearly smooth at non-integer ratios so
-       text doesn't look jagged when the video is shrunk to fit the viewport. */
-    /* Disable native HTML5 drag-and-drop and text selection on the video.
-       Otherwise holding the left button and dragging triggers the browser's
-       built-in image drag (with the "forbidden" cursor since there's no
-       drop target), which steals mousemove events and makes touch-mode
-       drag feel sluggish. user-select:none also stops the browser from
-       starting a text selection that flashes on the page. */
-    video, canvas#playerCanvas {max-width:none;max-height:none;object-fit:contain;border-radius:20px;background:#000;touch-action:none;display:block;border:1px solid #1f2937;image-rendering:auto;image-rendering:-webkit-optimize-contrast;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none}
-    .phone-shell{user-select:none;-webkit-user-select:none}
-    /* In fullscreen, let the video fill the screen instead of keeping the shrunk inline size. */
-    video:fullscreen,video:-webkit-full-screen,canvas#playerCanvas:fullscreen,canvas#playerCanvas:-webkit-full-screen{width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;border-radius:0;border:0;background:#000;object-fit:contain}
-    .phone-shell:fullscreen,.phone-shell:-webkit-full-screen{width:100vw!important;height:100vh!important;padding:0;border:0;border-radius:0;background:#000}
-    .phone-shell:fullscreen::before,.phone-shell:fullscreen::after,.phone-shell:-webkit-full-screen::before,.phone-shell:-webkit-full-screen::after{display:none}
-    /* Landscape (post-rotation): drop the portrait-only notch + camera dot,
-       and use a thinner symmetric frame so the shell looks like a phone in
-       landscape orientation rather than a wide video stuffed into a portrait. */
-    .phone-shell.landscape{padding:8px;border-radius:22px}
-    .phone-shell.landscape::before,.phone-shell.landscape::after{display:none}
-    /* Virtual Desktop / external display: drop the phone shell entirely.
-       Desktop-style UIs render landscape and the rounded "phone" frame
-       around them makes no sense. */
-    .phone-shell.desktop-mode{padding:0;border-radius:8px;border-color:#4b5563}
-    .phone-shell.desktop-mode::before,.phone-shell.desktop-mode::after{display:none}
-    /* When pointer lock is engaged for UHID mouse, give the user a clear
-       hint that their mouse is captured (and how to release it). */
-    .phone-shell.desktop-mode.locked{outline:2px solid #38bdf8}
-    /* Phone mockup wrapper: vertical stack containing phone-shell + nav bar.
-       Lives inside .video-wrap; centering still inherited from .video-wrap's
-       flex layout. Width hugs the phone-shell so the side-keys can protrude
-       to the right without forcing the column wider than the video. */
-    .phone-mockup{
-      position:relative;display:flex;flex-direction:column;align-items:center;
-      gap:10px;max-width:100%;max-height:100%;
-    }
-    /* Physical side keys — power + volume up/down on the right edge.
-       Absolutely positioned against .phone-shell so they stick out a few
-       pixels past the bezel, mimicking a real Galaxy Z Fold side rail.
-       The .side-key-gap div separates power (top) from volume cluster. */
-    .phone-side-keys{
-      position:absolute;right:-9px;top:16%;
-      display:flex;flex-direction:column;gap:6px;z-index:6;pointer-events:auto;
-    }
-    .side-key-gap{height:22px;flex:0 0 auto}
-    .side-key{
-      appearance:none;-webkit-appearance:none;
-      width:14px;padding:0;
-      border:1px solid rgba(255,255,255,.2);
-      border-left:none;
-      border-radius:2px 8px 8px 2px;
-      background:linear-gradient(90deg,rgba(90,95,115,1) 0%,rgba(55,62,85,1) 50%,rgba(30,35,55,1) 100%);
-      box-shadow:
-        3px 4px 10px rgba(0,0,0,0.6),
-        inset 1px 1px 1px rgba(255,255,255,0.3),
-        inset -1px -1px 2px rgba(0,0,0,0.5);
-      color:rgba(255,255,255,.8);cursor:pointer;
-      display:flex;align-items:center;justify-content:center;
-      transition:transform 0.15s cubic-bezier(.2,.8,.2,1), box-shadow 0.15s ease, filter 0.15s ease;
-      position:relative;font-size:.55rem;
-      z-index: 10;
-    }
-    .side-key i{pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
-    .side-key-power{height:44px}
-    .side-key-volup{height:52px}
-    .side-key-voldown{height:52px}
-    .side-key:hover{
-      color:#fff;
-      filter: brightness(1.2);
-      box-shadow:4px 5px 12px rgba(106,166,255,0.4),inset 1px 1px 1px rgba(255,255,255,0.4),inset -1px -1px 2px rgba(0,0,0,0.5);
-    }
-    .side-key:active{
-      transform:translateX(3px);
-      box-shadow:1px 2px 4px rgba(0,0,0,0.8),inset 1px 1px 1px rgba(255,255,255,0.1);
-      filter: brightness(0.9);
-    }
-    .side-key[disabled]{opacity:.45;cursor:not-allowed}
-    /* Briefly flash when a sendevent succeeds/fails so the user gets visual
-       feedback even when the QC output bar isn't visible. */
-    .side-key.flash-ok{background:linear-gradient(90deg,rgba(34,197,94,.95),rgba(22,163,74,.95));color:#fff}
-    .side-key.flash-err{background:linear-gradient(90deg,rgba(239,68,68,.95),rgba(185,28,28,.95));color:#fff}
-    /* Android-style soft nav bar — Back / Home / Recent.  Lives below the
-       phone-shell inside .phone-mockup. Uses Pixel-launcher-ish glyphs:
-       ◁ ○ □ via Font Awesome icons (rotated play, circle, square). */
-    .phone-nav-bar{
-      display:flex;align-items:center;justify-content:center;gap:36px;
-      padding:10px 28px;border-radius:999px;
-      background: rgba(20, 24, 40, 0.65);
-      border:1px solid rgba(255,255,255,.15);
-      box-shadow:
-        0 12px 32px rgba(0,0,0,.6),
-        inset 0 1px 1px rgba(255,255,255,.2);
-      backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);
-      margin-top: 4px;
-    }
-    .nav-key{
-      appearance:none;-webkit-appearance:none;
-      width:44px;height:44px;padding:0;border-radius:50%;
-      background:rgba(255,255,255,0.03);border:1px solid transparent;
-      color:rgba(230,235,250,.85);cursor:pointer;
-      display:flex;align-items:center;justify-content:center;font-size:1.1rem;
-      transition:transform 0.2s cubic-bezier(.2,.8,.2,1), background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-    }
-    .nav-key i{pointer-events:none}
-    /* Pure-CSS Android nav glyphs: triangle (back), circle (home), square
-       (recent). Avoid Font Awesome's `fa-regular` variant — only the solid
-       webfont is bundled, so outlined icons render as missing glyphs. */
-    .nav-glyph{display:inline-block;pointer-events:none}
-    .nav-back .nav-glyph{
-      width:0;height:0;
-      border-top:7px solid transparent;border-bottom:7px solid transparent;
-      border-right:11px solid currentColor;
-    }
-    .nav-home .nav-glyph{
-      width:14px;height:14px;border-radius:50%;
-      border:2px solid currentColor;
-    }
-    .nav-recent .nav-glyph{
-      width:14px;height:14px;border-radius:3px;
-      border:2px solid currentColor;
-    }
-    .nav-key:hover{
-      background:rgba(255,255,255,0.1);color:#fff;
-      box-shadow: 0 0 15px rgba(106, 166, 255, 0.3), inset 0 1px 0 rgba(255,255,255,0.2);
-      transform: translateY(-2px);
-    }
-    .nav-key:active{transform:scale(.92) translateY(0);}
-    .nav-key:focus-visible{outline:2px solid rgba(96,165,250,.7);outline-offset:2px}
-    .nav-key[disabled]{opacity:.45;cursor:not-allowed}
-    .nav-key.flash-ok{background:rgba(34,197,94,.30);color:#fff;border-color:rgba(34,197,94,.55)}
-    .nav-key.flash-err{background:rgba(239,68,68,.30);color:#fff;border-color:rgba(239,68,68,.55)}
-    /* Hide both control rows in fullscreen / desktop mode — they don't belong
-       on a desktop-like canvas, and they'd float weirdly outside the video. */
-    .phone-shell.desktop-mode .phone-side-keys,.phone-shell:fullscreen .phone-side-keys,
-    .phone-shell:-webkit-full-screen .phone-side-keys{display:none}
-    .phone-shell.desktop-mode ~ .phone-nav-bar{display:none}
-    /* In fullscreen the .phone-mockup wrapper still surrounds phone-shell;
-       hide the nav bar so it doesn't overlay the fullscreen video. */
-    .phone-mockup:fullscreen .phone-nav-bar,.phone-mockup:-webkit-full-screen .phone-nav-bar{display:none}
-    /* Inline UHID sensitivity slider on the toolbar. Hidden until UHID is
-       actually active so the toolbar isn't cluttered for users who don't
-       care about it. */
-    .uhid-speed{
-      display:none;align-items:center;gap:8px;padding:0 12px;color:#cfd6ed;font-size:.76rem;flex:0 0 auto;
-      border-left:1px solid var(--line);height:38px;
-    }
-    .uhid-speed.show{display:flex}
-    .uhid-speed input[type=range]{width:110px;accent-color:var(--accent-1)}
-    .uhid-speed .v{min-width:42px;text-align:right;font-variant-numeric:tabular-nums;color:var(--accent-1)}
-    .uhid-speed label{display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:var(--muted)}
-    .uhid-speed input[type=checkbox]{accent-color:var(--accent-2)}
-    /* Quick Controls overlay panel — opens from the toolbar. Floating glass
-       card, click outside to dismiss. Buttons map 1:1 to /api/quick actions. */
-    .qc-backdrop{position:fixed;inset:0;background:rgba(5,7,16,.55);backdrop-filter:blur(2px);
-      -webkit-backdrop-filter:blur(2px);z-index:50;display:none;align-items:flex-start;justify-content:center;
-      padding:80px 16px}
-    .qc-backdrop.show{display:flex}
-    .qc-panel{
-      width:min(560px,100%);max-height:80vh;overflow:auto;padding:18px 20px;
-      background:rgba(20,22,38,.78);backdrop-filter:blur(22px) saturate(160%);
-      -webkit-backdrop-filter:blur(22px) saturate(160%);border:1px solid var(--line);
-      border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.55);color:#e5e7eb;
-    }
-    .qc-panel h3{margin:0 0 4px;font-size:1.05rem;font-weight:600;display:flex;align-items:center;gap:8px}
-    .qc-panel .lead{margin:0 0 12px;color:var(--muted);font-size:.85rem}
-    .qc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
-    .qc-grid .qc-btn{
-      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
-      padding:12px 6px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.04);
-      color:#cfd6ed;cursor:pointer;font-size:.78rem;line-height:1.15;text-align:center;
-      transition:all .15s var(--easing,ease);
-    }
-    .qc-grid .qc-btn i{font-size:1.1rem}
-    .qc-grid .qc-btn:hover{border-color:var(--line-strong);background:rgba(255,255,255,.08);transform:translateY(-1px)}
-    .qc-grid .qc-btn.danger:hover{border-color:#fca5a5;background:rgba(239,68,68,.12);color:#fecaca}
-    .qc-grid .qc-btn[disabled]{opacity:.5;cursor:wait}
-    .qc-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-    .qc-row button{padding:6px 12px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:#e5e7eb;border-radius:10px;cursor:pointer}
-    .qc-out{margin-top:10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;color:var(--muted);min-height:1.2em;word-break:break-all}
-    /* Resolution / DPI section inside Quick Controls. Inputs + presets +
-       action buttons. Designed to be compact so the whole panel still fits
-       within max-height:80vh on a phone. */
-    .qc-section-title{margin:14px 0 6px;font-size:.82rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-    .wm-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
-    .wm-row label{display:inline-flex;align-items:center;gap:6px;color:#cfd6ed;font-size:.82rem}
-    .wm-row input[type=number]{
-      width:78px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;
-      background:rgba(0,0,0,.25);color:#e5e7eb;font:inherit;font-size:.85rem;
-      font-variant-numeric:tabular-nums;text-align:right;
-    }
-    .wm-row input[type=number]:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.35)}
-    .wm-row .x{color:var(--muted)}
-    .wm-actions{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
-    .wm-actions .wm-act{
-      padding:6px 10px;border:1px solid var(--line);background:rgba(255,255,255,.05);
-      color:#e5e7eb;border-radius:10px;cursor:pointer;font:inherit;font-size:.78rem;
-      display:inline-flex;align-items:center;gap:5px;
-    }
-    .wm-actions .wm-act:hover{border-color:var(--line-strong);background:rgba(255,255,255,.1)}
-    .wm-actions .wm-act.primary{border-color:rgba(106,166,255,.45);color:#dbe7ff;background:rgba(106,166,255,.12)}
-    .wm-actions .wm-act.primary:hover{background:rgba(106,166,255,.22)}
-    .wm-actions .wm-act.warn{border-color:rgba(252,211,77,.45);color:#fde68a;background:rgba(252,211,77,.08)}
-    .wm-actions .wm-act[disabled]{opacity:.5;cursor:wait}
-    .wm-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
-    .wm-preset{
-      padding:5px 10px;border:1px dashed var(--line-strong);border-radius:999px;
-      background:rgba(255,255,255,.03);color:#cbd5ff;cursor:pointer;font:inherit;font-size:.74rem;
-    }
-    .wm-preset:hover{background:rgba(106,166,255,.15);border-style:solid}
-    /* Stream-quality row: each label hugs a range slider + a numeric input
-       so the user can scrub roughly or type an exact value. Preset chips
-       reuse .wm-preset styles via the .sq-preset class. */
-    .sq-row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:8px}
-    .sq-row label{display:inline-flex;align-items:center;gap:8px;color:#cfd6ed;font-size:.82rem}
-    .sq-row input[type=range]{accent-color:var(--brand,#6aa6ff);width:160px}
-    .sq-row input[type=number]{
-      width:60px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;
-      background:rgba(0,0,0,.25);color:#e5e7eb;font:inherit;font-size:.85rem;text-align:right;
-    }
-    .sq-row input[type=number]:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.35)}
-    .sq-preset{
-      padding:5px 10px;border:1px dashed var(--line-strong);border-radius:999px;
-      background:rgba(255,255,255,.03);color:#cbd5ff;cursor:pointer;font:inherit;font-size:.74rem;
-    }
-    .sq-preset:hover{background:rgba(106,166,255,.15);border-style:solid}
-    .wm-info{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.74rem;color:var(--muted);margin-top:4px;word-break:break-all}
-    .wm-hint{margin:6px 0 0;font-size:.72rem;color:var(--muted);line-height:1.35}
-    /* Free-form ADB shell exec — small terminal-style block. textarea grows
-       slightly, monospace output panel shows up to ~12 lines and scrolls. */
-    .adb-exec-row{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
-    .adb-exec-row textarea{
-      width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);
-      border-radius:8px;background:rgba(0,0,0,.32);color:#e5e7eb;
-      font:inherit;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;
-      resize:vertical;min-height:54px;
-    }
-    .adb-exec-row textarea:focus{outline:none;border-color:var(--line-strong);background:rgba(0,0,0,.42)}
-    .adb-exec-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-    .adb-exec-out{
-      margin-top:4px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
-      background:rgba(0,0,0,.35);color:#e5e7eb;font-family:ui-monospace,Menlo,Consolas,monospace;
-      font-size:.74rem;line-height:1.35;white-space:pre-wrap;word-break:break-all;
-      max-height:200px;overflow:auto;
-    }
-    .adb-exec-out.err{color:#fecaca;border-color:rgba(252,165,165,.35);background:rgba(80,20,20,.35)}
-    .adb-exec-warn{color:#fde68a;font-size:.72rem;line-height:1.35;margin:4px 0 0}
-    .resize-handle{
-      position:absolute;right:10px;bottom:10px;width:20px;height:20px;border-radius:7px;
-      background:rgba(15,17,30,.65);border:1px solid var(--line-strong);
-      cursor:nwse-resize;display:grid;place-items:center;color:var(--accent-1);font-size:10px;
-      user-select:none;z-index:3;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    }
-    .zoom-bar{position:absolute;left:14px;bottom:14px;display:flex;gap:8px;z-index:6}
-    .zoom-btn{
-      width:38px;height:38px;border-radius:12px;border:1px solid var(--line);
-      background:rgba(15,17,30,.55);color:#dbe1f3;cursor:pointer;
-      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-      transition:transform .15s var(--easing),border-color .2s var(--easing),background .2s var(--easing);
-    }
-    .zoom-btn:hover{transform:translateY(-1px);border-color:var(--line-strong);background:rgba(106,166,255,.15)}
-    .status{
-      padding:6px 14px;border-top:1px solid var(--line);font-size:.78rem;color:#cbd5ff;
-      background:rgba(7,9,26,.55);
-      backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
-      white-space:nowrap;overflow:auto;
-    }
-    @media (max-width: 768px){
-      .top{display:flex;flex-direction:column;gap:12px;}
-      .brand .name{font-size:.92rem}
-      .pill{font-size:.7rem;padding:3px 8px}
-      .btn{padding:6px 10px;font-size:.78rem}
-      .toolbar{display:flex; flex-wrap: wrap; gap:8px;}
-      .tool{width:36px;height:36px}
-      .status{font-size:.74rem;padding:5px 10px}
-      .phone-shell{border-radius:28px;padding:14px 8px 10px 8px}
-      .phone-shell::before{top:6px;width:74px;height:14px}
-      .phone-shell::after{top:10px;width:26px;height:4px}
-    }
-    /* ---------- Mobile layout (≤768px) ----------
-     * Sidebar (`.sidebar`) is moved into a left-edge drawer that the user opens
-     * with a hamburger. The drawer lives in normal flow with `position:fixed`,
-     * translated off-screen by default. The `.main-content` becomes full-width
-     * because the sidebar is no longer in the flex row. The hamburger button
-     * (`.menuToggle`) and the backdrop (`.sidebar-backdrop`) are hidden by
-     * default and shown only below the breakpoint.
-     *
-     * Without this the sidebar's hard-coded inline `width:280px` + flex-row
-     * `body` gives a 360px viewport an unavoidable horizontal scroll
-     * (evidence: previous `scrollWidth=628 innerWidth=360`).
-     */
-    .sidebar-backdrop{display:none}
-    .menuToggle{display:none}
-    @media (max-width: 768px){
-      body{flex-direction:column}
-      .menuToggle{
-        display:grid;place-items:center;
-        position:fixed;top:10px;left:10px;z-index:60;
-        width:44px;height:44px;border-radius:12px;
-        border:1px solid var(--line);background:rgba(10,12,26,.7);
-        color:#fff;font-size:1.1rem;cursor:pointer;
-        backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-      }
-      .menuToggle:active{transform:scale(.95)}
-      .sidebar{
-        position:fixed;top:0;bottom:0;left:0;z-index:60!important;
-        width:min(82vw, 320px)!important;
-        height:100dvh;height:100vh;
-        transform:translateX(-105%);
-        transition:transform .25s var(--easing);
-        box-shadow:6px 0 24px rgba(0,0,0,.5);
-      }
-      body.sidebar-open .sidebar{transform:translateX(0)}
-      .sidebar-backdrop{
-        display:block;position:fixed;inset:0;z-index:40;
-        background:rgba(0,0,0,.55);
-        opacity:0;pointer-events:none;
-        transition:opacity .2s ease;
-      }
-      body.sidebar-open .sidebar-backdrop{opacity:1;pointer-events:auto}
-      .main-content{width:100%;flex:1 1 auto;min-width:0}
-      /* Tool bar reflow: tighter, scrollable horizontally on narrow screens
-         so 15+ tools stay accessible without overlapping the video. */
-      .toolbar{
-        display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;
-        scrollbar-width:thin;padding:0 2px 4px;
-        -webkit-overflow-scrolling:touch;
-      }
-      .tool{flex:0 0 auto}
-      .tool-select-wrap{flex:0 0 auto}
-      .uhid-speed{flex:0 0 auto}
-      /* Phone shell resizes more aggressively; the side keys protrude on the
-         right edge of the shell, which at <420px would overflow the visible
-         area, so we tuck them INSIDE the bezel on small screens. */
-      .phone-side-keys{right:6px;top:14%}
-      .side-key{width:18px}
-      .side-key-volup{height:54px}
-      .side-key-voldown{height:54px}
-      .side-key-power{height:46px}
-      .nav-key{width:46px;height:46px}
-      .toolbar > .tool{width:40px;height:40px}
-    }
-    /* Tablet portrait tweak (≤900px but >768px): still row layout but sidebar
-     * shrinks, toolbar wraps, side keys stay on the bezel. */
-    @media (min-width: 769px) and (max-width: 1100px){
-      .sidebar{width:230px!important}
-    }
-    .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;box-shadow:0 0 12px var(--ok);animation:pulse 1.4s ease-in-out infinite}
-    @keyframes pulse{0%,100%{opacity:.45}50%{opacity:1}}
-  </style>
 </head>
-<body>
+<body class="console-shell">
   <!-- Backdrop + hamburger: only visible on mobile (see @media max-width:768px).
        The button toggles body.sidebar-open, which slides the sidebar in from
        off-screen and fades the backdrop over the main content. Escape and
@@ -441,11 +26,11 @@
   <button class="menuToggle" id="menuToggle" type="button" aria-label="Mở menu" aria-controls="sidebar" aria-expanded="false">
     <i class="fa-solid fa-bars"></i>
   </button>
-  <div class="sidebar" id="sidebar" style="width:280px; flex-shrink:0; display:flex; flex-direction:column; background:rgba(10,12,26,0.65); border-right:1px solid var(--line); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); z-index:10; box-shadow: 5px 0 25px rgba(0,0,0,0.5); overflow-y:auto; overflow-x:hidden;">
-    <div class="sidebar-inner" style="padding: 16px; display:flex; flex-direction:column; gap:16px;">
+  <aside class="console-sidebar sidebar" id="sidebar">
+    <div class="console-sidebar-content sidebar-inner">
   <div class="top">
     <div class="brand">
-      <i class="fa-solid fa-mobile-screen-button" style="color:var(--accent-1)"></i>
+      <i class="fa-solid fa-mobile-screen-button"></i>
       <span class="name brand-grad">Remote Android nhoxboo</span>
     </div>
     <span class="pill"><i class="fa-solid fa-user"></i> {{ username }}</span>
@@ -458,89 +43,89 @@
     <a class="btn" href="/ios" title="Điều khiển iOS qua AirPlay"><i class="fa-brands fa-apple"></i> Thiết bị iOS</a>
     <div class="sp"></div>
     <a class="btn" href="/change-password"><i class="fa-solid fa-key"></i> Đổi mật khẩu</a>
-    <form method="post" action="/logout" style="display:inline;margin:0">
+    <form method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn" type="submit"><i class="fa-solid fa-right-from-bracket"></i> Đăng xuất</button>
     </form>
   </div>
 
-  <div class="toolbar quick-dock" aria-label="Điều khiển nhanh">
-    <button class="tool" id="power" title="Power"><i class="fa-solid fa-power-off"></i></button>
-    <button class="tool" id="voldown" title="Volume -"><i class="fa-solid fa-volume-low"></i></button>
-    <button class="tool" id="volup" title="Volume +"><i class="fa-solid fa-volume-high"></i></button>
-    <button class="tool" id="back" title="Back"><i class="fa-solid fa-arrow-left"></i></button>
-    <button class="tool" id="home" title="Home"><i class="fa-solid fa-house"></i></button>
-    <button class="tool" id="recent" title="Recent"><i class="fa-solid fa-layer-group"></i></button>
-    <button class="tool" id="rotate" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
-    <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
-    <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
-    <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
-    <button class="tool" id="vdesktopMode" title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
-    <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
-      <i class="fa-solid fa-tv" style="color:#dbe1f3;font-size:0.9rem;"></i>
+  <div class="control-toolbar quick-dock" aria-label="Điều khiển nhanh">
+    <button class="tool-button" id="power" aria-label="Power" title="Power"><i class="fa-solid fa-power-off"></i></button>
+    <button class="tool-button" id="voldown" aria-label="Volume -" title="Volume -"><i class="fa-solid fa-volume-low"></i></button>
+    <button class="tool-button" id="volup" aria-label="Volume +" title="Volume +"><i class="fa-solid fa-volume-high"></i></button>
+    <button class="tool-button" id="back" aria-label="Back" title="Back"><i class="fa-solid fa-arrow-left"></i></button>
+    <button class="tool-button" id="home" aria-label="Home" title="Home"><i class="fa-solid fa-house"></i></button>
+    <button class="tool-button" id="recent" aria-label="Recent" title="Recent"><i class="fa-solid fa-layer-group"></i></button>
+    <button class="tool-button" id="rotate" aria-label="Rotate" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
+    <button class="tool-button" id="fullscreen" aria-label="Toàn màn hình" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
+    <button class="tool-button" id="screenshot" aria-label="Chụp ảnh màn hình" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
+    <button class="tool-button" id="recordToggle" aria-label="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
+    <button class="tool-button" id="vdesktopMode" aria-label="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước." title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
+    <div class="tool-select-wrap" title="Chọn màn hình hiển thị">
+      <i class="fa-solid fa-tv"></i>
       <select id="displaySelect">
         <option value="0">Display 0 (Mặc định)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Giao thức truyền tải" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
-      <i class="fa-solid fa-network-wired" style="color:#dbe1f3;font-size:0.9rem;"></i>
+    <div class="tool-select-wrap" title="Giao thức truyền tải">
+      <i class="fa-solid fa-network-wired"></i>
       <select id="transportSelect">
         <option value="websocket">TCP (WebSocket)</option>
         <option value="webrtc">UDP (WebRTC)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Chọn bộ giải mã video" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:34px;">
-      <i class="fa-solid fa-code" style="color:#dbe1f3;font-size:0.9rem;"></i>
+    <div class="tool-select-wrap" title="Chọn bộ giải mã video">
+      <i class="fa-solid fa-code"></i>
       <select id="decoderSelect">
         <option value="mse">MSE (Mặc định)</option>
         <option value="webcodecs">WebCodecs (Trễ thấp)</option>
       </select>
     </div>
-    <button class="tool" id="quickCtl" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
-    <button class="tool" id="uhidInput" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
+    <button class="tool-button" id="quickCtl" aria-label="Mở điều khiển nhanh" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
+    <button class="tool-button" id="uhidInput" aria-label="Real mouse/keyboard (UHID): ON" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
     <div class="uhid-speed" id="uhidSpeedBox" title="Tốc độ chuột UHID — kéo để chỉnh, không cần reload">
       <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
       <input id="uhidSpeed" type="range" min="0.25" max="4" step="0.05" value="1">
       <span id="uhidSpeedV" class="v">1.00x</span>
       <label title="Tăng tốc khi vẩy chuột nhanh (giống Windows pointer ballistics)"><input id="uhidAccel" type="checkbox"> accel</label>
     </div>
-    <button class="tool" id="reconnect" title="Kết nối lại"><i class="fa-solid fa-plug-circle-bolt"></i></button>
-    <button class="tool" id="installApk" title="Cài APK (file hoặc URL)"><i class="fa-solid fa-cube"></i></button>
-    <button class="tool" id="pushFile" title="Tải file vào /sdcard/Download"><i class="fa-solid fa-upload"></i></button>
-    <button class="tool" id="kbToggle" title="Bật/tắt bàn phím (gõ chữ vào device)"><i class="fa-solid fa-i-cursor"></i></button>
-    <button class="tool" id="macroRec" title="Bắt đầu ghi macro"><i class="fa-solid fa-record-vinyl"></i></button>
-    <button class="tool" id="macroStop" title="Dừng ghi"><i class="fa-solid fa-stop"></i></button>
-    <button class="tool" id="macroPlay" title="Chạy macro"><i class="fa-solid fa-play"></i></button>
-    <button class="tool" id="macroClear" title="Xóa macro"><i class="fa-solid fa-trash"></i></button>
-    <button class="tool" id="hotkeyConfig" title="Gán phím"><i class="fa-solid fa-keyboard"></i></button>
-    <button class="tool" id="gameMode" title="Game mode: OFF"><i class="fa-solid fa-gamepad"></i></button>
-    <button class="tool" id="gamepadInput" title="Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối."><i class="fa-solid fa-chess-knight"></i></button>
-    <button class="tool" id="hudToggle" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
-    <button class="tool" id="audioToggle" title="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)"><i class="fa-solid fa-volume-xmark"></i></button>
-    <button class="tool" id="screenOffToggle" title="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)"><i class="fa-solid fa-lightbulb"></i></button>
+    <button class="tool-button" id="reconnect" aria-label="Kết nối lại thiết bị" title="Kết nối lại"><i class="fa-solid fa-plug-circle-bolt"></i></button>
+    <button class="tool-button" id="installApk" aria-label="Cài APK (file hoặc URL)" title="Cài APK (file hoặc URL)"><i class="fa-solid fa-cube"></i></button>
+    <button class="tool-button" id="pushFile" aria-label="Tải file vào /sdcard/Download" title="Tải file vào /sdcard/Download"><i class="fa-solid fa-upload"></i></button>
+    <button class="tool-button" id="kbToggle" aria-label="Bật/tắt bàn phím (gõ chữ vào device)" title="Bật/tắt bàn phím (gõ chữ vào device)"><i class="fa-solid fa-i-cursor"></i></button>
+    <button class="tool-button" id="macroRec" aria-label="Bắt đầu ghi macro" title="Bắt đầu ghi macro"><i class="fa-solid fa-record-vinyl"></i></button>
+    <button class="tool-button" id="macroStop" aria-label="Dừng ghi" title="Dừng ghi"><i class="fa-solid fa-stop"></i></button>
+    <button class="tool-button" id="macroPlay" aria-label="Chạy macro" title="Chạy macro"><i class="fa-solid fa-play"></i></button>
+    <button class="tool-button" id="macroClear" aria-label="Xóa macro" title="Xóa macro"><i class="fa-solid fa-trash"></i></button>
+    <button class="tool-button" id="hotkeyConfig" aria-label="Gán phím" title="Gán phím"><i class="fa-solid fa-keyboard"></i></button>
+    <button class="tool-button" id="gameMode" aria-label="Game mode: OFF" title="Game mode: OFF"><i class="fa-solid fa-gamepad"></i></button>
+    <button class="tool-button" id="gamepadInput" aria-label="Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối." title="Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối."><i class="fa-solid fa-chess-knight"></i></button>
+    <button class="tool-button" id="hudToggle" aria-label="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
+    <button class="tool-button" id="audioToggle" aria-label="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)" title="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)"><i class="fa-solid fa-volume-xmark"></i></button>
+    <button class="tool-button" id="screenOffToggle" aria-label="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)" title="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)"><i class="fa-solid fa-lightbulb"></i></button>
   </div>
 
       </div>
-  </div> <!-- sidebar -->
-  <div class="main-content" style="flex:1; position:relative; display:flex; flex-direction:column;">
+  </aside> <!-- sidebar -->
+  <main class="console-main main-content">
     
-    <div id="dropZone" style="position:absolute; inset:0; z-index:100; background:rgba(16, 185, 129, 0.2); backdrop-filter:blur(4px); display:none; align-items:center; justify-content:center; flex-direction:column; color:#fff; border: 4px dashed #10b981; border-radius: 20px; margin: 20px; pointer-events:none;">
-      <i class="fa-solid fa-cloud-arrow-up" style="font-size:4rem; margin-bottom:16px; color:#34d399"></i>
-      <h2 style="font-family:sans-serif; margin:0">Thả file để Push / Cài đặt APK</h2>
+    <div id="dropZone">
+      <i class="fa-solid fa-cloud-arrow-up"></i>
+      <h2>Thả file để Push / Cài đặt APK</h2>
     </div>
     
-    <div class="video-wrap" id="videoWrap">
+    <div class="media-stage" id="videoWrap">
     <div class="phone-mockup" id="phoneMockup">
       
-    <div id="keymapOverlay" style="position:absolute; inset:0; z-index:90; display:none; pointer-events:auto;">
-       <div style="position:absolute; top: 10px; left: 50%; transform: translateX(-50%); background:rgba(0,0,0,0.8); color:#fbbf24; padding:8px 16px; border-radius:20px; font-family:sans-serif; font-size:0.85rem; font-weight:bold; border:1px solid #fbbf24; box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+    <div id="keymapOverlay">
+       <div>
          <i class="fa-solid fa-pen-ruler"></i> CHẾ ĐỘ GÁN PHÍM: Click vào màn hình để thêm phím. Bấm "Gán phím" lần nữa để lưu.
        </div>
     </div>
     
       <div class="phone-shell" id="phoneShell">
         <video id="player" autoplay muted webkit-playsinline playsinline x5-playsinline></video>
-        <canvas id="playerCanvas" style="display:none;"></canvas>
+        <canvas id="playerCanvas"></canvas>
         <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
         <!-- Physical side keys (right edge of the phone frame). All three call
              /api/adb/sendevent → raw kernel input, so they work for both
@@ -583,7 +168,7 @@
     -->
     <textarea id="kbCapture" autocomplete="off" autocorrect="off" autocapitalize="off"
               spellcheck="false" inputmode="text" aria-hidden="true"
-              style="position:fixed;bottom:-50px;opacity:0;width:1px;height:1px;border:0;padding:0;outline:none;pointer-events:none"></textarea>
+             ></textarea>
     <div class="zoom-bar">
       <button class="zoom-btn" id="zoomOut" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
       <button class="zoom-btn" id="zoomReset" title="Mặc định"><i class="fa-solid fa-arrows-rotate"></i></button>
@@ -591,8 +176,8 @@
     </div>
   </div>
 
-  <div id="connectionStatus" class="connection-status" data-tone="connecting" role="status" aria-live="polite">Đang chuẩn bị kết nối thiết bị…</div>
-  <div id="status" class="status"><span class="dot"></span>Đang kết nối...</div>
+  <div id="connectionStatus" class="connection-status status-banner" data-tone="connecting" role="status" aria-live="polite">Đang chuẩn bị kết nối thiết bị…</div>
+  <div id="status" class="status status-banner"><span class="dot"></span>Đang kết nối...</div>
 
   <!-- Force-kick: surfaced only when the socket is rejected because another
        client holds the device lock. Lets the legitimate session owner take
@@ -658,7 +243,7 @@
 
   <!-- Quick Controls overlay -->
   <div class="qc-backdrop" id="qcBackdrop">
-    <div class="qc-panel" role="dialog" aria-modal="true" aria-labelledby="qcTitle">
+    <div class="ui-card console-dialog qc-panel" role="dialog" aria-modal="true" aria-labelledby="qcTitle">
       <div class="qc-row">
         <h3 id="qcTitle"><i class="fa-solid fa-sliders"></i> Quick Controls</h3>
         <button id="qcClose" type="button"><i class="fa-solid fa-xmark"></i> Đóng</button>
@@ -668,18 +253,18 @@
         <!-- Home / Back / Recent / Vol+ / Vol- / Mute / Power(hw) đã chuyển
              sang khung mockup điện thoại (nav bar dưới + side keys phải) — em
              đã bỏ ra khỏi panel này để Quick Controls đỡ rối. -->
-        <button class="qc-btn" data-act="lock" type="button"><i class="fa-solid fa-lock"></i><span>Lock</span></button>
-        <button class="qc-btn" data-act="wake" type="button"><i class="fa-solid fa-sun"></i><span>Wake</span></button>
-        <button class="qc-btn" data-act="wifi_on" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi ON</span></button>
-        <button class="qc-btn" data-act="wifi_off" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi OFF</span></button>
-        <button class="qc-btn" data-act="bt_on" type="button"><i class="fa-brands fa-bluetooth-b"></i><span>BT ON</span></button>
-        <button class="qc-btn" data-act="bt_off" type="button"><i class="fa-brands fa-bluetooth-b"></i><span>BT OFF</span></button>
-        <button class="qc-btn" data-act="data_on" type="button"><i class="fa-solid fa-tower-cell"></i><span>Data ON</span></button>
-        <button class="qc-btn" data-act="data_off" type="button"><i class="fa-solid fa-tower-cell"></i><span>Data OFF</span></button>
-        <button class="qc-btn" data-act="open_settings" type="button"><i class="fa-solid fa-gear"></i><span>Settings</span></button>
-        <button class="qc-btn" data-act="open_camera" type="button"><i class="fa-solid fa-camera"></i><span>Camera</span></button>
-        <button class="qc-btn" data-act="notifications" type="button"><i class="fa-solid fa-bell"></i><span>Noti drawer</span></button>
-        <button class="qc-btn danger" data-act="reboot" data-confirm="Khởi động lại thiết bị?" type="button"><i class="fa-solid fa-power-off"></i><span>Reboot</span></button>
+        <button class="tool-button qc-btn" data-act="lock" type="button"><i class="fa-solid fa-lock"></i><span>Lock</span></button>
+        <button class="tool-button qc-btn" data-act="wake" type="button"><i class="fa-solid fa-sun"></i><span>Wake</span></button>
+        <button class="tool-button qc-btn" data-act="wifi_on" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi ON</span></button>
+        <button class="tool-button qc-btn" data-act="wifi_off" type="button"><i class="fa-solid fa-wifi"></i><span>Wi-Fi OFF</span></button>
+        <button class="tool-button qc-btn" data-act="bt_on" type="button"><i class="fa-brands fa-bluetooth-b"></i><span>BT ON</span></button>
+        <button class="tool-button qc-btn" data-act="bt_off" type="button"><i class="fa-brands fa-bluetooth-b"></i><span>BT OFF</span></button>
+        <button class="tool-button qc-btn" data-act="data_on" type="button"><i class="fa-solid fa-tower-cell"></i><span>Data ON</span></button>
+        <button class="tool-button qc-btn" data-act="data_off" type="button"><i class="fa-solid fa-tower-cell"></i><span>Data OFF</span></button>
+        <button class="tool-button qc-btn" data-act="open_settings" type="button"><i class="fa-solid fa-gear"></i><span>Settings</span></button>
+        <button class="tool-button qc-btn" data-act="open_camera" type="button"><i class="fa-solid fa-camera"></i><span>Camera</span></button>
+        <button class="tool-button qc-btn" data-act="notifications" type="button"><i class="fa-solid fa-bell"></i><span>Noti drawer</span></button>
+        <button class="tool-button qc-btn button-danger" data-act="reboot" data-confirm="Khởi động lại thiết bị?" type="button"><i class="fa-solid fa-power-off"></i><span>Reboot</span></button>
       </div>
 
       <!-- Resolution & DPI override (adb shell wm size / wm density). Useful
@@ -756,7 +341,7 @@
         <div class="adb-exec-actions">
           <button class="wm-act primary" id="adbExecRun" type="button"><i class="fa-solid fa-play"></i>Chạy</button>
           <button class="wm-act" id="adbExecClear" type="button"><i class="fa-solid fa-broom"></i>Clear</button>
-          <span id="adbExecHint" style="font-size:.72rem;color:var(--muted)">Enter để chạy · Shift+Enter để xuống dòng</span>
+          <span id="adbExecHint">Enter để chạy · Shift+Enter để xuống dòng</span>
         </div>
         <pre class="adb-exec-out" id="adbExecOut" hidden></pre>
         <p class="adb-exec-warn"><i class="fa-solid fa-triangle-exclamation"></i> Lệnh chạy trực tiếp trên thiết bị đã chọn (timeout 30s, output tối đa 100KB). Tránh lệnh phá hoại như <code>rm</code>, <code>reboot</code>… nếu chưa chắc.</p>
@@ -3084,6 +2669,6 @@
     document.addEventListener('fullscreenchange', fitVideoToViewport);
     window.addEventListener('beforeunload', ()=>socket.disconnect());
   </script>
-  </div>
+  </main>
 </body>
 </html>

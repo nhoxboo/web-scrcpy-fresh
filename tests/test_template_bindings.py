@@ -163,3 +163,17 @@ def test_reconnect_handler_works_without_input():
         "reconnect handler dereferences input.* without a null check — "
         "would throw if the WS never connected"
     )
+
+
+def test_console_shell_keeps_critical_binding_targets():
+    """Styling changes must not remove remote-control DOM hook points."""
+    text = INDEX_HTML.read_text(encoding="utf-8")
+
+    for element_id in (
+        "sidebar",
+        "quickCtl",
+        "playerCanvas",
+        "connectionStatus",
+        *SOCKET_INDEPENDENT_BUTTON_IDS,
+    ):
+        assert f'id="{element_id}"' in text, element_id
