@@ -110,3 +110,44 @@ Commands:
 "/c/Program Files/Python312/python.exe" -m ruff format --check tests/test_design_system.py tests/test_template_bindings.py
 git diff --check
 ```
+
+## Reviewer-blocker remediation (Task 4 fix round 2 — audioGate)
+
+### Strict TDD evidence
+
+**RED:** Added `test_ios_audio_gate_preserves_keyboard_control_and_accessibility_contract` before altering CSS, then ran:
+
+```bash
+"/c/Program Files/Python312/python.exe" -m pytest tests/test_design_system.py::test_ios_audio_gate_preserves_keyboard_control_and_accessibility_contract -q
+```
+
+Result: `1 failed in 0.12s`, specifically because `.ios-console .audio-gate` lacked `min-width: 44px`.
+
+**GREEN:** Added only the `audio-gate` 44px target contract and its token-based `:focus-visible` outline. The same focused regression test returned `1 passed in 0.03s`.
+
+### Final focused and full verification
+
+```text
+Focused audioGate and iOS CSS contracts: 2 passed in 0.07s
+Full suite: 222 passed, 1 pre-existing EventletDeprecationWarning in 26.02s
+Ruff: All checks passed; 1 file already formatted
+git diff --check: exit 0
+```
+
+Commands:
+
+```bash
+"/c/Program Files/Python312/python.exe" -m pytest \
+  tests/test_design_system.py::test_ios_audio_gate_preserves_keyboard_control_and_accessibility_contract \
+  tests/test_design_system.py::test_ios_console_css_implements_scoped_auth_availability_and_control_contracts -q
+"/c/Program Files/Python312/python.exe" -m pytest -q
+"/c/Program Files/Python312/python.exe" -m ruff check tests/test_design_system.py
+"/c/Program Files/Python312/python.exe" -m ruff format --check tests/test_design_system.py
+git diff --check
+```
+
+### Scope preservation
+
+- `#audioGate` remains the existing `<div role="button" tabindex="0">`; its ID, text, scripts, stream/audio behavior, and handling were unchanged.
+- `ios-console.css` now gives the surfaced role-button an explicit 44px minimum width and height plus a visible focus ring using `--color-focus`.
+- No template, JavaScript, backend, runtime, `saved_wifi_devices.json`, or port-8000 changes were made.

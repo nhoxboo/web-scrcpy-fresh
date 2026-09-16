@@ -483,6 +483,30 @@ def test_ios_template_preserves_control_hooks_and_truthful_availability_contract
     }
 
 
+def test_ios_audio_gate_preserves_keyboard_control_and_accessibility_contract():
+    _, parser = _parse_template("ios_index.html")
+    assert parser.matching("div", id="audioGate", role="button", tabindex="0")
+
+    css = (ROOT / "static/css/ios-console.css").read_text(encoding="utf-8")
+    target_rule = re.search(
+        r"\.ios-console \.audio-gate\s*\{(?P<rules>[^}]*)\}", css, flags=re.DOTALL
+    )
+    assert target_rule
+    assert "min-width: 44px" in target_rule.group("rules")
+    assert "min-height: 44px" in target_rule.group("rules")
+
+    focus_rule = re.search(
+        r"\.ios-console \.audio-gate:focus-visible\s*\{(?P<rules>[^}]*)\}",
+        css,
+        flags=re.DOTALL,
+    )
+    assert focus_rule
+    assert (
+        "outline: 3px solid color-mix(in srgb, var(--color-focus) 40%, transparent)"
+        in focus_rule.group("rules")
+    )
+
+
 def test_ios_console_css_implements_scoped_auth_availability_and_control_contracts():
     css = (ROOT / "static/css/ios-console.css").read_text(encoding="utf-8")
     for selector in (
