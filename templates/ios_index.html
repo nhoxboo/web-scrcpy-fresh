@@ -7,6 +7,7 @@
   <link href="/static/css/font-awesome.min.css?v={{ static_ver }}" rel="stylesheet">
   <link href="/static/css/control-console.css?v={{ static_ver }}" rel="stylesheet">
   <link href="/static/css/app-shell.css?v={{ static_ver }}" rel="stylesheet">
+  <link href="/static/css/ios-console.css?v={{ static_ver }}" rel="stylesheet">
   <title>Remote iOS nhoxboo — Panel</title>
   <script src="/static/js/socket.io.js?v={{ static_ver }}"></script>
   <script src="/static/js/input.js?v={{ static_ver }}"></script>
@@ -15,7 +16,7 @@
   <script src="/static/js/video_parser.js?v={{ static_ver }}"></script>
   <script src="/static/js/audio_parser.js?v={{ static_ver }}"></script>
 </head>
-<body>
+<body class="ios-console">
   <main class="page-container">
     <section class="ios-availability-card ui-card" id="iosAvailability" role="status" aria-live="polite">
       <p class="eyebrow">REMOTE IOS</p>
@@ -42,7 +43,7 @@
     <a class="btn" href="/" title="Điều khiển Android qua scrcpy"><i class="fa-brands fa-android"></i> Thiết bị Android</a>
     <div class="sp"></div>
     <a class="btn" href="/change-password"><i class="fa-solid fa-key"></i> Đổi mật khẩu</a>
-    <form method="post" action="/logout" style="display:inline;margin:0">
+    <form class="logout-form" method="post" action="/logout">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn" type="submit"><i class="fa-solid fa-right-from-bracket"></i> Đăng xuất</button>
     </form>
@@ -53,20 +54,20 @@
     <button class="tool" id="fullscreen" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
     <button class="tool" id="screenshot" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
     <button class="tool" id="recordToggle" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
-    <div class="tool-select-wrap" title="Chọn màn hình hiển thị" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
+    <div class="tool-select-wrap" title="Chọn màn hình hiển thị">
       <i class="fa-solid fa-tv" aria-hidden="true"></i>
       <select id="displaySelect">
         <option value="0">Display 0 (Mặc định)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Giao thức truyền tải" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);height:34px;">
+    <div class="tool-select-wrap" title="Giao thức truyền tải">
       <i class="fa-solid fa-network-wired" aria-hidden="true"></i>
       <select id="transportSelect">
         <option value="websocket">TCP (WebSocket)</option>
         <option value="webrtc">UDP (WebRTC)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Chọn bộ giải mã video" style="display:flex;align-items:center;gap:4px;padding:0 6px;border-left:1px solid var(--line);border-right:1px solid var(--line);height:34px;">
+    <div class="tool-select-wrap tool-select-wrap--end" title="Chọn bộ giải mã video">
       <i class="fa-solid fa-code" aria-hidden="true"></i>
       <select id="decoderSelect">
         <option value="mse">MSE (Mặc định)</option>
@@ -80,8 +81,8 @@
   <div class="video-wrap" id="videoWrap">
     <div class="phone-mockup" id="phoneMockup">
       <div class="phone-shell" id="phoneShell">
-        <img id="player" src="/api/stream/ios_mjpeg" style="width: 100%; height: 100%; object-fit: contain;">
-        <canvas id="playerCanvas" style="display:none;"></canvas>
+        <img class="ios-stream" id="player" src="/api/stream/ios_mjpeg">
+        <canvas class="ios-stream-canvas" id="playerCanvas"></canvas>
         <button class="resize-handle" id="resizeHandle" title="Kéo để đổi kích thước">◢</button>
         <!-- Physical side keys (right edge of the phone frame). All three call
              /api/adb/sendevent → raw kernel input, so they work for both
@@ -124,7 +125,7 @@
     -->
     <textarea id="kbCapture" autocomplete="off" autocorrect="off" autocapitalize="off"
               spellcheck="false" inputmode="text" aria-hidden="true"
-              style="position:fixed;bottom:-50px;opacity:0;width:1px;height:1px;border:0;padding:0;outline:none;pointer-events:none"></textarea>
+              class="keyboard-capture"></textarea>
     <div class="zoom-bar">
       <button class="zoom-btn" id="zoomOut" title="Thu nhỏ"><i class="fa-solid fa-minus"></i></button>
       <button class="zoom-btn" id="zoomReset" title="Mặc định"><i class="fa-solid fa-arrows-rotate"></i></button>
@@ -296,7 +297,7 @@
         <div class="adb-exec-actions">
           <button class="wm-act primary" id="adbExecRun" type="button"><i class="fa-solid fa-play"></i>Chạy</button>
           <button class="wm-act" id="adbExecClear" type="button"><i class="fa-solid fa-broom"></i>Clear</button>
-          <span id="adbExecHint" style="font-size:.72rem;color:var(--muted)">Enter để chạy · Shift+Enter để xuống dòng</span>
+          <span class="keyboard-help" id="adbExecHint">Enter để chạy · Shift+Enter để xuống dòng</span>
         </div>
         <pre class="adb-exec-out" id="adbExecOut" hidden></pre>
         <p class="adb-exec-warn"><i class="fa-solid fa-triangle-exclamation"></i> Lệnh chạy trực tiếp trên thiết bị đã chọn (timeout 30s, output tối đa 100KB). Tránh lệnh phá hoại như <code>rm</code>, <code>reboot</code>… nếu chưa chắc.</p>

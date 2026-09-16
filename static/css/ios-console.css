@@ -1,0 +1,770 @@
+/* Task 4 auth and iOS console styles. Kept scoped so Android console rules remain untouched. */
+.auth-page {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 24px;
+  background: var(--color-canvas);
+}
+
+.auth-card {
+  width: min(100%, 460px);
+  padding: clamp(24px, 5vw, 40px);
+}
+
+.auth-card h1,
+.ios-availability-card h1 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  line-height: 1.2;
+}
+
+.auth-card .eyebrow,
+.ios-availability-card .eyebrow {
+  margin: 0 0 8px;
+  color: var(--color-primary-pressed);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.auth-card .helper-text,
+.ios-availability-card .helper-text {
+  margin: 12px 0 0;
+  color: var(--color-text-secondary);
+}
+
+.form-stack {
+  display: grid;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.form-stack .button-primary,
+.form-stack .button-secondary {
+  width: 100%;
+}
+
+.auth-card .status-banner {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0 0;
+  padding: 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.ios-console {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-canvas);
+}
+
+.ios-console .page-container {
+  width: min(100% - 32px, 1440px);
+  padding: 20px 0 0;
+}
+
+.ios-console .ios-availability-card {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 20px;
+}
+
+.ios-availability-card ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--color-text-secondary);
+}
+
+.ios-availability-card .button-secondary {
+  justify-self: start;
+}
+
+.ios-console .top,
+.ios-console .toolbar,
+.ios-console .status {
+  flex: 0 0 auto;
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+
+.ios-console .top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 2px 10px rgba(16, 42, 67, 0.06);
+}
+
+.ios-console .brand,
+.ios-console .pill,
+.ios-console .btn,
+.ios-console .toolbar,
+.ios-console .tool-select-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.ios-console .brand {
+  gap: 8px;
+  color: var(--color-text);
+  font-weight: 750;
+}
+
+.ios-console .brand .name {
+  color: var(--color-primary);
+}
+
+.ios-console .sp {
+  flex: 1 1 auto;
+}
+
+.ios-console .pill {
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-subtle);
+  font-size: 0.8rem;
+}
+
+.ios-console .logout-form {
+  display: inline;
+  margin: 0;
+}
+
+.ios-console .btn {
+  min-height: 44px;
+  gap: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ios-console .btn:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-pressed);
+}
+
+.ios-console .toolbar {
+  gap: 6px;
+  min-height: 60px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border);
+  overflow-x: auto;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.ios-console .tool,
+.ios-console .zoom-btn,
+.ios-console .nav-key,
+.ios-console .side-key,
+.ios-console .qc-btn,
+.ios-console .wm-act,
+.ios-console .wm-preset,
+.ios-console .sq-preset,
+.ios-console .resize-handle,
+.ios-console .force-kick,
+.ios-console .qc-row button,
+.ios-console .ad-actions button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ios-console .tool,
+.ios-console .zoom-btn,
+.ios-console .nav-key,
+.ios-console .side-key,
+.ios-console .resize-handle {
+  display: grid;
+  place-items: center;
+  padding: 8px;
+}
+
+.ios-console .tool:hover,
+.ios-console .zoom-btn:hover,
+.ios-console .nav-key:hover,
+.ios-console .side-key:hover,
+.ios-console .wm-act:hover,
+.ios-console .wm-preset:hover,
+.ios-console .sq-preset:hover,
+.ios-console .qc-row button:hover,
+.ios-console .ad-actions button:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-pressed);
+}
+
+.ios-console .tool.active,
+.ios-console .zoom-btn.active,
+.ios-console .qc-btn.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.ios-console .tool-select-wrap {
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-left: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.ios-console .tool-select-wrap--end {
+  border-right: 1px solid var(--color-border);
+}
+
+.ios-console .tool-select-wrap select {
+  width: auto;
+  min-width: 132px;
+  min-height: 44px;
+  padding: 8px;
+  font-size: 0.84rem;
+}
+
+.ios-console .video-wrap {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px;
+  overflow: hidden;
+  background: var(--color-surface-subtle);
+  touch-action: none;
+}
+
+.ios-console .phone-mockup {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.ios-console .phone-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: 100%;
+  padding: 20px 10px 14px;
+  border: 2px solid var(--color-sidebar);
+  border-radius: 34px;
+  background: var(--color-sidebar);
+  box-shadow: 0 18px 40px rgba(16, 42, 67, 0.24);
+  user-select: none;
+}
+
+.ios-console .phone-shell::before {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 88px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--color-canvas);
+  content: "";
+  transform: translateX(-50%);
+}
+
+.ios-console .ios-stream,
+.ios-console .ios-stream-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 20px;
+  background: var(--color-text);
+  object-fit: contain;
+  touch-action: none;
+  user-select: none;
+}
+
+.ios-console .ios-stream-canvas {
+  display: none;
+}
+
+.ios-console .phone-shell.landscape {
+  padding: 8px;
+  border-radius: 22px;
+}
+
+.ios-console .phone-shell.landscape::before,
+.ios-console .phone-shell.desktop-mode::before,
+.ios-console .phone-shell.desktop-mode::after {
+  display: none;
+}
+
+.ios-console .phone-shell.desktop-mode {
+  padding: 0;
+  border-radius: var(--radius-sm);
+}
+
+.ios-console .phone-shell.locked {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 4px;
+}
+
+.ios-console .phone-side-keys {
+  position: absolute;
+  top: 16%;
+  right: -23px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ios-console .side-key {
+  width: 44px;
+  border-radius: 8px;
+}
+
+.ios-console .side-key-gap {
+  height: 18px;
+}
+
+.ios-console .side-key.flash-ok,
+.ios-console .nav-key.flash-ok {
+  border-color: var(--color-success);
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.ios-console .side-key.flash-err,
+.ios-console .nav-key.flash-err {
+  border-color: var(--color-danger);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.ios-console .phone-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.ios-console .nav-glyph {
+  display: inline-block;
+}
+
+.ios-console .nav-back .nav-glyph {
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 12px solid currentColor;
+}
+
+.ios-console .nav-home .nav-glyph {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.ios-console .nav-recent .nav-glyph {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.ios-console .resize-handle {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 3;
+  cursor: nwse-resize;
+}
+
+.ios-console .zoom-bar {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  z-index: 6;
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.ios-console .keyboard-capture {
+  position: fixed;
+  bottom: -50px;
+  width: 1px;
+  min-height: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  outline: none;
+  pointer-events: none;
+}
+
+.ios-console .status {
+  min-height: 44px;
+  padding: 11px 16px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+  overflow: auto;
+  white-space: nowrap;
+}
+
+.ios-console .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+.ios-console .force-kick {
+  align-self: center;
+  margin: 12px;
+  padding: 10px 14px;
+  border-color: var(--color-danger);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.ios-console .stream-hud,
+.ios-console .audio-diag {
+  position: fixed;
+  z-index: 20;
+  padding: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  color: var(--color-text);
+  font-size: 0.82rem;
+}
+
+.ios-console .stream-hud {
+  top: 16px;
+  right: 16px;
+}
+
+.ios-console .audio-diag {
+  right: 16px;
+  bottom: 64px;
+  max-width: min(420px, calc(100vw - 32px));
+}
+
+.ios-console .audio-gate {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  padding: 12px 16px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  cursor: pointer;
+}
+
+.ios-console .qc-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 64px 16px 16px;
+  background: color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+
+.ios-console .qc-backdrop.show {
+  display: flex;
+}
+
+.ios-console .qc-panel {
+  width: min(760px, 100%);
+  max-height: calc(100dvh - 80px);
+  padding: 20px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: 0 24px 60px rgba(16, 42, 67, 0.28);
+  color: var(--color-text);
+}
+
+.ios-console .qc-row,
+.ios-console .wm-row,
+.ios-console .wm-actions,
+.ios-console .wm-presets,
+.ios-console .sq-row,
+.ios-console .adb-exec-actions,
+.ios-console .ad-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ios-console .qc-row {
+  justify-content: space-between;
+}
+
+.ios-console .qc-row h3,
+.ios-console .ad-title {
+  margin: 0;
+  color: var(--color-text);
+}
+
+.ios-console .qc-panel .lead,
+.ios-console .qc-section-title,
+.ios-console .wm-info,
+.ios-console .wm-hint,
+.ios-console .keyboard-help,
+.ios-console .ad-hint,
+.ios-console .ad-k {
+  color: var(--color-text-muted);
+}
+
+.ios-console .qc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.ios-console .qc-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  text-align: center;
+}
+
+.ios-console .qc-btn.danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.ios-console .qc-section-title {
+  margin: 18px 0 8px;
+  font-size: 0.82rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ios-console .wm-row label,
+.ios-console .sq-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+}
+
+.ios-console .wm-row input[type="number"],
+.ios-console .sq-row input[type="number"] {
+  width: 88px;
+}
+
+.ios-console .sq-row input[type="range"] {
+  width: min(180px, 42vw);
+  accent-color: var(--color-primary);
+}
+
+.ios-console .wm-act,
+.ios-console .wm-preset,
+.ios-console .sq-preset {
+  padding: 8px 10px;
+}
+
+.ios-console .wm-act.primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.ios-console .wm-act.warn {
+  border-color: var(--color-warning);
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+
+.ios-console .adb-exec-row {
+  display: grid;
+  gap: 8px;
+}
+
+.ios-console .adb-exec-row textarea,
+.ios-console .adb-exec-out {
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.ios-console .adb-exec-out {
+  max-height: 200px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ios-console .adb-exec-out.err {
+  border-color: var(--color-danger);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.ios-console .tool:focus-visible,
+.ios-console .btn:focus-visible,
+.ios-console .zoom-btn:focus-visible,
+.ios-console .nav-key:focus-visible,
+.ios-console .side-key:focus-visible,
+.ios-console .qc-btn:focus-visible,
+.ios-console .wm-act:focus-visible,
+.ios-console .wm-preset:focus-visible,
+.ios-console .sq-preset:focus-visible,
+.ios-console .resize-handle:focus-visible,
+.ios-console .force-kick:focus-visible,
+.ios-console .qc-row button:focus-visible,
+.ios-console .ad-actions button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 40%, transparent);
+  outline-offset: 2px;
+  border-color: var(--color-focus);
+}
+
+.ios-console .tool[disabled],
+.ios-console .qc-btn[disabled],
+.ios-console .wm-act[disabled] {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.ios-console .phone-shell:fullscreen,
+.ios-console .phone-shell:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.ios-console .phone-shell:fullscreen::before,
+.ios-console .phone-shell:-webkit-full-screen::before,
+.ios-console .phone-shell:fullscreen .phone-side-keys,
+.ios-console .phone-shell:-webkit-full-screen .phone-side-keys,
+.ios-console .phone-mockup:fullscreen .phone-nav-bar,
+.ios-console .phone-mockup:-webkit-full-screen .phone-nav-bar,
+.ios-console .phone-shell.desktop-mode .phone-side-keys,
+.ios-console .phone-shell.desktop-mode ~ .phone-nav-bar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .auth-page {
+    padding: 16px;
+  }
+
+  .ios-console .top {
+    align-items: stretch;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+
+  .ios-console .brand,
+  .ios-console .sp {
+    flex: 1 1 auto;
+  }
+
+  .ios-console .pill {
+    display: none;
+  }
+
+  .ios-console .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .ios-console .toolbar {
+    padding: 8px 12px;
+  }
+
+  .ios-console .video-wrap {
+    padding: 16px;
+  }
+
+  .ios-console .phone-side-keys {
+    right: -22px;
+  }
+
+  .ios-console .phone-nav-bar {
+    gap: 14px;
+  }
+
+  .ios-console .qc-backdrop {
+    padding: 16px 8px;
+  }
+
+  .ios-console .qc-panel {
+    max-height: calc(100dvh - 32px);
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ios-console * {
+    scroll-behavior: auto;
+  }
+}

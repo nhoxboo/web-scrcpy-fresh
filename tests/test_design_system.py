@@ -297,3 +297,233 @@ def test_ios_page_describes_real_availability_without_fake_connected_state():
     assert 'class="ios-availability-card ui-card"' in text
     assert 'WDA/AirPlay' in text
     assert 'Đang kết nối' not in text
+
+
+class _TemplateContractParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.elements: list[tuple[str, dict[str, str]]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.elements.append((tag, {name: value or "" for name, value in attrs}))
+
+    def matching(self, tag: str, **expected: str) -> list[dict[str, str]]:
+        return [
+            attrs
+            for element, attrs in self.elements
+            if element == tag and all(attrs.get(name) == value for name, value in expected.items())
+        ]
+
+
+def _parse_template(filename: str) -> tuple[str, _TemplateContractParser]:
+    text = (ROOT / "templates" / filename).read_text(encoding="utf-8")
+    parser = _TemplateContractParser()
+    parser.feed(text)
+    return text, parser
+
+
+def test_auth_templates_preserve_exact_form_and_field_contracts():
+    login_text, login = _parse_template("login.html")
+    login_form = login.matching("form", method="post")
+    assert len(login_form) == 1
+    assert "action" not in login_form[0]
+    assert login.matching("input", name="csrf_token", type="hidden")
+    assert login.matching(
+        "input",
+        id="username",
+        name="username",
+        autocomplete="username",
+        required="",
+        autofocus="",
+    )
+    assert login.matching(
+        "input",
+        id="password",
+        type="password",
+        name="password",
+        autocomplete="current-password",
+        required="",
+    )
+    assert "get_flashed_messages()" in login_text
+
+    password_text, password = _parse_template("change_password.html")
+    password_form = password.matching("form", method="post")
+    assert len(password_form) == 1
+    assert "action" not in password_form[0]
+    assert password.matching("input", name="csrf_token", type="hidden")
+    assert password.matching(
+        "input",
+        id="new-username",
+        name="new_username",
+        autocomplete="username",
+        required="",
+    )
+    for field_id, field_name, autocomplete in (
+        ("current-password", "current_password", "current-password"),
+        ("new-password", "new_password", "new-password"),
+        ("confirm-password", "confirm_password", "new-password"),
+    ):
+        assert password.matching(
+            "input",
+            id=field_id,
+            type="password",
+            name=field_name,
+            autocomplete=autocomplete,
+            required="",
+        )
+    assert password.matching("a", href="/")
+    assert "get_flashed_messages()" in password_text
+
+
+def test_task4_templates_load_scoped_styles_without_inline_or_raw_colors():
+    for filename in ("login.html", "change_password.html", "ios_index.html"):
+        text = (ROOT / "templates" / filename).read_text(encoding="utf-8")
+        assert '/static/css/glass.css?v={{ static_ver }}' not in text, filename
+        assert '/static/css/app-shell.css?v={{ static_ver }}' in text, filename
+        assert '/static/css/ios-console.css?v={{ static_ver }}' in text, filename
+        assert "style=" not in text, filename
+        assert not re.search(r"#[0-9A-Fa-f]{3,8}\\b", text), filename
+
+
+def test_ios_template_preserves_control_hooks_and_truthful_availability_contract():
+    text, parser = _parse_template("ios_index.html")
+    expected_ids = {
+        "iosAvailability",
+        "rotate",
+        "fullscreen",
+        "screenshot",
+        "recordToggle",
+        "displaySelect",
+        "transportSelect",
+        "decoderSelect",
+        "reconnect",
+        "hudToggle",
+        "videoWrap",
+        "phoneMockup",
+        "phoneShell",
+        "player",
+        "playerCanvas",
+        "resizeHandle",
+        "phoneSideKeys",
+        "phoneNavBar",
+        "kbCapture",
+        "zoomOut",
+        "zoomReset",
+        "zoomIn",
+        "status",
+        "forceKick",
+        "streamHud",
+        "hudFps",
+        "hudKbps",
+        "hudPing",
+        "hudFrames",
+        "audioPlayer",
+        "audioGate",
+        "audioDiag",
+        "adEnabled",
+        "adStage",
+        "adCodec",
+        "adAsc",
+        "adFrames",
+        "adMux",
+        "adMs",
+        "adAudio",
+        "adPlay",
+        "adPrimed",
+        "adErr",
+        "adForcePlay",
+        "adReset",
+        "qcBackdrop",
+        "qcTitle",
+        "qcClose",
+        "wmW",
+        "wmH",
+        "wmD",
+        "wmApplySize",
+        "wmApplyDpi",
+        "wmGet",
+        "wmResetSize",
+        "wmResetDpi",
+        "wmResetAll",
+        "wmPresets",
+        "wmInfo",
+        "sqBitrate",
+        "sqBitrateNum",
+        "sqFps",
+        "sqFpsNum",
+        "sqApply",
+        "sqReset",
+        "sqPresets",
+        "adbExecCmd",
+        "adbExecRun",
+        "adbExecClear",
+        "adbExecHint",
+        "adbExecOut",
+        "qcOut",
+    }
+    actual_ids = {attrs["id"] for _, attrs in parser.elements if "id" in attrs}
+    assert actual_ids == expected_ids
+    assert parser.matching("meta", name="csrf-token", content="{{ csrf_token() }}")
+    assert parser.matching("form", method="post", action="/logout")
+    assert '/api/stream/ios_mjpeg' in text
+    assert "WDA/AirPlay sẽ hiển thị trạng thái khi thiết bị sẵn sàng." in text
+    assert "Đang kết nối" not in text
+    for fake_state in ("Đã kết nối", "Connected", "Online"):
+        assert fake_state not in text
+    assert {
+        attrs["src"] for tag, attrs in parser.elements if tag == "script" and "src" in attrs
+    } == {
+        "/static/js/socket.io.js?v={{ static_ver }}",
+        "/static/js/input.js?v={{ static_ver }}",
+        "/static/js/exp-golomb.js?v={{ static_ver }}",
+        "/static/js/h264-sps-parser.js?v={{ static_ver }}",
+        "/static/js/video_parser.js?v={{ static_ver }}",
+        "/static/js/audio_parser.js?v={{ static_ver }}",
+        "/static/js/jmuxer.min.js?v={{ static_ver }}",
+    }
+
+
+def test_ios_console_css_implements_scoped_auth_availability_and_control_contracts():
+    css = (ROOT / "static/css/ios-console.css").read_text(encoding="utf-8")
+    for selector in (
+        ".auth-page",
+        ".auth-card",
+        ".form-stack",
+        ".ios-availability-card",
+        ".top",
+        ".toolbar",
+        ".tool",
+        ".video-wrap",
+        ".phone-shell",
+        ".btn",
+        ".status",
+        ".zoom-btn",
+        ".tool-select-wrap",
+        ".phone-mockup",
+        ".resize-handle",
+        ".phone-side-keys",
+        ".phone-nav-bar",
+        ".qc-panel",
+    ):
+        assert re.search(rf"{re.escape(selector)}(?:[\s,:.#>+~]|\{{)", css), selector
+    control_rule = re.search(
+        r"(?P<selectors>\.ios-console \.tool,.*?\.ios-console \.ad-actions button)\s*"
+        r"\{(?P<rules>[^}]*)\}",
+        css,
+        flags=re.DOTALL,
+    )
+    assert control_rule
+    for selector in (".zoom-btn", ".nav-key", ".side-key", ".qc-btn", ".wm-act"):
+        assert f".ios-console {selector}" in control_rule.group("selectors")
+    assert "min-width: 44px" in control_rule.group("rules")
+    assert "min-height: 44px" in control_rule.group("rules")
+    focus_rule = re.search(
+        r"(?P<selectors>\.ios-console \.tool:focus-visible,.*?"
+        r"\.ios-console \.ad-actions button:focus-visible)\s*\{(?P<rules>[^}]*)\}",
+        css,
+        flags=re.DOTALL,
+    )
+    assert focus_rule
+    assert ".ios-console .wm-act:focus-visible" in focus_rule.group("selectors")
+    assert "outline:" in focus_rule.group("rules")
+    assert ".ios-console" in css
