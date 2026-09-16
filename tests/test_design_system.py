@@ -268,3 +268,32 @@ def test_android_console_main_contains_drop_zone_overlay():
 
     assert console_main_rule
     assert re.search(r"\bposition:\s*relative", console_main_rule.group(1))
+
+
+def test_all_production_templates_stop_loading_legacy_glass_css():
+    for filename in (
+        "login.html",
+        "change_password.html",
+        "devices.html",
+        "index.html",
+        "ios_index.html",
+    ):
+        text = (ROOT / "templates" / filename).read_text(encoding="utf-8")
+        assert '/static/css/glass.css?v={{ static_ver }}' not in text, filename
+        assert '/static/css/app-shell.css?v={{ static_ver }}' in text, filename
+
+
+def test_auth_pages_use_persistent_labels_and_shared_form_primitives():
+    for filename in ("login.html", "change_password.html"):
+        text = (ROOT / "templates" / filename).read_text(encoding="utf-8")
+        assert 'class="auth-card ui-card"' in text
+        assert 'class="ui-label"' in text
+        assert 'class="ui-input"' in text
+        assert 'class="button-primary"' in text
+
+
+def test_ios_page_describes_real_availability_without_fake_connected_state():
+    text = (ROOT / "templates" / "ios_index.html").read_text(encoding="utf-8")
+    assert 'class="ios-availability-card ui-card"' in text
+    assert 'WDA/AirPlay' in text
+    assert 'Đang kết nối' not in text

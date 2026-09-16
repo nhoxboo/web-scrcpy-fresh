@@ -5,167 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Remote Android nhoxboo — Đăng nhập</title>
   <link href="/static/css/font-awesome.min.css?v={{ static_ver }}" rel="stylesheet">
-  <link href="/static/css/glass.css?v={{ static_ver }}" rel="stylesheet">
   <link href="/static/css/app-shell.css?v={{ static_ver }}" rel="stylesheet">
-  <style>
-    body {
-      min-height: 100dvh;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-    }
-    .stage {
-      width: min(94vw, 880px);
-      display: grid;
-      grid-template-columns: 1.05fr 1fr;
-      gap: 28px;
-      align-items: stretch;
-    }
-    .hero {
-      padding: 38px 34px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 18px;
-    }
-    .hero .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--line);
-      font-size: .78rem;
-      color: var(--muted);
-      width: fit-content;
-    }
-    .hero .badge i { color: var(--accent-3); }
-    .hero h1 {
-      margin: 0;
-      font-size: clamp(2rem, 4.6vw, 2.8rem);
-      line-height: 1.05;
-      letter-spacing: -0.02em;
-    }
-    .hero h1 small {
-      display: block;
-      font-size: .42em;
-      letter-spacing: .35em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 6px;
-      font-weight: 500;
-    }
-    .hero p {
-      margin: 0;
-      color: var(--muted);
-      font-size: .98rem;
-      line-height: 1.55;
-    }
-    .hero ul {
-      margin: 4px 0 0;
-      padding: 0;
-      list-style: none;
-      display: grid;
-      gap: 10px;
-      font-size: .9rem;
-    }
-    .hero ul li {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      color: #d2d8eb;
-    }
-    .hero ul li i {
-      width: 28px;
-      height: 28px;
-      display: grid;
-      place-items: center;
-      border-radius: 9px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid var(--line);
-      color: var(--accent-1);
-    }
-    .form {
-      padding: 30px 28px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    .form h2 {
-      margin: 0 0 6px;
-      font-size: 1.18rem;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 600;
-    }
-    .form .field { display: grid; gap: 6px; }
-    .form .field label {
-      font-size: .78rem;
-      color: var(--muted);
-      letter-spacing: .04em;
-      text-transform: uppercase;
-    }
-    .flash {
-      margin-top: 6px;
-      padding: 10px 12px;
-      border-radius: var(--radius-sm);
-      background: rgba(251, 113, 133, 0.10);
-      border: 1px solid rgba(251, 113, 133, 0.35);
-      color: #fecaca;
-      font-size: .9rem;
-    }
-    .footer {
-      margin-top: 8px;
-      font-size: .76rem;
-      color: var(--muted);
-      text-align: center;
-    }
-    @media (max-width: 720px) {
-      .stage { grid-template-columns: 1fr; }
-      .hero { padding: 28px 24px; }
-    }
-  </style>
 </head>
-<body>
-  <div class="stage">
-    <section class="glass hero">
-      <span class="badge"><i class="fa-solid fa-bolt"></i> Liquid Glass UI · v2</span>
-      <h1>
-        <small>Remote Android</small>
-        <span class="brand-grad">nhoxboo</span>
-      </h1>
-      <p>Điều khiển điện thoại Samsung từ trình duyệt: chuột thật, bàn phím thật, đồng bộ clipboard 2 chiều, chế độ DeX, gõ tiếng Việt qua IME — tất cả qua scrcpy.</p>
-      <ul>
-        <li><i class="fa-solid fa-mouse-pointer"></i> UHID mouse / keyboard với cursor thật</li>
-        <li><i class="fa-solid fa-display"></i> Samsung DeX desktop mirroring</li>
-        <li><i class="fa-solid fa-clipboard"></i> Clipboard sync 2 chiều</li>
-        <li><i class="fa-solid fa-shield-halved"></i> CSRF, rate-limit, audit log</li>
-      </ul>
-    </section>
+<body class="auth-page">
+  <main class="auth-card ui-card" aria-labelledby="page-title">
+    <p class="eyebrow">REMOTE ANDROID</p>
+    <h1 id="page-title">Đăng nhập</h1>
+    <p class="helper-text">Đăng nhập để điều khiển thiết bị Android từ trình duyệt.</p>
 
-    <form class="glass form" method="post">
+    <form class="form-stack" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <h2><i class="fa-solid fa-right-to-bracket"></i> Đăng nhập</h2>
-      <div class="field">
-        <label for="username">Tên đăng nhập</label>
-        <input id="username" class="glass-input" name="username" placeholder="username" autocomplete="username" required autofocus>
-      </div>
-      <div class="field">
-        <label for="password">Mật khẩu</label>
-        <input id="password" class="glass-input" type="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
-      </div>
-      <button class="glass-btn primary" type="submit">
-        <i class="fa-solid fa-arrow-right"></i> Đăng nhập
+      <label class="ui-label" for="username">
+        Tên đăng nhập
+        <input id="username" class="ui-input" name="username" placeholder="username" autocomplete="username" required autofocus>
+      </label>
+      <label class="ui-label" for="password">
+        Mật khẩu
+        <input id="password" class="ui-input" type="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
+      </label>
+      <button class="button-primary" type="submit">
+        <i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Đăng nhập
       </button>
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <div class="flash"><i class="fa-solid fa-circle-exclamation"></i> {{ messages[-1] }}</div>
-        {% endif %}
-      {% endwith %}
-      <div class="footer">© Remote Android nhoxboo · scrcpy 3.3.4</div>
     </form>
-  </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <p class="status-banner" role="alert"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> {{ messages[-1] }}</p>
+      {% endif %}
+    {% endwith %}
+  </main>
 </body>
 </html>
