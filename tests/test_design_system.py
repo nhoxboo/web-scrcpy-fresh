@@ -194,6 +194,25 @@ def test_android_console_uses_shared_light_shell_but_keeps_media_stage_dark():
     assert 'background:#05070e' not in text
 
 
+def test_console_main_owns_recovery_surface_and_command_dock():
+    text = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="consoleMain"' in text
+    assert 'id="connectionRecovery"' in text
+    assert 'id="connectionRetry"' in text
+    assert 'id="statusText"' in text
+    assert 'id="quickDock"' in text
+    assert text.index('id="quickDock"') > text.index('id="consoleMain"')
+    assert text.index('id="quickDock"') > text.index('</aside>')
+    assert (
+        '<section id="connectionRecovery" class="connection-recovery ui-card" '
+        'role="status" aria-live="polite">'
+    ) in text
+    assert 'id="connectionRetry" class="button-primary" type="button"' in text
+    assert '<a class="button-secondary" href="/devices">Đổi máy</a>' in text
+    assert text.count('id="statusText"') == 1
+
+
 class _IconOnlyButtonParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()

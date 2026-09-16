@@ -177,3 +177,11 @@ def test_console_shell_keeps_critical_binding_targets():
         *SOCKET_INDEPENDENT_BUTTON_IDS,
     ):
         assert f'id="{element_id}"' in text, element_id
+
+
+def test_connection_recovery_markup_preserves_canonical_reconnect_and_devices_route():
+    text = INDEX_HTML.read_text(encoding="utf-8")
+
+    assert 'id="reconnect"' in text
+    assert 'id="connectionRetry" class="button-primary" type="button"' in text
+    assert '<a class="button-secondary" href="/devices">Đổi máy</a>' in text

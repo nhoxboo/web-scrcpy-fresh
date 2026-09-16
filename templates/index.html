@@ -50,7 +50,11 @@
     </form>
   </div>
 
-  <div class="control-toolbar quick-dock" aria-label="Điều khiển nhanh">
+
+      </div>
+  </aside> <!-- sidebar -->
+  <main id="consoleMain" class="console-main main-content connection-pending">
+  <div class="control-toolbar quick-dock" id="quickDock" aria-label="Điều khiển nhanh">
     <button class="tool-button" id="power" aria-label="Nguồn" title="Power"><i class="fa-solid fa-power-off"></i></button>
     <button class="tool-button" id="voldown" aria-label="Giảm âm lượng" title="Volume -"><i class="fa-solid fa-volume-low"></i></button>
     <button class="tool-button" id="volup" aria-label="Tăng âm lượng" title="Volume +"><i class="fa-solid fa-volume-high"></i></button>
@@ -106,10 +110,20 @@
     <button class="tool-button" id="screenOffToggle" aria-label="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)" title="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)"><i class="fa-solid fa-lightbulb"></i></button>
   </div>
 
-      </div>
-  </aside> <!-- sidebar -->
-  <main class="console-main main-content">
     
+    <section id="connectionRecovery" class="connection-recovery ui-card" role="status" aria-live="polite">
+      <i class="fa-solid fa-plug-circle-xmark" aria-hidden="true"></i>
+      <div>
+        <p class="connection-kicker">TRẠNG THÁI THIẾT BỊ</p>
+        <h1 id="connectionStatus">Đang chuẩn bị kết nối thiết bị…</h1>
+        <p id="statusText">Đang kết nối…</p>
+      </div>
+      <div class="connection-recovery-actions">
+        <button id="connectionRetry" class="button-primary" type="button">Kết nối lại</button>
+        <a class="button-secondary" href="/devices">Đổi máy</a>
+      </div>
+    </section>
+
     <div id="dropZone">
       <i class="fa-solid fa-cloud-arrow-up"></i>
       <h2>Thả file để Push / Cài đặt APK</h2>
@@ -177,7 +191,6 @@
     </div>
   </div>
 
-  <div id="connectionStatus" class="connection-status status-banner" data-tone="connecting" role="status" aria-live="polite">Đang chuẩn bị kết nối thiết bị…</div>
   <div id="status" class="status status-banner"><span class="dot"></span>Đang kết nối...</div>
 
   <!-- Force-kick: surfaced only when the socket is rejected because another
