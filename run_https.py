@@ -9,11 +9,15 @@ import os
 import sys
 from pathlib import Path
 
+import eventlet
+
+eventlet.monkey_patch()
+
 # Add project dir to path
 sys.path.insert(0, os.path.dirname(__file__))
 
 # Import app from original app.py
-from app import app, socketio
+from app import app, socketio  # noqa: E402
 
 
 def setup_https_redirect():
@@ -39,11 +43,20 @@ def setup_https_redirect():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Web Scrcpy with HTTPS support')
     parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind')
-    parser.add_argument('--port', type=int, default=8000, help='HTTP port (redirect source)')
-    parser.add_argument('--https-port', type=int, default=443, help='HTTPS port (main)')
-    parser.add_argument('--ssl-cert', type=str, required=True, help='Path to SSL certificate')
-    parser.add_argument('--ssl-key', type=str, required=True, help='Path to SSL key')
-    parser.add_argument('--video-bit-rate', type=int, default=2000000, help='Video bitrate')
+    parser.add_argument('--port', type=int, default=8000, help='Port to serve HTTPS directly')
+    parser.add_argument(
+        '--ssl-cert',
+        type=str,
+        default='C:/ProgramData/web-scrcpy/runtime-tls/web-scrcpy.crt',
+        help='Path to SSL certificate',
+    )
+    parser.add_argument(
+        '--ssl-key',
+        type=str,
+        default='C:/ProgramData/web-scrcpy/runtime-tls/web-scrcpy.key',
+        help='Path to SSL key',
+    )
+    parser.add_argument('--video-bit-rate', type=int, default=8000000, help='Video bitrate')
 
     args = parser.parse_args()
 
@@ -58,24 +71,14 @@ if __name__ == '__main__':
         print(f'ERROR: SSL key not found: {key_path}', file=sys.stderr)
         sys.exit(1)
 
-    # Setup HTTPS redirect
-    setup_https_redirect()
+    print(f'Starting Web Scrcpy HTTPS directly on {args.host}:{args.port} (cert: {cert_path})')
 
-    # Eventlet receives certificate paths directly; passing an ssl_context is
-    # forwarded to eventlet.wsgi.server and fails before the port can bind.
-
-    print('Starting Web Scrcpy HTTPS')
-    print(f'  HTTPS: {args.host}:{args.https_port} (cert: {cert_path})')
-    print(f'  HTTP:  {args.host}:{args.port} (auto-redirect to HTTPS)')
-    print(f'  Video bitrate: {args.video_bit_rate}')
-
-    # Start with SSL
+    # Start with SSL directly on the configured port
     socketio.run(
         app,
         host=args.host,
-        port=args.https_port,
+        port=args.port,
         certfile=str(cert_path),
         keyfile=str(key_path),
         debug=False,
-        allow_unsafe_werkzeug=True,
     )
