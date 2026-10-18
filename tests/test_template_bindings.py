@@ -61,6 +61,41 @@ SOCKET_INDEPENDENT_BUTTON_IDS = (
     "macroClear",
 )
 
+QUICK_DOCK_CONTROL_IDS = (
+    "power",
+    "voldown",
+    "volup",
+    "back",
+    "home",
+    "recent",
+    "rotate",
+    "fullscreen",
+    "screenshot",
+    "recordToggle",
+    "vdesktopMode",
+    "displaySelect",
+    "transportSelect",
+    "decoderSelect",
+    "quickCtl",
+    "uhidInput",
+    "uhidSpeed",
+    "uhidAccel",
+    "reconnect",
+    "installApk",
+    "pushFile",
+    "kbToggle",
+    "macroRec",
+    "macroStop",
+    "macroPlay",
+    "macroClear",
+    "hotkeyConfig",
+    "gameMode",
+    "gamepadInput",
+    "hudToggle",
+    "audioToggle",
+    "screenOffToggle",
+)
+
 
 def _inline_script() -> str:
     text = INDEX_HTML.read_text(encoding="utf-8")
@@ -175,8 +210,20 @@ def test_console_shell_keeps_critical_binding_targets():
         "playerCanvas",
         "connectionStatus",
         *SOCKET_INDEPENDENT_BUTTON_IDS,
+        *QUICK_DOCK_CONTROL_IDS,
     ):
         assert f'id="{element_id}"' in text, element_id
+
+
+def test_quick_dock_controls_are_bound_in_inline_script():
+    """The relocated quick dock's controls must stay wired to the inline
+    script: every control ID needs at least one getElementById reference,
+    so relocating the dock cannot silently orphan its handlers."""
+    js = _inline_script()
+    for control_id in QUICK_DOCK_CONTROL_IDS:
+        assert re.search(rf"getElementById\('{re.escape(control_id)}'\)", js), (
+            f"inline script lost its getElementById binding for #{control_id}"
+        )
 
 
 def test_connection_recovery_markup_preserves_canonical_reconnect_and_devices_route():

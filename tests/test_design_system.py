@@ -1,4 +1,6 @@
 import re
+from collections import defaultdict
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -194,23 +196,306 @@ def test_android_console_uses_shared_light_shell_but_keeps_media_stage_dark():
     assert 'background:#05070e' not in text
 
 
-def test_console_main_owns_recovery_surface_and_command_dock():
-    text = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+@dataclass
+class _HtmlNode:
+    tag: str
+    attrs: dict[str, str]
+    parent: "_HtmlNode | None"
+    children: list["_HtmlNode"] = field(default_factory=list)
 
-    assert 'id="consoleMain"' in text
-    assert 'id="connectionRecovery"' in text
-    assert 'id="connectionRetry"' in text
-    assert 'id="statusText"' in text
-    assert 'id="quickDock"' in text
-    assert text.index('id="quickDock"') > text.index('id="consoleMain"')
-    assert text.index('id="quickDock"') > text.index('</aside>')
-    assert (
-        '<section id="connectionRecovery" class="connection-recovery ui-card" '
-        'role="status" aria-live="polite">'
-    ) in text
-    assert 'id="connectionRetry" class="button-primary" type="button"' in text
-    assert '<a class="button-secondary" href="/devices">Đổi máy</a>' in text
-    assert text.count('id="statusText"') == 1
+
+class _ConsoleDocumentParser(HTMLParser):
+    _VOID_TAGS = {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "source",
+        "track",
+        "wbr",
+    }
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.root = _HtmlNode("document", {}, None)
+        self._stack = [self.root]
+        self.by_id: dict[str, list[_HtmlNode]] = defaultdict(list)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        node = _HtmlNode(tag, {name: value or "" for name, value in attrs}, self._stack[-1])
+        self._stack[-1].children.append(node)
+        if element_id := node.attrs.get("id"):
+            self.by_id[element_id].append(node)
+        if tag not in self._VOID_TAGS:
+            self._stack.append(node)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        if tag not in self._VOID_TAGS:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        for index in range(len(self._stack) - 1, 0, -1):
+            if self._stack[index].tag == tag:
+                del self._stack[index:]
+                return
+
+
+def _parse_console_document() -> _ConsoleDocumentParser:
+    parser = _ConsoleDocumentParser()
+    parser.feed((ROOT / "templates" / "index.html").read_text(encoding="utf-8"))
+    parser.close()
+    return parser
+
+
+def _descendants(node: _HtmlNode) -> list[_HtmlNode]:
+    descendants = []
+    for child in node.children:
+        descendants.append(child)
+        descendants.extend(_descendants(child))
+    return descendants
+
+
+def _quick_dock_signature(dock: _HtmlNode) -> tuple:
+    signature = []
+    for node in dock.children:
+        if node.tag == "i":  # decorative FontAwesome icon
+            continue
+        assert node.parent is dock, "every quick-dock control must be a direct child of #quickDock"
+        signature.append(
+            (
+                node.tag,
+                {
+                    key: value
+                    for key, value in node.attrs.items()
+                    if key in {"id", "class", "title"} or key.startswith("data-")
+                },
+                tuple(_nested_controls(node)),
+            )
+        )
+    return tuple(signature)
+
+
+def _nested_controls(node: _HtmlNode) -> list[tuple[str, dict[str, str]]]:
+    return [
+        (child.tag, dict(child.attrs))
+        for child in _descendants(node)
+        if child.tag in {"select", "option", "input"}
+    ]
+
+
+NEW_CONSOLE_IDS = {
+    "consoleMain",
+    "quickDock",
+    "connectionRecovery",
+    "connectionRetry",
+    "statusText",
+}
+
+
+def test_console_main_owns_unique_recovery_surface_and_command_dock():
+    document = _parse_console_document()
+
+    for element_id in NEW_CONSOLE_IDS:
+        assert len(document.by_id[element_id]) == 1, element_id
+
+    console_main = document.by_id["consoleMain"][0]
+    assert document.by_id["quickDock"][0].parent is console_main
+    assert document.by_id["connectionRecovery"][0].parent is console_main
+
+    recovery = document.by_id["connectionRecovery"][0]
+    retry = document.by_id["connectionRetry"][0]
+    assert recovery.attrs["role"] == "status"
+    assert recovery.attrs["aria-live"] == "polite"
+    assert retry.attrs["type"] == "button"
+    assert any(
+        child.tag == "a" and child.attrs == {"class": "button-secondary", "href": "/devices"}
+        for child in _descendants(recovery)
+    )
+
+
+QUICK_DOCK_CONTROL_SIGNATURE = (
+    ("button", {"class": "tool-button", "id": "power", "title": "Power"}, ()),
+    ("button", {"class": "tool-button", "id": "voldown", "title": "Volume -"}, ()),
+    ("button", {"class": "tool-button", "id": "volup", "title": "Volume +"}, ()),
+    ("button", {"class": "tool-button", "id": "back", "title": "Back"}, ()),
+    ("button", {"class": "tool-button", "id": "home", "title": "Home"}, ()),
+    ("button", {"class": "tool-button", "id": "recent", "title": "Recent"}, ()),
+    ("button", {"class": "tool-button", "id": "rotate", "title": "Rotate"}, ()),
+    ("button", {"class": "tool-button", "id": "fullscreen", "title": "Fullscreen"}, ()),
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "screenshot",
+            "title": "Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)",
+        },
+        (),
+    ),
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "recordToggle",
+            "title": "Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về",
+        },
+        (),
+    ),
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "vdesktopMode",
+            "title": "Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước.",
+        },
+        (),
+    ),
+    (
+        "div",
+        {"class": "tool-select-wrap", "title": "Chọn màn hình hiển thị"},
+        (("select", {"id": "displaySelect"}), ("option", {"value": "0"})),
+    ),
+    (
+        "div",
+        {"class": "tool-select-wrap", "title": "Giao thức truyền tải"},
+        (
+            ("select", {"id": "transportSelect"}),
+            ("option", {"value": "websocket"}),
+            ("option", {"value": "webrtc"}),
+        ),
+    ),
+    (
+        "div",
+        {"class": "tool-select-wrap", "title": "Chọn bộ giải mã video"},
+        (
+            ("select", {"id": "decoderSelect"}),
+            ("option", {"value": "mse"}),
+            ("option", {"value": "webcodecs"}),
+        ),
+    ),
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "quickCtl",
+            "title": "Quick Controls (Wifi/BT/Volume/Lock...)",
+        },
+        (),
+    ),
+    (
+        "button",
+        {"class": "tool-button", "id": "uhidInput", "title": "Real mouse/keyboard (UHID): ON"},
+        (),
+    ),
+    (
+        "div",
+        {
+            "class": "uhid-speed",
+            "id": "uhidSpeedBox",
+            "title": "Tốc độ chuột UHID — kéo để chỉnh, không cần reload",
+        },
+        (
+            (
+                "input",
+                {
+                    "id": "uhidSpeed",
+                    "type": "range",
+                    "min": "0.25",
+                    "max": "4",
+                    "step": "0.05",
+                    "value": "1",
+                },
+            ),
+            ("input", {"id": "uhidAccel", "type": "checkbox"}),
+        ),
+    ),
+    ("button", {"class": "tool-button", "id": "reconnect", "title": "Kết nối lại"}, ()),
+    (
+        "button",
+        {"class": "tool-button", "id": "installApk", "title": "Cài APK (file hoặc URL)"},
+        (),
+    ),
+    (
+        "button",
+        {"class": "tool-button", "id": "pushFile", "title": "Tải file vào /sdcard/Download"},
+        (),
+    ),
+    (
+        "button",
+        {"class": "tool-button", "id": "kbToggle", "title": "Bật/tắt bàn phím (gõ chữ vào device)"},
+        (),
+    ),
+    ("button", {"class": "tool-button", "id": "macroRec", "title": "Bắt đầu ghi macro"}, ()),
+    ("button", {"class": "tool-button", "id": "macroStop", "title": "Dừng ghi"}, ()),
+    ("button", {"class": "tool-button", "id": "macroPlay", "title": "Chạy macro"}, ()),
+    ("button", {"class": "tool-button", "id": "macroClear", "title": "Xóa macro"}, ()),
+    ("button", {"class": "tool-button", "id": "hotkeyConfig", "title": "Gán phím"}, ()),
+    ("button", {"class": "tool-button", "id": "gameMode", "title": "Game mode: OFF"}, ()),
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "gamepadInput",
+            "title": "Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối.",
+        },
+        (),
+    ),
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "hudToggle",
+            "title": "HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)",
+        },
+        (),
+    ),
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "audioToggle",
+            "title": "Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)",
+        },
+        (),
+    ),
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "screenOffToggle",
+            "title": "Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)",
+        },
+        (),
+    ),
+)
+
+
+def test_quick_dock_preserves_complete_ordered_control_signature():
+    dock = _parse_console_document().by_id["quickDock"][0]
+
+    assert _quick_dock_signature(dock) == QUICK_DOCK_CONTROL_SIGNATURE
+
+
+def test_quick_dock_control_ids_are_unique_in_document():
+    document = _parse_console_document()
+    dock = document.by_id["quickDock"][0]
+    dock_control_ids = [
+        control.attrs["id"]
+        for control in dock.children
+        if control.tag != "i" and "id" in control.attrs
+    ]
+    duplicated = [
+        element_id for element_id in dock_control_ids if len(document.by_id[element_id]) != 1
+    ]
+    assert not duplicated, (
+        f"quick-dock control IDs duplicated elsewhere in the document: {duplicated}"
+    )
 
 
 class _IconOnlyButtonParser(HTMLParser):
