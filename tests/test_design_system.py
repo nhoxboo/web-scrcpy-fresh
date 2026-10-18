@@ -936,3 +936,22 @@ def test_ios_console_css_implements_scoped_auth_availability_and_control_contrac
     assert ".ios-console .wm-act:focus-visible" in focus_rule.group("selectors")
     assert "outline:" in focus_rule.group("rules")
     assert ".ios-console" in css
+
+
+def test_console_connection_state_contract():
+    html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+    css = (ROOT / "static" / "css" / "android-console.css").read_text(encoding="utf-8")
+
+    assert "function setConsoleConnectionState(state, message)" in html
+    assert (
+        "consoleMain.classList.remove('connection-pending', 'connection-error', 'connection-ready')"
+        in html
+    )
+    assert "consoleMain.classList.add(`connection-${state}`)" in html
+    assert "connectionRetry.addEventListener('click', () => reconnectButton.click())" in html
+    assert "statusText.textContent = message" in html
+
+    assert "connection-pending" in css
+    assert "connection-error" in css
+    assert "connection-ready" in css
+    assert ".connection-recovery" in css

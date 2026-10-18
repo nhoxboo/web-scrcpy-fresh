@@ -405,7 +405,35 @@
     if (_mql.addEventListener) _mql.addEventListener('change', _mqlHandler);
     else if (_mql.addListener) _mql.addListener(_mqlHandler);
 
-    const st = (m)=>document.getElementById('status').innerHTML = `<span class='dot'></span>${m}`;
+    const consoleMain = document.getElementById('consoleMain');
+    const statusText = document.getElementById('statusText');
+    const reconnectButton = document.getElementById('reconnect');
+    const connectionRetry = document.getElementById('connectionRetry');
+    const connectionStatus = document.getElementById('connectionStatus');
+
+    function setConsoleConnectionState(state, message) {
+      if (consoleMain) {
+        consoleMain.classList.remove('connection-pending', 'connection-error', 'connection-ready');
+        consoleMain.classList.add(`connection-${state}`);
+      }
+      if (statusText) statusText.textContent = message;
+      if (connectionStatus) connectionStatus.textContent = message;
+      const statusEl = document.getElementById('status');
+      if (statusEl) {
+        statusEl.innerHTML = `<span class='dot'></span>${message}`;
+      }
+    }
+
+    if (connectionRetry && reconnectButton) {
+      connectionRetry.addEventListener('click', () => reconnectButton.click());
+    }
+
+    const st = (m) => {
+      const currentState = consoleMain && consoleMain.classList.contains('connection-ready')
+        ? 'ready'
+        : (consoleMain && consoleMain.classList.contains('connection-error') ? 'error' : 'pending');
+      setConsoleConnectionState(currentState, m);
+    };
     const MACRO_KEY = 'beso_macro_v1';
     const HOTKEY_KEY = 'beso_hotkeys_v1';
     const GAME_MODE_KEY = 'beso_game_mode_v1';
@@ -764,12 +792,12 @@
       query: _socketQuery,
     });
     socket.on('connect', ()=> {
-      st('Đã kết nối.');
+      setConsoleConnectionState('pending', 'Đã kết nối tới máy chủ; đang khởi động stream…');
       if (useWebRtc) {
         initWebRtcConnection();
       }
     });
-    socket.on('disconnect', (reason)=> st('Mất kết nối: '+reason));
+    socket.on('disconnect', (reason)=> setConsoleConnectionState('error', 'Mất kết nối: '+reason));
     socket.on('connect_error', (err)=>{
       const msg = (err && (err.message || err.data)) || 'Không thể kết nối tới server.';
       // Auto-fallback for Virtual Desktop on devices that don't support
@@ -779,12 +807,12 @@
       const looksLikeVdesktopFail = /virtual desktop.*không khả dụng/i.test(msg);
       if (vdesktopCurrentlyOn && looksLikeVdesktopFail) {
         localStorage.setItem('vdesktopMode', '0');
-        st('Virtual Desktop không khả dụng. Đã tự tắt, đang tải lại...');
+        setConsoleConnectionState('error', 'Virtual Desktop không khả dụng. Đã tự tắt, đang tải lại...');
         socket.disconnect();
         setTimeout(()=>location.reload(), 800);
         return;
       }
-      st('Bị từ chối: '+msg);
+      setConsoleConnectionState('error', 'Bị từ chối: '+msg);
     });
     let input = null;
 
@@ -1934,7 +1962,7 @@
         deviceH = data['height'];
         attachInput(deviceW, deviceH);
         fitVideoToViewport();
-        st(`Kết nối OK | Screen ${deviceW}x${deviceH}`);
+        setConsoleConnectionState('ready', `Kết nối OK | Screen ${deviceW}x${deviceH}`);
       } else if (type === 'size_change') {
         const newW = data['width'], newH = data['height'];
         // Resolution actually changed (rotation, display switch, fold/unfold) →
@@ -2626,11 +2654,11 @@
         parser.appendData(new Uint8Array(data));
       }
     });
-    socket.on('connect', ()=>{
-      st('WS connected, đang nhận video...');
+    socket.on('connect', ()=> {
+      setConsoleConnectionState('pending', 'WS connected, đang nhận video...');
       document.getElementById('forceKick').hidden = true;
     });
-    socket.on('disconnect', ()=>st('WS disconnected, đang thử reconnect...'));
+    socket.on('disconnect', ()=>setConsoleConnectionState('error', 'WS disconnected, đang thử reconnect...'));
 
     // --- Fix: clear video backlog when tab returns to foreground ---
     document.addEventListener('visibilitychange', () => {
@@ -2646,11 +2674,11 @@
     // and reconnects after the previous session releases.
     socket.on('connect_error', (e)=>{
       const msg = e?.message || 'unknown';
-      st('WS lỗi: ' + msg);
+      setConsoleConnectionState('error', 'WS lỗi: ' + msg);
       // Surface a pairing/authorization hint when the phone rejects ADB.
       if (msg.includes('UNAUTHORIZED') || msg.includes('unauthorized')) {
         setTimeout(()=>{
-          st('Điện thoại chưa cấp quyền. Trên máy Android → Developer options → Wireless debugging → Pair device with pairing code, rồi chạy adb pair &lt;IP:port> &lt;code> trên PC.');
+          setConsoleConnectionState('error', 'Điện thoại chưa cấp quyền. Trên máy Android → Developer options → Wireless debugging → Pair device with pairing code, rồi chạy adb pair <IP:port> <code> trên PC.');
         }, 100);
       }
       const isLocked = msg.includes('client khác');

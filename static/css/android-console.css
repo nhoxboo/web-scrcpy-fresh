@@ -781,3 +781,70 @@ canvas#playerCanvas:-webkit-full-screen,
     margin-left: 10px;
   }
 }
+
+/* --- Connection-First Recovery & State Transitions --- */
+#consoleMain.connection-pending .phone-mockup,
+#consoleMain.connection-error .phone-mockup,
+#consoleMain.connection-pending .zoom-bar,
+#consoleMain.connection-error .zoom-bar {
+  display: none !important;
+}
+
+#consoleMain.connection-ready .connection-recovery {
+  display: none !important;
+}
+
+#consoleMain.connection-ready .phone-mockup {
+  display: flex;
+}
+
+.connection-recovery {
+  margin: 24px auto;
+  max-width: 680px;
+  width: calc(100% - 32px);
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+}
+
+.connection-recovery h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.connection-recovery p {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.connection-recovery .recovery-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+#consoleMain.connection-error .connection-recovery {
+  border-left: 4px solid var(--color-danger);
+  background: var(--color-surface);
+}
+
+#consoleMain.connection-pending .connection-recovery {
+  border-left: 4px solid var(--color-primary);
+}
+
+#quickDock {
+  width: 100%;
+}
+
