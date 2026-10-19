@@ -816,6 +816,14 @@ class Scrcpy:
             except subprocess.TimeoutExpired:
                 self.android_process.kill()
         self._join_thread(self.android_thread)
+        try:
+            subprocess.run(
+                self._adb('forward', '--remove', f'tcp:{LOCAL_PORT}'),
+                capture_output=True,
+                timeout=2.0,
+            )
+        except Exception:
+            pass
         log.info('Scrcpy stopped')
 
     def scrcpy_send_control(self, data) -> None:
