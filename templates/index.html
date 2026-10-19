@@ -463,7 +463,9 @@
     const phoneShell = document.getElementById('phoneShell');
     const resizeHandle = document.getElementById('resizeHandle');
     let deviceW = 0, deviceH = 0;
-    let zoom = 0.82;
+    // Default zoom optimized for maximum screen usage and readability
+    const savedZoom = parseFloat(localStorage.getItem('beso_zoom_level'));
+    let zoom = Number.isFinite(savedZoom) && savedZoom > 0 ? savedZoom : 0.98;
     let gameMode = localStorage.getItem(GAME_MODE_KEY) === '1';
     const heldKeys = new Set();
     let macroEvents = [];
@@ -530,7 +532,8 @@
     }
 
     function setZoom(nextZoom){
-      zoom = Math.max(0.3, Math.min(2.0, nextZoom));
+      zoom = Math.max(0.3, Math.min(2.5, nextZoom));
+      try { localStorage.setItem('beso_zoom_level', zoom.toFixed(2)); } catch {}
       fitVideoToViewport();
     }
 
@@ -840,7 +843,8 @@
     // froze the entire toolbar including the Reconnect button — exactly
     // the button the user needed to recover.
     function attachInput(width, height) {
-      input = new ScrcpyInput(sendControl, videoElement, width, height, false, {
+      const targetSurface = useWebCodecs ? canvasElement : videoElement;
+      input = new ScrcpyInput(sendControl, targetSurface, width, height, false, {
         useUhid: uhidOn,
         uhidMouseSpeed: initUhidSpeed,
         uhidMouseAccel: initUhidAccel,
@@ -1439,7 +1443,7 @@
 
       document.getElementById('zoomOut').onclick = ()=>setZoom(zoom - 0.12);
       document.getElementById('zoomIn').onclick = ()=>setZoom(zoom + 0.12);
-      document.getElementById('zoomReset').onclick = ()=>setZoom(0.82);
+      document.getElementById('zoomReset').onclick = ()=>setZoom(1.0);
 
       // --- Screenshot + Screen recording (client-side, no backend) --------
       // Both work directly on <video>, so they need an active stream — but
@@ -1926,9 +1930,10 @@
 
       document.getElementById('fullscreen').onclick = async ()=>{
         try{
+          const targetFs = phoneShell || (useWebCodecs ? canvasElement : videoElement);
           if (!document.fullscreenElement) {
-            if (videoElement.requestFullscreen) await videoElement.requestFullscreen();
-            else if (videoElement.webkitRequestFullscreen) videoElement.webkitRequestFullscreen();
+            if (targetFs.requestFullscreen) await targetFs.requestFullscreen();
+            else if (targetFs.webkitRequestFullscreen) targetFs.webkitRequestFullscreen();
             st('Đã bật fullscreen');
           } else {
             if (document.exitFullscreen) await document.exitFullscreen();
