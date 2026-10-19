@@ -692,6 +692,12 @@ class Scrcpy:
                 self.stop = True
                 raise RuntimeError(f'ADB serial {self.serial!r} not online (found: {online})')
 
+        # Wake up device display automatically if it went to sleep/dozing
+        try:
+            subprocess.run(self._adb('shell', 'input', 'keyevent', '224'), timeout=3, capture_output=True)
+        except Exception as e:
+            log.warning('Could not wake up screen via keyevent 224: %s', e)
+
         if not self.push_server_to_device():
             self.stop = True
             raise RuntimeError('Failed to push scrcpy-server to device')
