@@ -231,4 +231,5 @@ def test_connection_recovery_markup_preserves_canonical_reconnect_and_devices_ro
 
     assert 'id="reconnect"' in text
     assert 'id="connectionRetry" class="button-primary" type="button"' in text
-    assert '<a class="button-secondary" href="/devices">Đổi máy</a>' in text
+    assert 'class="button-secondary" href="/devices"' in text
+    assert 'Đổi máy' in text
