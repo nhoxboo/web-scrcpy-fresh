@@ -109,7 +109,9 @@
     <button class="tool-button" id="hudToggle" aria-label="Bảng thông tin: hiển thị FPS, Mbps và Ping (Ctrl+Shift+H)" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
     <button class="tool-button" id="audioToggle" aria-label="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)" title="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)"><i class="fa-solid fa-volume-xmark"></i></button>
     <button class="tool-button" id="screenOffToggle" aria-label="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)" title="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)"><i class="fa-solid fa-lightbulb"></i></button>
+    <button class="tool-button" id="toggleToolbarBtn" aria-label="Ẩn thanh công cụ" title="Ẩn thanh công cụ (phím tắt T)"><i class="fa-solid fa-chevron-up"></i></button>
   </div>
+  <button class="toolbar-reopen-pill" id="reopenToolbarBtn" aria-label="Hiện thanh công cụ" title="Hiện thanh công cụ (phím tắt T)" hidden><i class="fa-solid fa-chevron-down"></i></button>
 
     
     <section id="connectionRecovery" class="connection-recovery ui-card" role="status" aria-live="polite">
@@ -1047,6 +1049,36 @@
       const doBack = ()=>keyTap(4,'back');
       const doHome = ()=>keyTap(3,'home');
       const doRecent = ()=>keyTap(187,'recent');
+
+      // Toggle toolbar visibility to fully free the screen
+      const toggleToolbarBtn = document.getElementById('toggleToolbarBtn');
+      const reopenToolbarBtn = document.getElementById('reopenToolbarBtn');
+      const setToolbarHidden = (hidden) => {
+        if (quickDock) quickDock.classList.toggle('toolbar-hidden', hidden);
+        if (reopenToolbarBtn) reopenToolbarBtn.hidden = !hidden;
+        try { localStorage.setItem('beso_toolbar_hidden', hidden ? '1' : '0'); } catch {}
+      };
+
+      if (toggleToolbarBtn) {
+        toggleToolbarBtn.onclick = () => setToolbarHidden(true);
+      }
+      if (reopenToolbarBtn) {
+        reopenToolbarBtn.onclick = () => setToolbarHidden(false);
+      }
+      if (localStorage.getItem('beso_toolbar_hidden') === '1') {
+        setToolbarHidden(true);
+      }
+
+      // Hotkey 't' or 'T' (when not typing in an input) toggles toolbar
+      document.addEventListener('keydown', (e) => {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+        if (e.key === 't' || e.key === 'T') {
+          if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+            const isHidden = quickDock && quickDock.classList.contains('toolbar-hidden');
+            setToolbarHidden(!isHidden);
+          }
+        }
+      });
 
       // Toggle sidebar to maximize control screen
       const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');

@@ -1992,10 +1992,20 @@ def handle_connect(auth=None):
             aq = scpy_sessions[sid]['audio_q']
 
         def _send_video(data):
+            if vq.qsize() > 60:
+                try:
+                    vq.get_nowait()
+                except queue.Empty:
+                    pass
             vq.put(data)
             webrtc_mgr.broadcast_video(data)
 
         def _send_audio(data):
+            if aq.qsize() > 60:
+                try:
+                    aq.get_nowait()
+                except queue.Empty:
+                    pass
             aq.put(data)
 
         ctx.scrcpy_start(

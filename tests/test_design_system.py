@@ -482,6 +482,15 @@ QUICK_DOCK_CONTROL_SIGNATURE = (
         },
         (),
     ),
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "toggleToolbarBtn",
+            "title": "Ẩn thanh công cụ (phím tắt T)",
+        },
+        (),
+    ),
 )
 
 
