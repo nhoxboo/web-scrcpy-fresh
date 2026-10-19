@@ -368,7 +368,13 @@ if os.environ.get('TRUST_PROXY') == '1':
 # and websocket requests interleave, which to a remote client looks exactly
 # like "đang kết nối" forever. Commit f6bc2cb already reverted one such attempt;
 # a second one was found uncommitted in the working tree on 2026-08-27.
-socketio = SocketIO(app, async_mode=None)
+socketio = SocketIO(
+    app,
+    async_mode=None,
+    ping_timeout=60,
+    ping_interval=20,
+    max_http_buffer_size=16 * 1024 * 1024,
+)
 
 
 def _compute_static_ver() -> str:

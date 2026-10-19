@@ -91,11 +91,12 @@ class VideoParser {
                 console.log("I frame", nalu.length)
         } else if (nalu_type === 7) {
             const next_pos = this.findSequence(nalu, [0, 0, 0, 1], 5)
+            let remain = null;
             if (next_pos > 0) {
                 this.sps = nalu.slice(0, next_pos)
+                remain = nalu.slice(next_pos)
                 if (this.debug)
                     console.log("sps", next_pos)
-                this.processBuffer(nalu.slice(next_pos))
             } else {
                 this.sps = nalu
                 if (this.debug)
@@ -108,39 +109,47 @@ class VideoParser {
                     data: {"width" : ret.present_size.width, "height" : ret.present_size.height}
                 });
             }
+            this.checkInitReady();
+            if (remain) this.processBuffer(remain);
             return;
         } else if (nalu_type === 8) {
             const next_pos = this.findSequence(nalu, [0, 0, 0, 1], 5)
+            let remain = null;
             if (next_pos > 0) {
                 this.pps = nalu.slice(0, next_pos)
+                remain = nalu.slice(next_pos)
                 if (this.debug)
                     console.log("pps", next_pos)
-                this.processBuffer(nalu.slice(next_pos))
             } else {
                 this.pps = nalu
                 if (this.debug)
                     console.log("pps", nalu.length)
             }
+            this.checkInitReady();
+            if (remain) this.processBuffer(remain);
             return;
         } else {
             console.log("unknow frame type", nalu[0], nalu[1], nalu[2], nalu[3], nalu_type)
         }
 
-        if (this.pps != null && this.sps != null) {
-            if (this.onNaluCallback) {
-                this.onNaluCallback({
-                    type: 'init',
-                    data: { "width:": this.width, " height:": this.height, "pps": this.pps, "sps": this.sps }
-                });
-            }
-            this.pps = null;
-            this.sps = null;
-        }
         if (this.onNaluCallback) {
             this.onNaluCallback({
                 type: 'nalu',
                 data: nalu
             });
+        }
+    }
+
+    checkInitReady() {
+        if (this.pps != null && this.sps != null) {
+            if (this.onNaluCallback) {
+                this.onNaluCallback({
+                    type: 'init',
+                    data: { "width": this.width, "height": this.height, "pps": this.pps, "sps": this.sps }
+                });
+            }
+            this.pps = null;
+            this.sps = null;
         }
     }
 }

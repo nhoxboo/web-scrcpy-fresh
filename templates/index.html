@@ -414,6 +414,13 @@
 
     function setConsoleConnectionState(state, message) {
       if (consoleMain) {
+        // Guard against flickering back to pending if already connected and receiving video
+        if (consoleMain.classList.contains('connection-ready') && state === 'pending') {
+          if (statusText) statusText.textContent = message;
+          const statusEl = document.getElementById('status');
+          if (statusEl) statusEl.innerHTML = `<span class='dot'></span>${message}`;
+          return;
+        }
         consoleMain.classList.remove('connection-pending', 'connection-error', 'connection-ready');
         consoleMain.classList.add(`connection-${state}`);
       }
@@ -572,6 +579,7 @@
         try { videoDecoder.close(); } catch(e) {}
         videoDecoder = null;
       }
+      webcodecsHasKeyframe = false;
 
       const config = {
         codec: codecString || 'avc1.64002a',
@@ -671,15 +679,50 @@
       });
     }
 
-    function feedWebCodecs(naluData, type) {
+    let currentSps = null;
+    let currentPps = null;
+    let webcodecsHasKeyframe = false;
+
+    function feedWebCodecs(naluData, isKey) {
       if (!videoDecoder || videoDecoder.state !== 'configured') return;
+      if (!naluData || naluData.length < 5) return;
+      // Find start of NALU payload (after 00 00 01 or 00 00 00 01)
+      let offset = 4;
+      if (naluData[0] === 0 && naluData[1] === 0 && naluData[2] === 1) offset = 3;
+      const naluType = naluData[offset] & 0x1f;
+
+      // Never decode SPS (7) or PPS (8) alone as chunks — they are prepended to the IDR keyframe (5)
+      if (naluType === 7 || naluType === 8) {
+        return;
+      }
+      const isIdr = naluType === 5 || isKey;
+      if (!webcodecsHasKeyframe && !isIdr) {
+        return; // drop delta frames until the first IDR keyframe arrives
+      }
       try {
+        let payload = naluData;
+        let actualIsKey = isKey;
+        if (naluType === 5) {
+          actualIsKey = true;
+          if (currentSps && currentPps) {
+            // Prepend SPS and PPS to the IDR keyframe in Annex B format
+            const combined = new Uint8Array(currentSps.length + currentPps.length + naluData.length);
+            combined.set(currentSps, 0);
+            combined.set(currentPps, currentSps.length);
+            combined.set(naluData, currentSps.length + currentPps.length);
+            payload = combined;
+          }
+        }
+
         const chunk = new EncodedVideoChunk({
-          type: type === 'key' ? 'key' : 'delta',
+          type: actualIsKey ? 'key' : 'delta',
           timestamp: (performance.now() * 1000) | 0,
-          data: naluData
+          data: payload
         });
         videoDecoder.decode(chunk);
+        if (actualIsKey) {
+          webcodecsHasKeyframe = true;
+        }
       } catch (err) {
         console.error('WebCodecs decode error:', err);
       }
@@ -801,9 +844,13 @@
     if (_initMbps !== 8) _socketQuery.video_bit_rate = String(_initMbps * 1_000_000);
     if (_initFps !== 60) _socketQuery.max_fps = String(_initFps);
     const socket = io({
-      reconnection:true,
-      autoConnect:true,
-      transports:['polling', 'websocket'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      autoConnect: true,
+      transports: ['websocket', 'polling'],
       query: _socketQuery,
     });
     socket.on('connect', ()=> {
@@ -1975,17 +2022,19 @@
       if (type === 'nalu') {
         if (useWebCodecs) {
           const naluType = data[4] & 0x1f;
-          const isKey = naluType === 5 || naluType === 7 || naluType === 8;
-          feedWebCodecs(data, isKey ? 'key' : 'delta');
+          if (naluType === 7) currentSps = data;
+          else if (naluType === 8) currentPps = data;
+          const isKey = naluType === 5;
+          feedWebCodecs(data, isKey);
         } else {
           jmuxer.feed({ video: data });
         }
       } else if (type === 'init') {
+        currentSps = data['sps'];
+        currentPps = data['pps'];
         if (useWebCodecs) {
           const codecStr = getCodecStringFromSps(data['sps']);
           initWebCodecsDecoder(codecStr);
-          feedWebCodecs(data['sps'], 'key');
-          feedWebCodecs(data['pps'], 'key');
         } else {
           jmuxer.feed({ video: data['sps'] });
           jmuxer.feed({ video: data['pps'] });

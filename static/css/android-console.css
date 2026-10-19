@@ -105,14 +105,30 @@ body.sidebar-collapsed .console-sidebar {
 }
 
 .control-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-wrap: nowrap;
+  max-width: calc(100% - 24px);
+  gap: 4px;
   align-items: center;
-  padding: 10px 16px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  box-shadow: 0 1px 2px rgba(16, 42, 67, 0.04);
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.control-toolbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Subtle visual dividers for logical groups of controls inside #quickDock */
@@ -157,19 +173,40 @@ body.sidebar-collapsed .console-sidebar {
 .qc-row button,
 .ad-actions button,
 .resize-handle {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 34px;
+  min-height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px;
+  gap: 4px;
+  padding: 6px;
   color: var(--color-text-secondary);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--radius-sm);
   cursor: pointer;
   font: inherit;
+  font-size: 0.85rem;
+  transition: all var(--transition-fast);
+}
+
+.tool-select-wrap,
+.uhid-speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 0 6px;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+}
+
+.tool-select-wrap select {
+  padding: 4px 6px;
+  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-xs);
 }
 
 /* Tool buttons focus and active states */
@@ -494,19 +531,54 @@ video:-webkit-full-screen,
 
 .zoom-bar {
   position: absolute;
-  bottom: 14px;
-  left: 14px;
-  z-index: 6;
+  bottom: 12px;
+  right: 16px;
+  z-index: 40;
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.zoom-bar .zoom-btn {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  font-size: 0.75rem;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+}
+
+.zoom-bar .zoom-btn:hover {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
 }
 
 .status {
-  padding: 8px 16px;
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 14px;
   color: var(--color-text-secondary);
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border);
-  font-size: 0.875rem;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  font-size: 0.8rem;
+  pointer-events: none;
+  user-select: none;
 }
 
 .dot {
@@ -764,7 +836,40 @@ video:-webkit-full-screen,
   pointer-events: none;
 }
 
-.stream-hud,
+.stream-hud {
+  position: absolute;
+  top: 65px;
+  right: 16px;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  font-size: 0.8rem;
+  pointer-events: none;
+  user-select: none;
+}
+
+.stream-hud > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hud-k {
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
 .audio-diag,
 .audio-gate,
 .force-kick {
