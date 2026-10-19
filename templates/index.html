@@ -55,6 +55,7 @@
   </aside> <!-- sidebar -->
   <main id="consoleMain" class="console-main main-content connection-pending">
   <div class="control-toolbar quick-dock" id="quickDock" aria-label="Điều khiển nhanh">
+    <button class="tool-button" id="toggleSidebarBtn" aria-label="Thu gọn Sidebar (mở rộng sân khấu)" title="Ẩn/Hiện Sidebar (mở rộng tối đa màn hình điều khiển)"><i class="fa-solid fa-bars"></i></button>
     <button class="tool-button" id="power" aria-label="Nguồn" title="Power"><i class="fa-solid fa-power-off"></i></button>
     <button class="tool-button" id="voldown" aria-label="Giảm âm lượng" title="Volume -"><i class="fa-solid fa-volume-low"></i></button>
     <button class="tool-button" id="volup" aria-label="Tăng âm lượng" title="Volume +"><i class="fa-solid fa-volume-high"></i></button>
@@ -432,6 +433,13 @@
       const currentState = consoleMain && consoleMain.classList.contains('connection-ready')
         ? 'ready'
         : (consoleMain && consoleMain.classList.contains('connection-error') ? 'error' : 'pending');
+      // If we are already ready, only update statusText and top bar, do not demote connection state
+      if (currentState === 'ready') {
+        const statusEl = document.getElementById('status');
+        if (statusEl) statusEl.innerHTML = `<span class='dot'></span>${m}`;
+        if (statusText) statusText.textContent = m;
+        return;
+      }
       setConsoleConnectionState(currentState, m);
     };
     const MACRO_KEY = 'beso_macro_v1';
@@ -580,6 +588,10 @@
           }
           canvasCtx.drawImage(frame, 0, 0, canvasElement.width, canvasElement.height);
           frame.close();
+          // Ensure connection state is firmly ready
+          if (consoleMain && !consoleMain.classList.contains('connection-ready')) {
+            setConsoleConnectionState('ready', `WebCodecs OK | ${canvasElement.width}x${canvasElement.height}`);
+          }
         },
         error: (err) => {
           console.error('WebCodecs Decoder Error:', err);
@@ -988,6 +1000,20 @@
       const doBack = ()=>keyTap(4,'back');
       const doHome = ()=>keyTap(3,'home');
       const doRecent = ()=>keyTap(187,'recent');
+
+      // Toggle sidebar to maximize control screen
+      const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+      if (toggleSidebarBtn) {
+        toggleSidebarBtn.onclick = () => {
+          document.body.classList.toggle('sidebar-collapsed');
+          const isCollapsed = document.body.classList.contains('sidebar-collapsed');
+          try { localStorage.setItem('beso_sidebar_collapsed', isCollapsed ? '1' : '0'); } catch {}
+          scheduleRefit();
+        };
+      }
+      if (localStorage.getItem('beso_sidebar_collapsed') === '1') {
+        document.body.classList.add('sidebar-collapsed');
+      }
 
       document.getElementById('power').onclick = ()=>{ if(isRecordingMacro) macroEvents.push({ t: Date.now()-macroStartAt, type:'power', actionName:'power' }); doPower(); };
       document.getElementById('voldown').onclick = doVolDown;
@@ -1948,7 +1974,9 @@
     const parser = new VideoParser(({ type, data }) => {
       if (type === 'nalu') {
         if (useWebCodecs) {
-          feedWebCodecs(data, 'delta');
+          const naluType = data[4] & 0x1f;
+          const isKey = naluType === 5 || naluType === 7 || naluType === 8;
+          feedWebCodecs(data, isKey ? 'key' : 'delta');
         } else {
           jmuxer.feed({ video: data });
         }
@@ -1986,22 +2014,12 @@
         }
         if (aspectFlipped){
           createJmuxer();
-          // After a portrait↔landscape flip, the previous zoom level is rarely
-          // a good fit for the new aspect (the device looks tiny in the wrong
-          // dimension). Snap back to the default so the user immediately sees
-          // a sensibly framed phone shell.
-          const wasPortrait = deviceH > deviceW;
-          const isPortrait = newH > newW;
-          if (wasPortrait !== isPortrait) zoom = 0.82;
         }
         deviceW = newW;
         deviceH = newH;
         if (input) input.resizeScreen(deviceW, deviceH);
-        // RAF refit — fitVideoToViewport reads videoWrap.clientWidth which can
-        // still reflect the old phone-shell footprint until the browser does
-        // the next layout pass.
         scheduleRefit();
-        st(`Đổi kích thước: ${deviceW}x${deviceH}`);
+        setConsoleConnectionState('ready', `Kết nối OK | ${deviceW}x${deviceH}`);
       }
     });
 

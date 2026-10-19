@@ -321,6 +321,15 @@ def test_console_main_owns_unique_recovery_surface_and_command_dock():
 
 
 QUICK_DOCK_CONTROL_SIGNATURE = (
+    (
+        "button",
+        {
+            "class": "tool-button",
+            "id": "toggleSidebarBtn",
+            "title": "Ẩn/Hiện Sidebar (mở rộng tối đa màn hình điều khiển)",
+        },
+        (),
+    ),
     ("button", {"class": "tool-button", "id": "power", "title": "Power"}, ()),
     ("button", {"class": "tool-button", "id": "voldown", "title": "Volume -"}, ()),
     ("button", {"class": "tool-button", "id": "volup", "title": "Volume +"}, ()),

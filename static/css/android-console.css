@@ -4,6 +4,17 @@
   grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
   overflow: hidden;
   padding: 0;
+  transition: grid-template-columns 0.25s ease;
+}
+
+body.sidebar-collapsed.console-shell {
+  grid-template-columns: 0px minmax(0, 1fr) !important;
+}
+
+body.sidebar-collapsed .console-sidebar {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .console-sidebar {
