@@ -692,11 +692,16 @@ class Scrcpy:
                 self.stop = True
                 raise RuntimeError(f'ADB serial {self.serial!r} not online (found: {online})')
 
-        # Wake up device display automatically if it went to sleep/dozing
-        try:
-            subprocess.run(self._adb('shell', 'input', 'keyevent', '224'), timeout=3, capture_output=True)
-        except Exception as e:
-            log.warning('Could not wake up screen via keyevent 224: %s', e)
+        # Wake up device display automatically ONLY if not deliberately configured to keep screen off
+        if not self.turn_screen_off:
+            try:
+                # Check current power state first before blindly waking up
+                pwr = subprocess.run(self._adb('shell', 'dumpsys', 'power'), capture_output=True, text=True, timeout=3)
+                if 'mWakefulness=Dozing' in pwr.stdout or 'mWakefulness=Asleep' in pwr.stdout:
+                    log.info('Device is asleep/dozing, sending wakeup event (224)')
+                    subprocess.run(self._adb('shell', 'input', 'keyevent', '224'), timeout=3, capture_output=True)
+            except Exception as e:
+                log.warning('Could not check/wake screen: %s', e)
 
         if not self.push_server_to_device():
             self.stop = True
