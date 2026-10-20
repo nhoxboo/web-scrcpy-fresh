@@ -126,6 +126,38 @@ body.sidebar-collapsed .console-sidebar {
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
+  user-select: none;
+}
+
+.control-toolbar.is-dragged {
+  transform: none !important;
+  transition: none !important;
+}
+
+.control-toolbar:not(.expanded) .tool-secondary {
+  display: none !important;
+}
+
+.dock-drag-handle {
+  cursor: grab !important;
+  color: var(--color-text-tertiary) !important;
+  padding: 0 6px !important;
+  touch-action: none;
+}
+
+.dock-drag-handle:hover {
+  color: var(--color-primary) !important;
+}
+
+.dock-drag-handle:active,
+.control-toolbar.is-dragging .dock-drag-handle {
+  cursor: grabbing !important;
+}
+
+#moreToolsBtn.active {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .control-toolbar.toolbar-hidden {

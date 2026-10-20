@@ -55,6 +55,7 @@
   </aside> <!-- sidebar -->
   <main id="consoleMain" class="console-main main-content connection-pending">
   <div class="control-toolbar quick-dock" id="quickDock" aria-label="Điều khiển nhanh">
+    <button class="tool-button dock-drag-handle" id="dockDragHandle" aria-label="Kéo thanh công cụ" title="Giữ chuột và kéo để di chuyển thanh công cụ"><i class="fa-solid fa-grip-vertical"></i></button>
     <button class="tool-button" id="toggleSidebarBtn" aria-label="Thu gọn Sidebar (mở rộng sân khấu)" title="Ẩn/Hiện Sidebar (mở rộng tối đa màn hình điều khiển)"><i class="fa-solid fa-bars"></i></button>
     <button class="tool-button" id="power" aria-label="Nguồn" title="Power"><i class="fa-solid fa-power-off"></i></button>
     <button class="tool-button" id="voldown" aria-label="Giảm âm lượng" title="Volume -"><i class="fa-solid fa-volume-low"></i></button>
@@ -62,53 +63,54 @@
     <button class="tool-button" id="back" aria-label="Quay lại" title="Back"><i class="fa-solid fa-arrow-left"></i></button>
     <button class="tool-button" id="home" aria-label="Màn hình chính" title="Home"><i class="fa-solid fa-house"></i></button>
     <button class="tool-button" id="recent" aria-label="Ứng dụng gần đây" title="Recent"><i class="fa-solid fa-layer-group"></i></button>
-    <button class="tool-button" id="rotate" aria-label="Xoay màn hình" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
+    <button class="tool-button tool-secondary" id="rotate" aria-label="Xoay màn hình" title="Rotate"><i class="fa-solid fa-rotate"></i></button>
     <button class="tool-button" id="fullscreen" aria-label="Toàn màn hình" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
-    <button class="tool-button" id="screenshot" aria-label="Chụp ảnh màn hình" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
-    <button class="tool-button" id="recordToggle" aria-label="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
-    <button class="tool-button" id="vdesktopMode" aria-label="Màn hình nền ảo: TẮT — màn hình ảo kiểu máy tính cho Android 11 trở lên. Shift-click để chỉnh kích thước." title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
-    <div class="tool-select-wrap" title="Chọn màn hình hiển thị">
+    <button class="tool-button tool-secondary" id="screenshot" aria-label="Chụp ảnh màn hình" title="Chụp ảnh màn hình hiện tại (Ctrl+Shift+S)"><i class="fa-solid fa-camera"></i></button>
+    <button class="tool-button tool-secondary" id="recordToggle" aria-label="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về" title="Ghi màn hình (Ctrl+Shift+R) — bấm lại để dừng và tải về"><i class="fa-solid fa-circle"></i></button>
+    <button class="tool-button tool-secondary" id="vdesktopMode" aria-label="Màn hình nền ảo: TẮT — màn hình ảo kiểu máy tính cho Android 11 trở lên. Shift-click để chỉnh kích thước." title="Virtual Desktop: OFF — màn hình ảo desktop-style cho mọi Android 11+. Shift-click để chỉnh kích thước."><i class="fa-solid fa-desktop"></i></button>
+    <div class="tool-select-wrap tool-secondary" title="Chọn màn hình hiển thị">
       <i class="fa-solid fa-tv"></i>
       <select id="displaySelect">
         <option value="0">Display 0 (Mặc định)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Giao thức truyền tải">
+    <div class="tool-select-wrap tool-secondary" title="Giao thức truyền tải">
       <i class="fa-solid fa-network-wired"></i>
       <select id="transportSelect">
         <option value="websocket">TCP (WebSocket)</option>
         <option value="webrtc">UDP (WebRTC)</option>
       </select>
     </div>
-    <div class="tool-select-wrap" title="Chọn bộ giải mã video">
+    <div class="tool-select-wrap tool-secondary" title="Chọn bộ giải mã video">
       <i class="fa-solid fa-code"></i>
       <select id="decoderSelect">
         <option value="mse">MSE (Mặc định)</option>
         <option value="webcodecs">WebCodecs (Trễ thấp)</option>
       </select>
     </div>
-    <button class="tool-button" id="quickCtl" aria-label="Mở điều khiển nhanh" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
-    <button class="tool-button" id="uhidInput" aria-label="Chuột và bàn phím thật (UHID): BẬT" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
-    <div class="uhid-speed" id="uhidSpeedBox" title="Tốc độ chuột UHID — kéo để chỉnh, không cần reload">
+    <button class="tool-button tool-secondary" id="quickCtl" aria-label="Mở điều khiển nhanh" title="Quick Controls (Wifi/BT/Volume/Lock...)"><i class="fa-solid fa-sliders"></i></button>
+    <button class="tool-button tool-secondary" id="uhidInput" aria-label="Chuột và bàn phím thật (UHID): BẬT" title="Real mouse/keyboard (UHID): ON"><i class="fa-solid fa-mouse-pointer"></i></button>
+    <div class="uhid-speed tool-secondary" id="uhidSpeedBox" title="Tốc độ chuột UHID — kéo để chỉnh, không cần reload">
       <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
       <input id="uhidSpeed" type="range" min="0.25" max="4" step="0.05" value="1">
       <span id="uhidSpeedV" class="v">1.00x</span>
       <label title="Tăng tốc khi vẩy chuột nhanh (giống Windows pointer ballistics)"><input id="uhidAccel" type="checkbox"> accel</label>
     </div>
     <button class="tool-button" id="reconnect" aria-label="Kết nối lại thiết bị" title="Kết nối lại"><i class="fa-solid fa-plug-circle-bolt"></i></button>
-    <button class="tool-button" id="installApk" aria-label="Cài APK (file hoặc URL)" title="Cài APK (file hoặc URL)"><i class="fa-solid fa-cube"></i></button>
-    <button class="tool-button" id="pushFile" aria-label="Tải file vào /sdcard/Download" title="Tải file vào /sdcard/Download"><i class="fa-solid fa-upload"></i></button>
-    <button class="tool-button" id="kbToggle" aria-label="Bật/tắt bàn phím (gõ chữ vào device)" title="Bật/tắt bàn phím (gõ chữ vào device)"><i class="fa-solid fa-i-cursor"></i></button>
-    <button class="tool-button" id="macroRec" aria-label="Bắt đầu ghi macro" title="Bắt đầu ghi macro"><i class="fa-solid fa-record-vinyl"></i></button>
-    <button class="tool-button" id="macroStop" aria-label="Dừng ghi" title="Dừng ghi"><i class="fa-solid fa-stop"></i></button>
-    <button class="tool-button" id="macroPlay" aria-label="Chạy macro" title="Chạy macro"><i class="fa-solid fa-play"></i></button>
-    <button class="tool-button" id="macroClear" aria-label="Xóa macro" title="Xóa macro"><i class="fa-solid fa-trash"></i></button>
-    <button class="tool-button" id="hotkeyConfig" aria-label="Gán phím" title="Gán phím"><i class="fa-solid fa-keyboard"></i></button>
-    <button class="tool-button" id="gameMode" aria-label="Chế độ chơi game: TẮT" title="Game mode: OFF"><i class="fa-solid fa-gamepad"></i></button>
-    <button class="tool-button" id="gamepadInput" aria-label="Tay cầm UHID: TẮT — bấm để bật tay cầm thật cắm vào máy tính. Cần Android 11 trở lên và scrcpy đã kết nối." title="Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối."><i class="fa-solid fa-chess-knight"></i></button>
-    <button class="tool-button" id="hudToggle" aria-label="Bảng thông tin: hiển thị FPS, Mbps và Ping (Ctrl+Shift+H)" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
+    <button class="tool-button tool-secondary" id="installApk" aria-label="Cài APK (file hoặc URL)" title="Cài APK (file hoặc URL)"><i class="fa-solid fa-cube"></i></button>
+    <button class="tool-button tool-secondary" id="pushFile" aria-label="Tải file vào /sdcard/Download" title="Tải file vào /sdcard/Download"><i class="fa-solid fa-upload"></i></button>
+    <button class="tool-button tool-secondary" id="kbToggle" aria-label="Bật/tắt bàn phím (gõ chữ vào device)" title="Bật/tắt bàn phím (gõ chữ vào device)"><i class="fa-solid fa-i-cursor"></i></button>
+    <button class="tool-button tool-secondary" id="macroRec" aria-label="Bắt đầu ghi macro" title="Bắt đầu ghi macro"><i class="fa-solid fa-record-vinyl"></i></button>
+    <button class="tool-button tool-secondary" id="macroStop" aria-label="Dừng ghi" title="Dừng ghi"><i class="fa-solid fa-stop"></i></button>
+    <button class="tool-button tool-secondary" id="macroPlay" aria-label="Chạy macro" title="Chạy macro"><i class="fa-solid fa-play"></i></button>
+    <button class="tool-button tool-secondary" id="macroClear" aria-label="Xóa macro" title="Xóa macro"><i class="fa-solid fa-trash"></i></button>
+    <button class="tool-button tool-secondary" id="hotkeyConfig" aria-label="Gán phím" title="Gán phím"><i class="fa-solid fa-keyboard"></i></button>
+    <button class="tool-button tool-secondary" id="gameMode" aria-label="Chế độ chơi game: TẮT" title="Game mode: OFF"><i class="fa-solid fa-gamepad"></i></button>
+    <button class="tool-button tool-secondary" id="gamepadInput" aria-label="Tay cầm UHID: TẮT — bấm để bật tay cầm thật cắm vào máy tính. Cần Android 11 trở lên và scrcpy đã kết nối." title="Gamepad UHID: OFF — bấm để bật tay cầm thật (Xbox/PS/8BitDo cắm vào PC). Cần Android 11+ và scrcpy đã kết nối."><i class="fa-solid fa-chess-knight"></i></button>
+    <button class="tool-button tool-secondary" id="hudToggle" aria-label="Bảng thông tin: hiển thị FPS, Mbps và Ping (Ctrl+Shift+H)" title="HUD: hiển thị FPS / Mbps / Ping (Ctrl+Shift+H)"><i class="fa-solid fa-gauge-high"></i></button>
     <button class="tool-button" id="audioToggle" aria-label="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)" title="Audio thiết bị: OFF — bấm để bật streaming audio (cần reconnect)"><i class="fa-solid fa-volume-xmark"></i></button>
     <button class="tool-button" id="screenOffToggle" aria-label="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)" title="Tắt màn hình thiết bị: OFF — bấm để giữ điều khiển nhưng màn hình điện thoại tắt (scrcpy --turn-screen-off, cần reconnect)"><i class="fa-solid fa-lightbulb"></i></button>
+    <button class="tool-button" id="moreToolsBtn" aria-label="Mở rộng/Thu gọn công cụ" title="Thêm công cụ (⋯)"><i class="fa-solid fa-ellipsis"></i></button>
     <button class="tool-button" id="toggleToolbarBtn" aria-label="Ẩn thanh công cụ" title="Ẩn thanh công cụ (phím tắt T)"><i class="fa-solid fa-chevron-up"></i></button>
   </div>
   <button class="toolbar-reopen-pill" id="reopenToolbarBtn" aria-label="Hiện thanh công cụ" title="Hiện thanh công cụ (phím tắt T)" hidden><i class="fa-solid fa-chevron-down"></i></button>
@@ -1067,6 +1069,112 @@
       }
       if (localStorage.getItem('beso_toolbar_hidden') === '1') {
         setToolbarHidden(true);
+      }
+
+      // Toggle More Tools (expand/collapse secondary controls)
+      const moreToolsBtn = document.getElementById('moreToolsBtn');
+      const setToolsExpanded = (expanded) => {
+        if (!quickDock) return;
+        quickDock.classList.toggle('expanded', expanded);
+        if (moreToolsBtn) {
+          moreToolsBtn.classList.toggle('active', expanded);
+          moreToolsBtn.title = expanded ? 'Thu gọn công cụ (⋯)' : 'Thêm công cụ (⋯)';
+        }
+        try { localStorage.setItem('beso_dock_expanded', expanded ? '1' : '0'); } catch {}
+      };
+      if (moreToolsBtn) {
+        moreToolsBtn.onclick = () => {
+          const isExp = quickDock && quickDock.classList.contains('expanded');
+          setToolsExpanded(!isExp);
+        };
+      }
+      if (localStorage.getItem('beso_dock_expanded') === '1') {
+        setToolsExpanded(true);
+      }
+
+      // Drag to Move QuickDock anywhere on screen
+      const dockDragHandle = document.getElementById('dockDragHandle');
+      if (quickDock && dockDragHandle) {
+        let isMoving = false;
+        let startX = 0, startY = 0;
+        let initialLeft = 0, initialTop = 0;
+
+        // Restore saved dock position if available
+        try {
+          const savedPos = JSON.parse(localStorage.getItem('beso_dock_pos') || 'null');
+          if (savedPos && typeof savedPos.left === 'number' && typeof savedPos.top === 'number') {
+            const maxL = Math.max(10, window.innerWidth - 60);
+            const maxT = Math.max(10, window.innerHeight - 40);
+            const l = Math.min(Math.max(10, savedPos.left), maxL);
+            const t = Math.min(Math.max(10, savedPos.top), maxT);
+            quickDock.style.left = l + 'px';
+            quickDock.style.top = t + 'px';
+            quickDock.classList.add('is-dragged');
+          }
+        } catch {}
+
+        dockDragHandle.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
+          isMoving = true;
+          const rect = quickDock.getBoundingClientRect();
+          startX = e.clientX;
+          startY = e.clientY;
+          initialLeft = rect.left;
+          initialTop = rect.top;
+          quickDock.classList.add('is-dragged', 'is-dragging');
+          e.preventDefault();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+          if (!isMoving) return;
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          let newLeft = initialLeft + dx;
+          let newTop = initialTop + dy;
+          // Boundary limits
+          newLeft = Math.max(8, Math.min(newLeft, window.innerWidth - quickDock.offsetWidth - 8));
+          newTop = Math.max(8, Math.min(newTop, window.innerHeight - quickDock.offsetHeight - 8));
+          quickDock.style.left = newLeft + 'px';
+          quickDock.style.top = newTop + 'px';
+        });
+
+        window.addEventListener('mouseup', () => {
+          if (!isMoving) return;
+          isMoving = false;
+          quickDock.classList.remove('is-dragging');
+          try {
+            const rect = quickDock.getBoundingClientRect();
+            localStorage.setItem('beso_dock_pos', JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) }));
+          } catch {}
+        });
+
+        // Mouse Wheel Horizontal Scrolling on dock
+        quickDock.addEventListener('wheel', (e) => {
+          if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+            quickDock.scrollLeft += e.deltaY;
+            e.preventDefault();
+          }
+        }, { passive: false });
+
+        // Click & Drag to scroll dock horizontally when dragging on empty background
+        let isScrollDragging = false;
+        let scrollStartX = 0;
+        let scrollStartLeft = 0;
+
+        quickDock.addEventListener('mousedown', (e) => {
+          if (e.target.closest('button, select, input, label')) return;
+          isScrollDragging = true;
+          scrollStartX = e.clientX;
+          scrollStartLeft = quickDock.scrollLeft;
+        });
+        window.addEventListener('mousemove', (e) => {
+          if (!isScrollDragging) return;
+          const walk = (e.clientX - scrollStartX) * 1.5;
+          quickDock.scrollLeft = scrollStartLeft - walk;
+        });
+        window.addEventListener('mouseup', () => {
+          isScrollDragging = false;
+        });
       }
 
       // Hotkey 't' or 'T' (when not typing in an input) toggles toolbar
