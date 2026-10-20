@@ -463,10 +463,11 @@
 
     const videoElement = document.getElementById('player');
     const hasWebCodecs = typeof window.VideoDecoder !== 'undefined';
-    let useWebCodecs = localStorage.getItem('decoderMode') === 'webcodecs';
-    if (useWebCodecs && !hasWebCodecs) {
-      useWebCodecs = false;
-      localStorage.setItem('decoderMode', 'mse');
+    const savedDecoder = localStorage.getItem('decoderMode');
+    // Default to webcodecs whenever supported, optimizing latency and hardware decoding
+    let useWebCodecs = hasWebCodecs && savedDecoder !== 'mse';
+    if (useWebCodecs && savedDecoder !== 'webcodecs') {
+      try { localStorage.setItem('decoderMode', 'webcodecs'); } catch {}
     }
     const canvasElement = document.getElementById('playerCanvas');
     const canvasCtx = canvasElement ? canvasElement.getContext('2d') : null;
@@ -800,7 +801,7 @@
     // tool; user can flip it OFF via the toolbar to fall back to touch
     // input (useful for typing Vietnamese via the Android IME, which UHID
     // bypasses).
-    const uhidOn = (localStorage.getItem('uhidInput') ?? '1') === '1';
+    const uhidOn = (localStorage.getItem('uhidInput') ?? '0') === '1';
     // Mouse sensitivity for UHID. Stored as a string of the multiplier,
     // e.g. "1.0", "0.5", "2.0". Adjustable live via the toolbar slider —
     // no reload needed.
@@ -1612,7 +1613,7 @@
       // hot-swap event listeners at runtime, which is fragile.
       const uhidBtn = document.getElementById('uhidInput');
       const refreshUhidBtn = ()=>{
-        const on = (localStorage.getItem('uhidInput') ?? '1') === '1';
+        const on = (localStorage.getItem('uhidInput') ?? '0') === '1';
         uhidBtn.classList.toggle('active', on);
         uhidBtn.title = on
           ? 'Real mouse/keyboard (UHID): ON — click để tắt'
@@ -1620,7 +1621,7 @@
       };
       refreshUhidBtn();
       uhidBtn.onclick = ()=>{
-        const cur = (localStorage.getItem('uhidInput') ?? '1') === '1';
+        const cur = (localStorage.getItem('uhidInput') ?? '0') === '1';
         localStorage.setItem('uhidInput', cur ? '0' : '1');
         st(cur ? 'Tắt UHID, đang tải lại...' : 'Bật UHID, đang tải lại...');
         setTimeout(()=>location.reload(), 250);
