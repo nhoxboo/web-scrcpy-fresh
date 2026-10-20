@@ -421,15 +421,11 @@ canvas#playerCanvas {
   max-height: none;
   border: 0;
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: #000000;
   image-rendering: auto;
   touch-action: none;
   user-select: none;
   -webkit-user-drag: none;
-}
-
-canvas#playerCanvas {
-  display: none;
 }
 
 #playerCanvas:fullscreen,
@@ -1117,11 +1113,10 @@ video:-webkit-full-screen,
 }
 
 /* --- Connection-First Recovery & State Transitions --- */
+/* Never completely hide phone mockup to prevent flash-of-white-screen */
 #consoleMain.connection-pending .phone-mockup,
-#consoleMain.connection-error .phone-mockup,
-#consoleMain.connection-pending .zoom-bar,
-#consoleMain.connection-error .zoom-bar {
-  display: none !important;
+#consoleMain.connection-error .phone-mockup {
+  opacity: 0.85;
 }
 
 #consoleMain.connection-ready .connection-recovery {
@@ -1130,6 +1125,7 @@ video:-webkit-full-screen,
 
 #consoleMain.connection-ready .phone-mockup {
   display: flex;
+  opacity: 1;
 }
 
 .connection-recovery {

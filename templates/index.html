@@ -520,11 +520,13 @@
       // a stale buffered frame in a different aspect (right after a rotation)
       // can briefly distort the video before the new stream takes over.
       const activePlayer = useWebCodecs ? canvasElement : videoElement;
+      activePlayer.style.display = 'block';
       activePlayer.style.objectFit = 'contain';
       activePlayer.style.width = `${w}px`;
       activePlayer.style.height = `${h}px`;
 
       const hiddenPlayer = useWebCodecs ? videoElement : canvasElement;
+      hiddenPlayer.style.display = 'none';
       hiddenPlayer.style.width = '0px';
       hiddenPlayer.style.height = '0px';
       const landscape = deviceW > deviceH;

@@ -1954,11 +1954,14 @@ def handle_connect(auth=None):
                         s['scpy_ctx'].scrcpy_stop()
                     except Exception as e:  # noqa: BLE001
                         log.warning('scrcpy_stop for stale session %s failed: %s', other_sid, e)
-        for other_sid, s in scpy_sessions.items():
+        for other_sid, s in list(scpy_sessions.items()):
             if s.get('scpy_ctx') and s['scpy_ctx'].serial == chosen_serial and other_sid != sid:
-                raise SocketConnectionRefusedError(
-                    'Thiết bị này đang được sử dụng bởi client khác. Vui lòng Kick để chiếm quyền.'
-                )
+                log.info('Auto-takeover device %s from previous session %s for new session %s', chosen_serial, other_sid, sid)
+                try:
+                    s['scpy_ctx'].scrcpy_stop()
+                except Exception as e:  # noqa: BLE001
+                    log.warning('Auto-takeover scrcpy_stop failed: %s', e)
+                scpy_sessions.pop(other_sid, None)
         ctx = Scrcpy(
             serial=chosen_serial,
             display_id=chosen_disp,
