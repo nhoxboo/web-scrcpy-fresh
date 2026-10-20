@@ -210,10 +210,10 @@
        (Back, Home, Recent) are 100% free from overlays. -->
   <div id="streamHud" class="stream-hud">
     <div class="hud-status-chip"><span class="dot"></span><span id="status">Đang kết nối...</span></div>
-    <div><span class="hud-k">FPS</span> <span id="hudFps">0</span></div>
-    <div><span class="hud-k">Mbps</span> <span id="hudKbps">0.0</span></div>
-    <div><span class="hud-k">Ping</span> <span id="hudPing">— ms</span></div>
-    <div><span class="hud-k">Frames</span> <span id="hudFrames">0</span></div>
+    <div class="hud-metric"><span class="hud-k">FPS</span> <span id="hudFps">0</span></div>
+    <div class="hud-metric"><span class="hud-k">Mbps</span> <span id="hudKbps">0.0</span></div>
+    <div class="hud-metric"><span class="hud-k">Ping</span> <span id="hudPing">— ms</span></div>
+    <div class="hud-metric"><span class="hud-k">Frames</span> <span id="hudFrames">0</span></div>
   </div>
 
   <!-- Hidden audio sink. JMuxer attaches a MediaSource to this element when
@@ -1070,6 +1070,25 @@
       if (localStorage.getItem('beso_toolbar_hidden') === '1') {
         setToolbarHidden(true);
       }
+
+      // Smart Auto-reveal: hover near top edge (clientY <= 25) reveals toolbar smoothly
+      let _dockHideTimer = null;
+      document.addEventListener('mousemove', (e) => {
+        if (!quickDock) return;
+        if (e.clientY <= 25 && quickDock.classList.contains('toolbar-hidden')) {
+          setToolbarHidden(false);
+          clearTimeout(_dockHideTimer);
+        }
+      });
+      quickDock.addEventListener('mouseleave', () => {
+        // If user explicitly set hidden or prefers auto-hide, re-hide after 3 seconds
+        if (localStorage.getItem('beso_toolbar_hidden') === '1') {
+          clearTimeout(_dockHideTimer);
+          _dockHideTimer = setTimeout(() => {
+            setToolbarHidden(true);
+          }, 3000);
+        }
+      });
 
       // Toggle More Tools (expand/collapse secondary controls)
       const moreToolsBtn = document.getElementById('moreToolsBtn');
@@ -2233,7 +2252,11 @@
     }
     const _refreshHud = ()=>{
       const on = localStorage.getItem('streamHud') === '1';
-      _hudEl.hidden = !on;
+      if (_hudEl) {
+        _hudEl.hidden = false;
+        const metrics = _hudEl.querySelectorAll('.hud-metric');
+        metrics.forEach(m => { m.style.display = on ? 'inline-flex' : 'none'; });
+      }
       if (_hudBtn){
         _hudBtn.classList.toggle('active', on);
         _hudBtn.title = on
