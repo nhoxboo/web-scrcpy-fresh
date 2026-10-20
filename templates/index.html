@@ -196,8 +196,6 @@
     </div>
   </div>
 
-  <div id="status" class="status status-banner"><span class="dot"></span>Đang kết nối...</div>
-
   <!-- Force-kick: surfaced only when the socket is rejected because another
        client holds the device lock. Lets the legitimate session owner take
        over without restarting the server. POST /api/session/kick will
@@ -207,11 +205,11 @@
     <span>Đẩy client khác ra &amp; kết nối lại</span>
   </button>
 
-  <!-- Bandwidth/FPS HUD: tiny corner overlay for debugging stream health.
-       Toggle on/off with the Game Mode-style key combo; localStorage flag
-       `streamHud` ('1' to enable). Updates once per second based on
-       cumulative bytes received and NALU count from VideoParser. -->
-  <div id="streamHud" class="stream-hud" hidden>
+  <!-- Bandwidth/FPS HUD & Connection Status: floating top-right glassmorphic pill.
+       Consolidates connection status, FPS, Mbps, and Ping together so bottom nav buttons
+       (Back, Home, Recent) are 100% free from overlays. -->
+  <div id="streamHud" class="stream-hud">
+    <div class="hud-status-chip"><span class="dot"></span><span id="status">Đang kết nối...</span></div>
     <div><span class="hud-k">FPS</span> <span id="hudFps">0</span></div>
     <div><span class="hud-k">Mbps</span> <span id="hudKbps">0.0</span></div>
     <div><span class="hud-k">Ping</span> <span id="hudPing">— ms</span></div>
